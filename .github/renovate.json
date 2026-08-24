@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/).+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-.]+?)\\s+depName=(?<depName>[a-zA-Z0-9-/]+?)(\\s+repository=(?<registryUrl>[^\\s]+?))?(\\s+versioning=(?<versioning>[^\\s]+?))?(\\s+extractVersion=(?<extractVersion>[^\\s]+?))?\\s*\\n.+[\\:\\=]\\s?\"v?(?<currentValue>[^\\s]+)\""
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    }
+  ],
+  "configMigration": true,
+  "dependencyDashboard": true,
+  "extends": [
+    "abandonments:recommended",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests",
+    "mergeConfidence:age-confidence-badges",
+    "mergeConfidence:all-badges",
+    "github>ppat/renovate-presets#v1.0.0",
+    "github>ppat/renovate-presets:dev-tools#v1.0.0",
+    "github>ppat/renovate-presets:github-actions-provider#v1.0.0"
+  ],
+  "internalChecksFilter": "strict",
+  "labels": [
+    "pr-type:renovate"
+  ],
+  "prConcurrentLimit": 0,
+  "prHourlyLimit": 0,
+  "printConfig": true,
+  "rebaseWhen": "conflicted",
+  "suppressNotifications": [
+    "prEditedNotification",
+    "prIgnoreNotification"
+  ],
+  "timezone": "US/Eastern"
+}
