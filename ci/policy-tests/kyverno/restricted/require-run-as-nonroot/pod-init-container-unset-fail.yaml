@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# THE THREE-LIST ASSERTION, first of two. Every ordinary container opts in; the initContainer --
+# also a NATIVE SIDECAR (`restartPolicy: Always`) -- does not, and there is no pod-level `true` to
+# cover it. pod-security-admission does no special-casing of sidecars: `visitContainers()`
+# iterates all three lists identically.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-workload-4f8b7c6d9-vn3ks
+  namespace: default
+spec:
+  initContainers:
+  - name: log-rotate
+    image: registry.k8s.io/pause:3.10
+    restartPolicy: Always
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

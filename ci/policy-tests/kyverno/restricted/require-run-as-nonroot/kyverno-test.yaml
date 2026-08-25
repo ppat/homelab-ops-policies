@@ -1,0 +1,125 @@
+---
+# CLI tier for require-run-as-nonroot. House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the five conventions),
+# ../restrict-volume-types/kyverno-test.yaml (why an exemption-carrying policy needs a `built`
+# document AND a `pure` one) and ../../baseline/disallow-privileged-containers/kyverno-test.yaml
+# (the `<namespace>/<name>` fixture-collision rule). None of them is restated.
+#
+# TWO KINDS OF `skip` HERE, exactly as in ../require-run-as-non-root-user/: the `default/...userns`
+# rows are PSS semantics living in the mirror (so they read `skip` in BOTH documents) and the
+# `kubevirt/...` rows are the estate exemption (so they read `skip` in `built` and `fail` in
+# `pure`). That file's header explains why the distinction is asserted rather than assumed.
+#
+# THE ROW TO READ FIRST IS `default/podlevel-false-workload-cbf5bd649-mzqns`. It is the one
+# deliberate CONTENT delta in Wave E -- a pod the legacy ClusterPolicy passed and this mirror
+# fails, because real PSA fails it. Its fixture carries the argument.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-run-as-nonroot-built
+policies:
+- ../../../.build/restricted/require-run-as-nonroot.yaml
+resources:
+- pod-no-runasnonroot-fail.yaml
+- pod-podlevel-true-pass.yaml
+- pod-containers-true-pass.yaml
+- pod-container-false-overrides-podlevel-true-fail.yaml
+- pod-podlevel-false-containers-true-fail.yaml
+- pod-init-container-unset-fail.yaml
+- pod-ephemeral-container-false-fail.yaml
+- pod-hostusers-false-no-runasnonroot-skip.yaml
+- pod-hostusers-true-no-runasnonroot-fail.yaml
+- pod-hostusers-false-runasnonroot-true-skip.yaml
+- pod-virt-handler-no-runasnonroot-skip.yaml
+- pod-virt-handler-generatename-no-runasnonroot-skip.yaml
+- pod-not-virt-handler-in-kubevirt-no-runasnonroot-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-no-runasnonroot-fail.yaml
+results:
+# Both compliant shapes -- pod-level inheritance and per-container opt-in. Listing both is what
+# stops the expression collapsing to whichever one is easier to write.
+- policy: require-run-as-nonroot
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/podlevel-true-workload-6b9f4c8d5-x2kqp
+  - default/containers-true-workload-844d7c96b-fq8vn
+  result: pass
+- policy: require-run-as-nonroot
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/override-false-workload-77955b8c45-52ls7
+  - default/podlevel-false-workload-cbf5bd649-mzqns
+  - default/sidecar-workload-4f8b7c6d9-vn3ks
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - default/explicit-hostusers-workload-7d4c9f8b6-lq2mn
+  - kubevirt/virt-api-6d9c8f5b7-9wq4x
+  - monitoring/virt-handler-zzz11
+  result: fail
+- policy: require-run-as-nonroot
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/userns-workload-9b966fd69-bsmhz
+  - default/compliant-userns-workload-fd4b5c598-pv8pn
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-run-as-nonroot-pure
+policies:
+- ../../../../../pod-security-standard/restricted/require-run-as-nonroot.yaml
+resources:
+- pod-no-runasnonroot-fail.yaml
+- pod-podlevel-true-pass.yaml
+- pod-containers-true-pass.yaml
+- pod-container-false-overrides-podlevel-true-fail.yaml
+- pod-podlevel-false-containers-true-fail.yaml
+- pod-init-container-unset-fail.yaml
+- pod-ephemeral-container-false-fail.yaml
+- pod-hostusers-false-no-runasnonroot-skip.yaml
+- pod-hostusers-true-no-runasnonroot-fail.yaml
+- pod-hostusers-false-runasnonroot-true-skip.yaml
+- pod-virt-handler-no-runasnonroot-skip.yaml
+- pod-virt-handler-generatename-no-runasnonroot-skip.yaml
+- pod-not-virt-handler-in-kubevirt-no-runasnonroot-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-no-runasnonroot-fail.yaml
+results:
+- policy: require-run-as-nonroot
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/podlevel-true-workload-6b9f4c8d5-x2kqp
+  - default/containers-true-workload-844d7c96b-fq8vn
+  result: pass
+# THE FIRING ASSERTION for the estate exemption: the two virt-handler pods, which the built policy
+# skips, are real violations of the pure mirror.
+- policy: require-run-as-nonroot
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/override-false-workload-77955b8c45-52ls7
+  - default/podlevel-false-workload-cbf5bd649-mzqns
+  - default/sidecar-workload-4f8b7c6d9-vn3ks
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - default/explicit-hostusers-workload-7d4c9f8b6-lq2mn
+  - kubevirt/virt-api-6d9c8f5b7-9wq4x
+  - monitoring/virt-handler-zzz11
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: fail
+# STILL `skip` WITHOUT THE EXEMPTION LAYER -- the §5.5a userns condition is PSS semantics living in
+# the mirror, not an estate decision living in a patch.
+- policy: require-run-as-nonroot
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/userns-workload-9b966fd69-bsmhz
+  - default/compliant-userns-workload-fd4b5c598-pv8pn
+  result: skip

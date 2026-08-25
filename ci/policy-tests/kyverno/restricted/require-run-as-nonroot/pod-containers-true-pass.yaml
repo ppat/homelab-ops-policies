@@ -1,0 +1,22 @@
+---
+# EXPECTED: `pass`.
+#
+# The other compliant shape: no pod-level setting at all, every container opting in for itself.
+# This is the second branch of the legacy `anyPattern`. Paired with ./pod-podlevel-true-pass.yaml
+# it proves the expression accepts both, rather than having collapsed to whichever one is easier
+# to write.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: containers-true-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

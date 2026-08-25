@@ -56,6 +56,12 @@ patches:
     version: v1
     kind: ValidatingPolicy
     name: require-run-as-non-root-user
+- path: exemptions/require-run-as-nonroot.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: require-run-as-nonroot
 - path: exemptions/restrict-volume-types.yaml
   target:
     group: policies.kyverno.io

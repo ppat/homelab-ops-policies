@@ -1,0 +1,18 @@
+---
+# EXPECTED: `skip` against BOTH documents -- built and pure.
+#
+# THE §5.5a hostUsers RELAXATION, second instance (the first is ../require-run-as-non-root-user/).
+# The `skip` comes from the MIRROR's own `matchConditions` entry, which is why it is asserted in
+# the `pure` document too. Non-vacuous by construction: nothing here sets `runAsNonRoot`, so this
+# is a real violation and `skip` cannot be "the pod happened to comply". Declaring `result: pass`
+# makes the suite fail with "Want pass, got skip".
+apiVersion: v1
+kind: Pod
+metadata:
+  name: userns-workload-9b966fd69-bsmhz
+  namespace: default
+spec:
+  hostUsers: false
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

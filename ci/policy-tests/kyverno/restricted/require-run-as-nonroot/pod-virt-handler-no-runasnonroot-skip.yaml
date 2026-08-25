@@ -1,0 +1,19 @@
+---
+# EXPECTED: `skip` against built output, `fail` against the pure mirror.
+#
+# THE ESTATE EXEMPTION FIRING. Unlike its sibling in ../require-run-as-non-root-user/, where the
+# exemption covers one init container in an otherwise-compliant pod, here the whole DaemonSet is
+# non-compliant on this field -- "there's no partial-compliance path here to preserve", as the
+# legacy comment puts it. DOES NOT SET `hostUsers`: this exemption and the §5.5a relaxation are
+# independent, and a fixture setting both would not say which produced the `skip`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true
