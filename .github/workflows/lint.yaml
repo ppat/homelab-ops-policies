@@ -45,8 +45,16 @@ jobs:
     uses: ppat/github-workflows/.github/workflows/lint-commit-messages.yaml@5a96ced8ceefd58062f6b91ee9d6f3a31cd06e1c # v6.0.0
     with:
       git_ref: ${{ github.head_ref }}
+      # fetch_depth stays sized off pr.commits (total commits reachable in the PR):
+      # the shallow-fetch generation depth needed to reach base.sha can never exceed
+      # the number of unique commits between base and head, so this remains a safe
+      # upper bound even though it isn't the same number as the commitlint range below.
       fetch_depth: ${{ github.event.pull_request.commits || 0 }}
-      from: ${{ github.event.pull_request.head.sha || 'HEAD' }}~${{ github.event.pull_request.commits || '1' }}
+      # Walk from the PR's actual merge base, not a first-parent `HEAD~N` hop count:
+      # `~N` only follows first-parent history, but pr.commits counts every commit
+      # reachable in the PR's diff (including ones brought in through merge commits),
+      # so the two diverge whenever the branch's history isn't linear.
+      from: ${{ github.event.pull_request.base.sha }}
       to: ${{ github.event.pull_request.head.sha || 'HEAD' }}
 
   github-actions:
