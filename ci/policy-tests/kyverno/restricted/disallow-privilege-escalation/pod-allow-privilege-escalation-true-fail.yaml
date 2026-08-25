@@ -1,0 +1,14 @@
+---
+# EXPECTED: `fail`. The explicit opt-in, which the absent-field fixture cannot cover: together the
+# two prove the expression reads the field rather than merely testing for a `securityContext`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: explicit-true-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      allowPrivilegeEscalation: true

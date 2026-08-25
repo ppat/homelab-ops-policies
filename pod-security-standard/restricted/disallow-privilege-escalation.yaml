@@ -1,6 +1,15 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check
+# allowPrivilegeEscalation
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ./restrict-volume-types.yaml (the PSS-mirror family conventions: snapshot
+# marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# This is a LAYER 1 PURE MIRROR: the estate exemption this policy has in production lives in
+# ./exemptions/disallow-privilege-escalation.yaml. Read the two together.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-privilege-escalation
   annotations:
@@ -8,47 +17,66 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    # Bumped from the legacy `kyverno.io/kyverno-version: 1.6.0`, which is dropped as redundant.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       Privilege escalation, such as via set-user-ID or set-group-ID file mode, should not be allowed.
       This policy ensures the `allowPrivilegeEscalation` field is set to `false`.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: privilege-escalation
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Privilege escalation is disallowed. The fields
-        spec.containers[*].securityContext.allowPrivilegeEscalation,
-        spec.initContainers[*].securityContext.allowPrivilegeEscalation,
-        and spec.ephemeralContainers[*].securityContext.allowPrivilegeEscalation
-        must be set to `false`.
-      pattern:
-        spec:
-          =(ephemeralContainers):
-          - securityContext:
-              allowPrivilegeEscalation: "false"
-          =(initContainers):
-          - securityContext:
-              allowPrivilegeEscalation: "false"
-          containers:
-          - securityContext:
-              allowPrivilegeEscalation: "false"
-    exclude:
-      any:
-      # Kubernetes rejects allowPrivilegeEscalation: false together with privileged: true, so
-      # a privileged container can never satisfy this field -- virt-handler's privilege (see
-      # ../baseline/disallow-privileged-containers.yaml) makes this exclusion unavoidable, not
-      # optional.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # THE LEADING WINDOWS DISJUNCT (design §5.8) -- see ./disallow-capabilities-strict.yaml's
+  # validation comment for the full reasoning, which is not repeated here. PSS's
+  # `allowPrivilegeEscalation_1_25()` returns `Allowed: true` for a pod with
+  # `spec.os.name == "windows"`; `no_new_privs` is a Linux prctl and the field is meaningless on a
+  # Windows node. Inert on this estate; carried for fidelity.
+  #
+  # THE FIELD MUST BE EXPLICITLY `false` -- ABSENT IS A VIOLATION, and that is the one thing to be
+  # careful of when reading `.orValue(true)` here. Everywhere else in this repo `.orValue()`
+  # supplies "the value the API would have defaulted to", and here it does exactly that: the
+  # kubelet's effective default for `allowPrivilegeEscalation` is true (it is forced true for a
+  # privileged container or one with CAP_SYS_ADMIN), so an unset field means escalation IS
+  # allowed, and PSS requires the field to be present and false. The legacy pattern said the same
+  # thing by anchoring `containers:` UNCONDITIONALLY (no `=()`), unlike its `=(initContainers)` /
+  # `=(ephemeralContainers)` siblings, which were conditional only on the LIST being present, not
+  # on the field.
+  #
+  # All three container lists concatenated, mirroring pod-security-admission's own
+  # `visitContainers()`. `spec.containers` needs no `.?`/`.orValue([])` because the API requires at
+  # least one container.
+  - expression: >-
+      object.spec.?os.?name.orValue('') == 'windows' ||
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?allowPrivilegeEscalation.orValue(true) == false)
+    # LEGACY WORDING, kept verbatim (restrict-node-port.yaml's DEVIATION 2 house rule). It names
+    # the three field paths, which an Audit reader wants.
+    message: >-
+      Privilege escalation is disallowed. The fields
+      spec.containers[*].securityContext.allowPrivilegeEscalation,
+      spec.initContainers[*].securityContext.allowPrivilegeEscalation,
+      and spec.ephemeralContainers[*].securityContext.allowPrivilegeEscalation
+      must be set to `false`.

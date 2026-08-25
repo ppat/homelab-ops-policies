@@ -1,0 +1,20 @@
+---
+# EXPECTED: `skip` against built output, `fail` against the pure mirror.
+#
+# THE ESTATE EXEMPTION FIRING, and the one exemption in this repo that is not a judgement call:
+# core API validation refuses `allowPrivilegeEscalation: false` together with `privileged: true`,
+# so this pod CANNOT be made compliant while it stays privileged. The fixture is written that way
+# deliberately -- privileged AND without the field -- so it is a real violation of the mirror (the
+# `-pure` document asserts `fail` on it) and simultaneously a pod for which no compliant manifest
+# exists.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

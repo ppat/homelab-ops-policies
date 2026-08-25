@@ -38,6 +38,12 @@ resources:
 # the specific mistake the split exists to prevent. It still declares `matchConditions: []` in its
 # own file, which is the seam a future exemption appends to.
 patches:
+- path: exemptions/disallow-privilege-escalation.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-privilege-escalation
 - path: exemptions/require-drop-all.yaml
   target:
     group: policies.kyverno.io
