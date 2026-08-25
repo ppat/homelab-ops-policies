@@ -1,0 +1,24 @@
+---
+# EXPECTED: `pass`.
+#
+# THE WINDOWS DISJUNCT FIRING, non-vacuous by construction: this file is
+# ./pod-no-seccomp-fail.yaml with `spec.os.name: windows` added and nothing else changed. seccomp
+# is a Linux kernel facility, which is why `seccompProfileRestricted_1_25()` returns
+# `Allowed: true` for a Windows pod.
+#
+# `pass`, NOT `skip` -- see ../disallow-capabilities-strict/pod-windows-add-sys-admin-pass.yaml
+# for why the Windows exemptions are validation disjuncts while the hostUsers relaxation is a
+# `matchCondition`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: windows-workload-2c8e6a1b4-wr7tk
+  namespace: default
+spec:
+  os:
+    name: windows
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

@@ -1,0 +1,119 @@
+---
+# CLI tier for disallow-proc-mount-strict. House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the conventions for this tier) and
+# ../../baseline/disallow-privileged-containers/kyverno-test.yaml (the `<namespace>/<name>`
+# fixture-collision rule). Neither is restated.
+#
+# ONE `Test` DOCUMENT FOR THE POLICY, because it has no exemption patch: `kustomize build` output
+# and the pure mirror are the same policy. `policies:` still points at built output, so a future
+# exemption is covered here automatically.
+#
+# PLUS A SECOND DOCUMENT THAT IS NOT ABOUT THIS POLICY ALONE -- see its own header. It is the
+# composition assertion against ../../baseline/disallow-proc-mount/, and it is the reason this
+# directory is worth reading before either policy file.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-proc-mount-strict
+policies:
+- ../../../.build/restricted/disallow-proc-mount-strict.yaml
+resources:
+- pod-procmount-unmasked-fail.yaml
+- pod-procmount-default-pass.yaml
+- pod-no-procmount-pass.yaml
+- pod-init-container-procmount-unmasked-fail.yaml
+- pod-ephemeral-container-procmount-unmasked-fail.yaml
+- pod-hostusers-false-procmount-unmasked-fail.yaml
+- pod-hostusers-false-procmount-default-pass.yaml
+results:
+# `default/strict-compliant-userns-workload-...` is `pass`, NOT `skip`, and that is the assertion
+# that this policy has no `matchConditions` entry rather than a different one. Its Baseline
+# sibling reports `skip` on the same shape.
+- policy: disallow-proc-mount-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/explicit-default-workload-6b9f4c8d5-x2kqp
+  - default/unset-procmount-workload-844d7c96b-fq8vn
+  - default/strict-compliant-userns-workload-9f3b5d7c2-jm4pv
+  result: pass
+# NO `skip` ROWS ANYWHERE IN THIS DOCUMENT, deliberately: `default/strict-userns-workload-...`
+# carries `hostUsers: false` and still fails, which is the whole content of `procMount_restricted`.
+- policy: disallow-proc-mount-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/sidecar-workload-77955b8c45-52ls7
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - default/strict-userns-workload-2c8e6a1b4-wr7tk
+  result: fail
+---
+# THE COMPOSITION ASSERTION -- the pair of policies, not either one alone.
+#
+# `procMount_baseline` and `procMount_restricted` are related by PSS's `OverrideCheckIDs`
+# mechanism: the Restricted check re-tightens what the Baseline one relaxes for user-namespaced
+# pods. This repo mirrors that as two policies whose only difference is one `matchConditions`
+# entry, and "the two compose the way PSS's override mechanism does" is the kind of claim that is
+# easy to state and easy to leave untested. This document makes it executable.
+#
+# BOTH BUILT POLICIES, THE SAME TWO FIXTURE FILES, FOUR ROWS:
+#
+#   | fixture                             | disallow-proc-mount | disallow-proc-mount-strict |
+#   | ----------------------------------- | ------------------- | -------------------------- |
+#   | `hostUsers: false` + `Unmasked`     | skip                | fail                       |
+#   | `hostUsers` unset + `Unmasked`      | fail                | fail                       |
+#
+# Row 1 is the override resolving; row 2 is the control that proves row 1's `skip` comes from
+# `hostUsers` and not from the Baseline policy having stopped objecting to anything.
+#
+# THE FIXTURES ARE REFERENCED ACROSS DIRECTORIES ON PURPOSE, rather than copied here. "The SAME
+# pod reads skip under one policy and fail under the other" is the claim; two files that merely
+# look alike would leave a copy-drift gap between the wording and what is actually asserted. This
+# is the only place in the repo's test tier where a `resources:` entry escapes its own directory,
+# and the reason is that the assertion is inherently about a pair.
+#
+# THE PAIRING CANNOT MOVE TO THE CLUSTER TIER: row 2's pod is one a 1.36 apiserver refuses
+# outright, so Chainsaw cannot construct it and would see only half the table.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-proc-mount-baseline-strict-composition
+policies:
+- ../../../.build/baseline/disallow-proc-mount.yaml
+- ../../../.build/restricted/disallow-proc-mount-strict.yaml
+resources:
+- ../../baseline/disallow-proc-mount/pod-hostusers-false-procmount-unmasked-skip.yaml
+- ../../baseline/disallow-proc-mount/pod-procmount-unmasked-fail.yaml
+results:
+# ROW 1a -- the Baseline half skips the user-namespaced pod. Declaring `pass` here makes the suite
+# fail with "Want pass, got skip", so the Skip/Fail distinction is genuinely observed.
+- policy: disallow-proc-mount
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/userns-workload-9b966fd69-bsmhz
+  result: skip
+# ROW 1b -- the Restricted half flags the very same pod. This row and the one above it are the
+# composition claim in full.
+- policy: disallow-proc-mount-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/userns-workload-9b966fd69-bsmhz
+  result: fail
+# ROWS 2a and 2b -- without `hostUsers`, both halves flag the pod. The non-vacuity control for the
+# pair: it rules out "the Baseline policy skips everything" and "the Restricted policy fails
+# everything" as explanations for rows 1a/1b.
+- policy: disallow-proc-mount
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  result: fail
+- policy: disallow-proc-mount-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  result: fail

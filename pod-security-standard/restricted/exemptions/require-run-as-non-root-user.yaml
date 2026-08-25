@@ -1,0 +1,28 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../require-run-as-non-root-user.yaml, applied by the `patches:`
+# entry in ../kustomization.yaml. A JSON6902 patch document, NOT a manifest. House-style
+# reference: ./restrict-volume-types.yaml, whose numbered conventions apply here unchanged.
+#
+# INDEPENDENT OF THE hostUsers SKIP IN THE PURE MIRROR, and the two must not be conflated.
+# virt-handler does not set `spec.hostUsers: false`; it is exempted for what its init container
+# does, and it would still need this entry on a cluster where user namespaces were in universal
+# use. The two conditions are ANDed like any other pair: a pod is checked only if it is neither
+# user-namespaced nor virt-handler.
+
+# virt-handler's node-labeller init container explicitly sets `runAsUser: 0` -- it needs root to
+# read and write host device and label state before the main container starts. The main container
+# leaves `runAsUser` unset, which this policy already treats as compliant, so this entry is doing
+# work for exactly ONE container in the DaemonSet. `matchConditions` are policy-wide and there is
+# no per-container seam, so the whole pod is excused to excuse that init container: a cost of the
+# mechanism rather than of the judgement, and the reason the entry is scoped as tightly as the
+# available dimensions allow -- namespace AND name prefix together. See
+# ../../baseline/exemptions/disallow-privileged-containers.yaml for what bounds virt-handler
+# generally.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

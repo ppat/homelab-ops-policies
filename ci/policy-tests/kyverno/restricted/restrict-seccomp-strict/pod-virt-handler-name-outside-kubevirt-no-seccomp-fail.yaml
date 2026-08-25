@@ -1,0 +1,12 @@
+---
+# EXPECTED: `fail` against both documents. HALF-MATCH CONTROL for exemption 1, name half: right
+# name, wrong namespace.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-zzz11
+  namespace: monitoring
+spec:
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10

@@ -1,0 +1,23 @@
+---
+# EXPECTED: `skip` against built output, `fail` against the pure mirror.
+#
+# THE `generateName`-ONLY SHAPE, which is why every exemption in this repo concatenates
+# `metadata.name` and `metadata.generateName`. This fixture has no `metadata.name` at all, so a
+# name-only expression would not match it. Its selector is `kubevirt/` -- namespace, slash, EMPTY
+# name -- which is the only `resources:` form that addresses it.
+#
+# On a LIVE cluster a DaemonSet-created pod carries both fields by the time admission sees it;
+# this raw-YAML shape is the one the CLI tier evaluates, with no name generation. See
+# ../../../../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml's
+# name-matching convention for why the concatenation is written that way.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: virt-handler-
+  namespace: kubevirt
+spec:
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

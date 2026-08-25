@@ -1,0 +1,27 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-privilege-escalation.yaml, applied by the
+# `patches:` entry in ../kustomization.yaml. A JSON6902 patch document, NOT a manifest.
+# House-style reference: ./restrict-volume-types.yaml, whose numbered conventions apply here
+# unchanged.
+#
+# THE ONE EXEMPTION IN THIS REPO THAT IS NOT A JUDGEMENT CALL. Every other exemption here trades
+# posture for a workload that could in principle be changed to comply. This one cannot:
+# `pkg/apis/core/validation/validation.go`'s `ValidateSecurityContext()` refuses
+# `allowPrivilegeEscalation: false` together with `privileged: true` -- plain core API validation
+# with no feature gate, so it holds on every Pod-creating path and no cluster setting relaxes it.
+# For a privileged container there is no manifest that satisfies this policy at all.
+#
+# WHAT THAT MEANS FOR WITHDRAWING IT: not a tightening that merely produces Audit rows, but Audit
+# rows NO edit to virt-handler's manifest could clear, short of dropping its privilege -- which
+# ../../baseline/exemptions/disallow-privileged-containers.yaml argues it needs.
+
+# virt-handler runs privileged (see ../../baseline/exemptions/disallow-privileged-containers.yaml
+# for what that buys and what bounds it), so this exclusion is unavoidable rather than optional.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

@@ -1,0 +1,14 @@
+---
+# EXPECTED: `pass`. `Default` stated explicitly -- the other allowed shape is the field being
+# absent, covered by ./pod-no-procmount-pass.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: explicit-default-workload-6b9f4c8d5-x2kqp
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      procMount: Default

@@ -1,0 +1,87 @@
+---
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check
+# capabilities_restricted
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape and CEL
+# conventions) and ./restrict-volume-types.yaml (the PSS-mirror family: the `PSS-SNAPSHOT:`
+# marker, the empty `matchConditions` seam, `autogen.podControllers.controllers: []`). Nothing
+# either says is restated here.
+#
+# ONE OF TWO POLICIES COVERING PSS's SINGLE `capabilities_restricted` CHECK, with
+# ./disallow-capabilities-strict.yaml. This file is the drop-ALL half; that one is the add-check
+# half. They are separate policies because `spec.matchConditions` is POLICY-WIDE while the two
+# halves carry DIFFERENT exemption sets: ./exemptions/require-drop-all.yaml excuses virt-handler
+# from this half, and there is no exemption file for the add-check at all -- virt-handler passes
+# it on its own merits. Joined into one policy, the exemption would silently widen to cover a
+# check nothing asked it to cover, which is a real weakening rather than a tidier file.
+#
+# The cost, recorded once here: two PolicyReport policy names where PSS reports one check. Nothing
+# consumes those names programmatically and this repo is Audit-mode -- see
+# ../baseline/disallow-host-network.yaml's header for the same trade taken three ways.
+#
+# ONE KNOWN FIDELITY DELTA, STATED SO IT IS NOT REDISCOVERED AS A SURPRISE. PSS at policy version
+# v1.25 exempts `spec.os.name == "windows"` pods from the WHOLE `capabilities_restricted` check --
+# `capabilitiesRestricted_1_25()` returns early before either half runs. This file does not carry
+# that disjunct; ./disallow-capabilities-strict.yaml does. The delta is inert on this estate (no
+# Windows nodes, nothing sets `spec.os.name`) and costs at most one Audit row on a hypothetical
+# Windows pod that omits `drop: [ALL]`. If a Windows workload ever lands, add the same leading
+# disjunct the sibling carries; do not instead delete it from there.
+# ci/policy-tests/kyverno/restricted/require-drop-all/pod-windows-no-drop-all-fail.yaml asserts
+# the delta, so closing it turns that row red rather than passing unnoticed.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: require-drop-all
+  annotations:
+    policies.kyverno.io/title: Require Drop ALL Capabilities
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    # `policies.kyverno.io/v1 ValidatingPolicy` is first served by Kyverno 1.17.
+    policies.kyverno.io/minversion: 1.17.0
+    # Tracks the Kubernetes minor in the PSS-SNAPSHOT line at the top of this file.
+    kyverno.io/kubernetes-version: "1.36"
+    # Describes this half only; the add-check sentence lives on ./disallow-capabilities-strict.yaml.
+    policies.kyverno.io/description: >-
+      All containers must explicitly drop `ALL` capabilities. Dropping `ALL` and then re-adding
+      only what is needed is what makes the container's capability set auditable from its
+      manifest rather than inherited from the runtime's default set.
+spec:
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # All three container lists concatenated, mirroring pod-security-admission's own
+  # `visitContainers()`.
+  #
+  # NOTE THE CASE SENSITIVITY: PSS compares against the literal string "ALL"
+  # (`capabilityAll` in check_capabilities_restricted.go) and the Kubernetes API does not
+  # canonicalise the value, so `drop: [all]` satisfies neither this policy nor the runtime.
+  # ci/policy-tests/kyverno/restricted/require-drop-all/pod-drop-lowercase-all-fail.yaml holds
+  # that line against a future editor who assumes the comparison is case-insensitive.
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      'ALL' in c.?securityContext.?capabilities.?drop.orValue([]))
+    # Held stable per ../../best-practices/restrict-node-port.yaml's DEVIATION 2: this string
+    # already appears in this estate's PolicyReports.
+    message: >-
+      Containers must drop `ALL` capabilities.

@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail`.
+#
+# THE THREE-LIST ASSERTION, second of two, and it doubles as the "absent is a violation" case
+# applied where it bites hardest in practice: a `kubectl debug` ephemeral container almost never
+# declares a securityContext, so a compliant pod becomes non-compliant the moment it is debugged.
+# That is PSS's behaviour, not an artefact of this port.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debugged-workload-5687cbcbf5-bkswh
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      allowPrivilegeEscalation: false
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10

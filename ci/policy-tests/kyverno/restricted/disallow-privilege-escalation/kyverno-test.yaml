@@ -1,0 +1,101 @@
+---
+# CLI tier for disallow-privilege-escalation. House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the conventions for this tier),
+# ../restrict-volume-types/kyverno-test.yaml (why an exemption-carrying policy needs a built
+# document and a pure one) and ../../baseline/disallow-privileged-containers/kyverno-test.yaml
+# (the `<namespace>/<name>` fixture-collision rule). None of them is restated.
+#
+# WHAT THIS SUITE COVERS beyond the exemption set: that an ABSENT `allowPrivilegeEscalation` is a
+# violation -- the single most misread thing about this policy -- and the Windows disjunct.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-privilege-escalation-built
+policies:
+- ../../../.build/restricted/disallow-privilege-escalation.yaml
+resources:
+- pod-allow-privilege-escalation-unset-fail.yaml
+- pod-allow-privilege-escalation-true-fail.yaml
+- pod-allow-privilege-escalation-false-pass.yaml
+- pod-init-container-allow-privilege-escalation-true-fail.yaml
+- pod-ephemeral-container-allow-privilege-escalation-unset-fail.yaml
+- pod-windows-allow-privilege-escalation-unset-pass.yaml
+- pod-virt-handler-privileged-skip.yaml
+- pod-virt-handler-generatename-privileged-skip.yaml
+- pod-not-virt-handler-in-kubevirt-privileged-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-privileged-fail.yaml
+results:
+- policy: disallow-privilege-escalation
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  - default/windows-workload-844d7c96b-fq8vn
+  result: pass
+- policy: disallow-privilege-escalation
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/explicit-true-workload-cbf5bd649-mzqns
+  - default/sidecar-workload-77955b8c45-52ls7
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - kubevirt/virt-api-6d9c8f5b7-9wq4x
+  - monitoring/virt-handler-zzz11
+  result: fail
+# The estate exemption firing, in both name shapes. `skip`, NOT `pass`: both pods are privileged
+# and set nothing, so `pass` would mean the rule had stopped objecting rather than the exemption
+# applying. Declaring `pass` on either row makes the suite fail with "Want pass, got skip".
+- policy: disallow-privilege-escalation
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-privilege-escalation-pure
+policies:
+- ../../../../../pod-security-standard/restricted/disallow-privilege-escalation.yaml
+resources:
+- pod-allow-privilege-escalation-unset-fail.yaml
+- pod-allow-privilege-escalation-true-fail.yaml
+- pod-allow-privilege-escalation-false-pass.yaml
+- pod-init-container-allow-privilege-escalation-true-fail.yaml
+- pod-ephemeral-container-allow-privilege-escalation-unset-fail.yaml
+- pod-windows-allow-privilege-escalation-unset-pass.yaml
+- pod-virt-handler-privileged-skip.yaml
+- pod-virt-handler-generatename-privileged-skip.yaml
+- pod-not-virt-handler-in-kubevirt-privileged-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-privileged-fail.yaml
+results:
+# Unchanged by the exemption layer. The Windows pod is listed here on purpose: the disjunct is in
+# the MIRROR, not in the exemption patch, and this row is what proves it did not drift into the
+# estate layer -- which a consumer could relocate away as though it were this estate's decision.
+- policy: disallow-privilege-escalation
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  - default/windows-workload-844d7c96b-fq8vn
+  result: pass
+# THE FIRING ASSERTION. Every pod the built policy skips is a real violation of the pure mirror.
+# The always-failing pods are listed here too, so this document is not merely "the same rows with
+# skip rewritten to fail": under the pure mirror there is no `skip` result at all.
+- policy: disallow-privilege-escalation
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/explicit-true-workload-cbf5bd649-mzqns
+  - default/sidecar-workload-77955b8c45-52ls7
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - kubevirt/virt-api-6d9c8f5b7-9wq4x
+  - monitoring/virt-handler-zzz11
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: fail

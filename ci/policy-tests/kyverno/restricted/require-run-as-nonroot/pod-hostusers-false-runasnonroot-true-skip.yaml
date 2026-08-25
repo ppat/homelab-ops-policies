@@ -1,0 +1,19 @@
+---
+# EXPECTED: `skip` against both documents.
+#
+# THE NON-VACUITY CONTROL FOR THE RELAXATION ITSELF: a user-namespaced pod that is COMPLIANT
+# anyway. It reports `skip`, not `pass`, because the matchCondition filters it out before the rule
+# runs -- which is what proves the skip is caused by `hostUsers` and not by the pod's
+# `runAsNonRoot` value.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-userns-workload-fd4b5c598-pv8pn
+  namespace: default
+spec:
+  hostUsers: false
+  securityContext:
+    runAsNonRoot: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

@@ -101,7 +101,7 @@ spec:
       #
       # Name-scoped, not namespace-scoped, and limited to the same two namespaces as the other
       # virt-launcher exclusions in this repo (./add-emptydir-sizelimit.yaml, and
-      # ../pod-security-standard/restricted/{restrict-volume-types,restrict-seccomp-strict}.yaml)
+      # ../pod-security-standard/restricted/exemptions/{restrict-volume-types,restrict-seccomp-strict}.yaml)
       # rather than left open to any future VM namespace.
       - resources:
           names:

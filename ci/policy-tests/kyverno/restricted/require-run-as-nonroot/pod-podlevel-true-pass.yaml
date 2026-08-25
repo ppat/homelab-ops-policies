@@ -1,0 +1,23 @@
+---
+# EXPECTED: `pass`.
+#
+# INHERITANCE, ASSERTED: the pod sets `runAsNonRoot: true` and the containers say nothing, so the
+# effective per-container value is the pod's -- which is why the mirror's inner
+# `.orValue(<the pod-level value>)` exists. An expression that only
+# concatenated the container lists -- the shape every other PSS mirror in this repo uses -- would
+# flag this pod, which is the mistake this fixture is here to catch.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: podlevel-true-workload-6b9f4c8d5-x2kqp
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

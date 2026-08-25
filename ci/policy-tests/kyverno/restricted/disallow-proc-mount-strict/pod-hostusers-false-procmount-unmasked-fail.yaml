@@ -1,0 +1,25 @@
+---
+# EXPECTED: `fail` -- WHICH IS THE ENTIRE REASON THIS POLICY EXISTS.
+#
+# Its Baseline sibling SKIPS this exact pod shape: PSS relaxes `procMount_baseline` for pods in a
+# user namespace, and `procMount_restricted` re-tightens it unconditionally. The same pod reads
+# Baseline `skip` / Restricted `fail`, which is PSS's own `OverrideCheckIDs` resolution; the second
+# `Test` document in ./kyverno-test.yaml asserts it directly on the Baseline suite's own fixture
+# files. This fixture keeps the shape locally so the directory also stands alone.
+#
+# THIS IS ALSO THE ONLY SHAPE IN THIS DIRECTORY A 1.36 APISERVER WOULD ACCEPT -- core API
+# validation allows `Unmasked` only when `hostUsers` is false. So this policy is the only one of
+# the pair that can flag a live `Unmasked`; the Baseline half is inert at admission by
+# construction. Do not restate that as "the apiserver may already reject this".
+apiVersion: v1
+kind: Pod
+metadata:
+  name: strict-userns-workload-2c8e6a1b4-wr7tk
+  namespace: default
+spec:
+  hostUsers: false
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      procMount: Unmasked

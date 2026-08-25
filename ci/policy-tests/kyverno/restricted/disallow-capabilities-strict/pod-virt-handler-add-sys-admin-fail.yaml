@@ -1,0 +1,27 @@
+---
+# EXPECTED: `fail` -- AND THIS IS THE LOAD-BEARING ROW OF THE CAPABILITIES PAIR.
+#
+# virt-handler is exempted from the drop-ALL half and from nothing else. `spec.matchConditions` is
+# policy-wide, so if the two halves were ever one `ValidatingPolicy` that exemption would silently
+# cover the add-check as well -- a real weakening, and one no `pass`-asserting fixture would
+# notice. THIS FIXTURE IS WHAT PROVES THE SEPARATION HELD: the same pod reports `skip` in
+# ../require-drop-all/ and `fail` here.
+#
+# So if anyone adds an exemptions/disallow-capabilities-strict.yaml carrying a copy of the
+# virt-handler entry, this row goes red. That is the alarm. The counterpart claim -- that
+# virt-handler does not need one, because its manifest never adds a named capability -- is in
+# ../../../../../pod-security-standard/restricted/exemptions/require-drop-all.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true
+      capabilities:
+        add:
+        - SYS_ADMIN

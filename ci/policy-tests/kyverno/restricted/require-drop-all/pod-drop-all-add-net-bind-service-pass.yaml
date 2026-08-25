@@ -1,0 +1,23 @@
+---
+# EXPECTED: `pass`.
+#
+# THE BOUNDARY BETWEEN THE TWO HALVES, ASSERTED FROM THIS SIDE: dropping ALL and then re-adding
+# NET_BIND_SERVICE is the canonical PSS-Restricted shape, and it is THIS policy's business only
+# insofar as `ALL` is in `drop`. Whether the `add` list is acceptable belongs to
+# ../disallow-capabilities-strict/, which asserts the same shape from its own side. If this row
+# ever went red, the two halves would have been merged back together by accident.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: netbind-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      capabilities:
+        drop:
+        - ALL
+        add:
+        - NET_BIND_SERVICE

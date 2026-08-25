@@ -1,0 +1,28 @@
+---
+# EXPECTED: `fail`.
+#
+# THE THREE-LIST ASSERTION, first of two. The ordinary container is compliant; the violation is in
+# an initContainer that is also a NATIVE SIDECAR (`restartPolicy: Always`). pod-security-admission
+# does no special-casing of sidecars -- `visitContainers()` iterates all three lists identically --
+# so the mirror concatenates them. Without this fixture the `initContainers` term is untested.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-workload-77955b8c45-52ls7
+  namespace: default
+spec:
+  initContainers:
+  - name: log-rotate
+    image: registry.k8s.io/pause:3.10
+    restartPolicy: Always
+    securityContext:
+      capabilities:
+        add:
+        - NET_BIND_SERVICE
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      capabilities:
+        drop:
+        - ALL
