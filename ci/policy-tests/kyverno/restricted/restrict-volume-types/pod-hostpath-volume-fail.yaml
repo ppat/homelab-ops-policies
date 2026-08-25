@@ -1,0 +1,25 @@
+---
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY. Without it the suite cannot distinguish "`image`
+# is allowed" from "restrict-volume-types is broken". Ordinary name, ordinary namespace, so it
+# asserts the policy's default behaviour rather than any exemption's.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  restartPolicy: Never
+  containers:
+  - name: tools
+    image: docker.io/curlimages/curl:8.21.0
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /
+      type: Directory

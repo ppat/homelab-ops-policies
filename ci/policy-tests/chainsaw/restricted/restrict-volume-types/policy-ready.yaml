@@ -1,0 +1,40 @@
+---
+# Readiness assertion for restrict-volume-types. The condition names and the
+# `status.conditionStatus.conditions[]` path below were read off a running cluster rather than
+# copied from upstream kyverno/policies' test assets: those track Kyverno's `main`, so their
+# assertion shape can describe an engine newer than the chart e2e-tests.yaml installs.
+#
+# Observed shape, for anyone writing the next one of these:
+#
+#   status:
+#     conditionStatus:
+#       ready: true
+#       message: ""
+#       conditions:
+#       - type: WebhookConfigured        status: "True"  reason: Succeeded  message: Webhook configured.
+#       - type: RBACPermissionsGranted   status: "True"  reason: Succeeded  message: Policy is ready for reporting.
+#
+# Note this is NOT the legacy shape: `ClusterPolicy` reports readiness as a `Ready` entry in
+# `.status.conditions[]` (no `conditionStatus` level at all). Anything generic over both kinds --
+# e.g. ../../scripts/assert-built-profile-ready.sh -- has to handle the two separately.
+#
+# The `(conditions[?type == 'X'])` filter form is what makes each arm non-vacuous. Chainsaw
+# matches arrays by EQUAL LENGTH and index-wise, so a filter that selects zero elements produces
+# an empty actual list against a one-element expected list and FAILS -- a renamed or missing
+# condition cannot pass quietly. (A bare `conditions:` list assertion would instead be brittle
+# about ordering, which is not a property Kyverno guarantees.) `ready: true` is asserted
+# alongside because it is the engine's own summary of the same question, and asserting both means
+# a future release that keeps the conditions but stops rolling them up is visible here.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-volume-types
+status:
+  conditionStatus:
+    ready: true
+    (conditions[?type == 'WebhookConfigured']):
+    - status: "True"
+      reason: Succeeded
+    (conditions[?type == 'RBACPermissionsGranted']):
+    - status: "True"
+      reason: Succeeded

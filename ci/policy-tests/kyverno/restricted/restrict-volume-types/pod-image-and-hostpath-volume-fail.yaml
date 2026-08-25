@@ -1,0 +1,34 @@
+---
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
+#
+# Allowing `image` must not become a way to smuggle in something else: a pod carrying both an
+# allowed `image` volume and a disallowed hostPath volume must still be flagged on the hostPath.
+#
+# The specific mis-edit this catches is turning the rule's per-volume `all(...)` into something
+# that reads "if ANY key is allowed, pass". That mutation is green on every other fixture in
+# this directory and catastrophically wrong; it only shows up here.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-volumes-workload-7c8d6f9b4-mk2rl
+  namespace: monitoring
+spec:
+  restartPolicy: Never
+  containers:
+  - name: tools
+    image: docker.io/curlimages/curl:8.21.0
+    volumeMounts:
+    - name: kubectl-bin
+      mountPath: /opt/kubectl
+      readOnly: true
+    - name: host-run
+      mountPath: /host/run
+  volumes:
+  - name: kubectl-bin
+    image:
+      reference: registry.k8s.io/kubectl:v1.36.0
+      pullPolicy: IfNotPresent
+  - name: host-run
+    hostPath:
+      path: /var/run
+      type: Directory

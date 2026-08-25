@@ -1,0 +1,26 @@
+---
+# EXPECTED: REJECTED by the admission webhook.
+#
+# The paired control without which every `admitted` fixture in this directory is vacuous -- each
+# of those would be equally green against a policy that had been deleted, or one the webhook was
+# never wired up for. This is also the resource the readiness gate in chainsaw-test.yaml polls
+# against: "the webhook rejects this pod" is the only observable that actually means the policy
+# is live, as opposed to merely present and reporting Ready.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostpath-workload
+spec:
+  restartPolicy: Never
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-log
+      mountPath: /host/log
+      readOnly: true
+  volumes:
+  - name: host-log
+    hostPath:
+      path: /var/log
+      type: Directory

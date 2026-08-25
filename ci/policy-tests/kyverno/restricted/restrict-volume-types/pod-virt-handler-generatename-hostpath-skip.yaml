@@ -1,0 +1,36 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# A Pod with `metadata.generateName` and NO `metadata.name`, pinning that the exemption's
+# name+generateName concatenation still matches when only one field is present: a name-only
+# expression would `fail` this pod where the shipped form `skip`s it. Its populated-name twin is
+# pod-virt-handler-hostpath-skip.yaml.
+#
+# DO NOT PROMOTE THIS TO THE CLUSTER TIER -- it cannot exist there. The API server generates the
+# name before admission runs, so controller-created Pods reach the webhook with both fields
+# populated. This shape occurs only in raw fixture YAML, mirroring how the CLI tier is likewise
+# the only place an un-defaulted `Service.spec.type` can be constructed.
+#
+# ITS SELECTOR IN kyverno-test.yaml IS `kubevirt/` -- namespace, slash, EMPTY name. The bare-name
+# form cannot address it (`metadata.name` is `""`), and a selector matching nothing does not fail
+# the test, it silently broadens to every resource in the file.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: virt-handler-
+  namespace: kubevirt
+spec:
+  restartPolicy: Always
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0
+    volumeMounts:
+    - name: libvirt-runtimes
+      mountPath: /var/run/kubevirt-libvirt-runtimes
+  volumes:
+  - name: libvirt-runtimes
+    hostPath:
+      path: /var/run/kubevirt-libvirt-runtimes
+  - name: kubelet
+    hostPath:
+      path: /var/lib/kubelet

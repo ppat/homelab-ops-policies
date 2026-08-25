@@ -1,0 +1,52 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-virt-handler matchCondition. The paired expectation is the whole
+# point: `fail` against the pure mirror proves this pod IS a genuine violation, so the `skip`
+# against the built policy can only come from the exemption patch. Either half alone is vacuous.
+#
+# Reproduces the live DaemonSet pod's six hostPath volumes; its allow-listed volumes (secret,
+# emptyDir, downwardAPI, projected) are omitted since the policy reads volume keys only. Built
+# from hostPath rather than `image` deliberately -- `image` is globally allow-listed, so an
+# `image`-based fixture would report `skip` with the exemption present and deleted alike.
+#
+# Its name-populated shape is the live one; the generateName-only twin is
+# pod-virt-handler-generatename-hostpath-skip.yaml. Its NAME-axis control is
+# pod-virt-launcher-in-kubevirt-hostpath-fail.yaml -- without it, this fixture would pass just as
+# happily against a blanket exemption for the whole kubevirt namespace.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  restartPolicy: Always
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0
+    volumeMounts:
+    - name: libvirt-runtimes
+      mountPath: /var/run/kubevirt-libvirt-runtimes
+    - name: virt-share-dir
+      mountPath: /var/run/kubevirt
+    - name: kubelet-pods
+      mountPath: /pods
+  volumes:
+  - name: libvirt-runtimes
+    hostPath:
+      path: /var/run/kubevirt-libvirt-runtimes
+  - name: virt-share-dir
+    hostPath:
+      path: /var/run/kubevirt
+  - name: virt-private-dir
+    hostPath:
+      path: /var/run/kubevirt-private
+  - name: kubelet-pods
+    hostPath:
+      path: /var/lib/kubelet/pods
+  - name: kubelet
+    hostPath:
+      path: /var/lib/kubelet
+  - name: node-labeller
+    hostPath:
+      path: /var/lib/kubevirt-node-labeller

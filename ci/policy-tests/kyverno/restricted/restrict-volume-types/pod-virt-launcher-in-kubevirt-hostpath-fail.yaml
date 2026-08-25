@@ -1,0 +1,48 @@
+---
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
+#
+# One fixture, two falsification controls. Both exclusions are conjunctions of name AND
+# namespace, and this pod matches exactly one half of each, so both must still flag it:
+#
+#   * NAME axis, for exempt-virt-handler -- right namespace, wrong name. Drop the name predicate
+#     and every workload in `kubevirt` gets a free pass on hostPath, i.e. on node-root access.
+#     pod-virt-handler-hostpath-skip.yaml cannot see that; this fixture goes green the moment it
+#     happens.
+#   * NAMESPACE axis, for exempt-virt-launcher -- right name, wrong namespace. virt-launcher does
+#     not run in `kubevirt` (virt-operator schedules it into the VM's own namespace), so this is
+#     not a real shape; it catches that exclusion being widened to follow the name anywhere.
+#
+# hostPath rather than `image` volumes, because `image` is globally allow-listed and an
+# `image`-based fixture here would pass whether the exclusions existed or not.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-talos-vm-zqrlj
+  namespace: kubevirt
+spec:
+  restartPolicy: Always
+  containers:
+  - name: compute
+    image: quay.io/kubevirt/virt-launcher:v1.9.0
+    volumeMounts:
+    - name: kubelet
+      mountPath: /var/lib/kubelet
+  volumes:
+  - name: libvirt-runtimes
+    hostPath:
+      path: /var/run/kubevirt-libvirt-runtimes
+  - name: virt-share-dir
+    hostPath:
+      path: /var/run/kubevirt
+  - name: virt-private-dir
+    hostPath:
+      path: /var/run/kubevirt-private
+  - name: kubelet-pods
+    hostPath:
+      path: /var/lib/kubelet/pods
+  - name: kubelet
+    hostPath:
+      path: /var/lib/kubelet
+  - name: node-labeller
+    hostPath:
+      path: /var/lib/kubevirt-node-labeller

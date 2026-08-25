@@ -1,6 +1,30 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check restrictedVolumes
+#
+# `PSS-SNAPSHOT:` is this repo's marker on every PSS mirror: the release branch, policy version
+# and `check_*.go` file this was last diffed against, so a resync has a fixed diff point. A
+# greppable comment rather than an annotation, because a key invented inside upstream's
+# `policies.kyverno.io/` namespace would collide with whatever upstream puts there later.
+# `best-practices/` policies carry `PROVENANCE:` instead -- they mirror no external standard.
+#
+# LAYER 1 PURE MIRROR: the PSS rule, nothing about this estate. Every exemption this policy has
+# in production lives in exemptions/restrict-volume-types.yaml, appended to
+# `spec.matchConditions` by the `patches:` entry in kustomization.yaml. Read the two together
+# before concluding this policy has no exemptions.
+#
+# House style is set by best-practices/restrict-node-port.yaml; read its header first. What the
+# PSS family adds on top:
+#
+#   1. `spec.matchConditions: []` is present and EMPTY on every PSS mirror, even where no
+#      exemption patch exists, because it is the seam the exemption layer appends to and a
+#      JSON6902 append to a path whose parent is absent fails the kustomize build.
+#   2. `spec.autogen.podControllers.controllers: []` on every PSS mirror. With autogen ON (the
+#      default) Kyverno rewrites `object.` to `object.spec.template.` throughout the policy
+#      INCLUDING `matchConditions`, so a metadata-based exemption silently stops matching real
+#      controller-created Pods. Accepted cost: under `Deny`, a non-compliant Deployment is itself
+#      admitted and only its Pods rejected.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: restrict-volume-types
   annotations:
@@ -8,172 +32,79 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod,Volume
-    policies.kyverno.io/minversion: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
-    kyverno.io/kyverno-version: 1.6.0
+    # `policies.kyverno.io/v1 ValidatingPolicy` is first served by Kyverno 1.17.
+    policies.kyverno.io/minversion: 1.17.0
+    # Tracks the Kubernetes minor in the PSS-SNAPSHOT line at the top of this file; move the two
+    # together when resyncing against a newer Pod Security Standards revision.
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       In addition to restricting HostPath volumes, the restricted pod security profile
       limits usage of non-core volume types to those defined through PersistentVolumes.
       This policy blocks any other type of volume other than those in the allow list.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: restricted-volumes
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    preconditions:
-      all:
-      - key: "{{ request.operation || 'BACKGROUND' }}"
-        operator: NotEquals
-        value: DELETE
-    validate:
-      message: >-
-        Only the following types of volumes may be used: configMap, csi, downwardAPI,
-        emptyDir, ephemeral, image, persistentVolumeClaim, projected, and secret.
-      deny:
-        conditions:
-          all:
-          - key: "{{ request.object.spec.volumes[].keys(@)[] || '' }}"
-            operator: AnyNotIn
-            value:
-            - name
-            - configMap
-            - csi
-            - downwardAPI
-            - emptyDir
-            - ephemeral
-            # ALIGNMENT WITH UPSTREAM, NOT A LOCAL RELAXATION -- that is the whole justification
-            # for this entry, so check it before treating it as a judgement call made here.
-            # Kubernetes' own Pod Security Standards `restricted` profile permits `image` volumes
-            # from 1.33 onward: `volume.Image != nil` sits in the allow-`continue` switch in
-            # staging/src/k8s.io/pod-security-admission/policy/check_restrictedVolumes.go, added
-            # by kubernetes/kubernetes#130394 ("Allow ImageVolume for Restricted PSA profiles",
-            # SIG Auth, milestone v1.33, merged 2025-02-24, not backported -- absent on
-            # release-1.31 and release-1.32, present on release-1.33 and later). This policy is a
-            # Kyverno transcription of that profile as it stood at 1.22-1.23 (see the
-            # kyverno.io/kubernetes-version annotation above), which simply predates the `image`
-            # volume type (KEP-4639, alpha in 1.31): omitting it was drift from upstream rather
-            # than a decision this cluster ever made. Because that makes this file no longer a
-            # verbatim copy of the upstream Kyverno policy-library rule, do not resynchronise it
-            # wholesale from that library -- that would silently revert this.
-            #
-            # DO NOT "CORRECT" THIS AGAINST THE PUBLISHED DOCS. kubernetes.io's
-            # pod-security-standards page still lists only the original eight volume types -- it
-            # is stale, and the admission code is what runs. Upstream agrees it is stale:
-            # kubernetes/website#55370 is open and triage/accepted as a docs bug, citing #130394.
-            # So expect that page to gain `image` eventually; that would confirm this entry
-            # rather than challenge it.
-            #
-            # WHAT THIS PERMITS, PRECISELY -- the properties, not an assertion of safety. A mount
-            # of an OCI image's (or OCI artifact's) filesystem, which the kubelet pulls and whose
-            # manifest layers it merges the same way it does for a container image. So: (1) it is
-            # read-only -- the godoc on core/v1 VolumeSource.Image (the field, not the
-            # ImageVolumeSource type) reads "The volume will be mounted read-only (ro) and
-            # non-executable files (noexec)." on release-1.33 through release-1.35, and drops the
-            # noexec half on 1.36/master. Quote it from the branch you are actually running; the
-            # read-only half is on every branch, and it is a kubelet/runtime guarantee about how
-            # the mount is made, not something admission validates on the volumeMount; (2) it conveys
-            # no host path, no host namespace and no device access, which is exactly what
-            # separates it from hostPath and is why upstream was willing to allow it under
-            # `restricted`; (3) it grants no reach a pod does not already have, because anything
-            # that can name an image in spec.containers[].image can already run that same
-            # filesystem -- that third point is upstream's own rationale on #130394. hostPath,
-            # the source this policy exists to stop and the only one the PSS *baseline* profile
-            # bothers to forbid, stays denied, as does everything else off this list.
-            #
-            # Its practical value, and why it is worth having cluster-wide rather than by
-            # exception: it ships a binary into a pod that is denied internet egress, which no
-            # other allowed volume type can do -- a ConfigMap cannot carry a ~100MB binary, an
-            # emptyDir has to be filled by something, and an initContainer fetching it is subject
-            # to the same NetworkPolicy as the pod it runs in.
-            #
-            # WHAT THIS ENTRY DOES NOT CONSTRAIN, and so stays a review discipline: WHICH image a
-            # pod mounts. Nothing here requires the reference to be digest-pinned, so a mutable
-            # tag can change under a pod between restarts. That is equally true of
-            # spec.containers[].image and is not a property of this volume type, so it is no
-            # argument for denying `image` here -- but if it ever matters it wants an admission
-            # rule of its own rather than the removal of this entry.
-            #
-            # WHAT WOULD MAKE THIS WRONG LATER. The case above rests entirely on "it is a
-            # container image pull, mounted read-only, with no host reachability", and it
-            # survives none of the following. (1) A future Kubernetes release giving image
-            # volumes write semantics or any form of host reachability -- that would require
-            # revisiting this entry, not merely the workloads using it. (2) A reference syntax
-            # that resolves to something the kubelet would not pull as a container image.
-            # (3) Upstream reversing #130394 and dropping `image` back out of `restricted`: the
-            # argument here is alignment, so this should follow upstream back out again.
-            - image
-            - persistentVolumeClaim
-            - projected
-            - secret
-            - ''
-    exclude:
-      any:
-      # virt-handler mounts hostPath volumes for libvirt/qemu runtime state, kubelet's
-      # pod/device dirs, and node-labeller data (see ../baseline/disallow-host-path.yaml) --
-      # hostPath isn't in this policy's allow-list at all, so anything using it needs this
-      # exclusion. Measured on the live DaemonSet pod: six of them
-      # (/var/run/kubevirt-libvirt-runtimes, /var/run/kubevirt, /var/run/kubevirt-private,
-      # /var/lib/kubelet/pods, /var/lib/kubelet, /var/lib/kubevirt-node-labeller) and zero
-      # `image` volumes, so allow-listing `image` above changes nothing here: this exclusion is
-      # about hostPath and only hostPath. virt-launcher gets its device access
-      # (kvm/tun/vhost-net) through Kubernetes device-plugin resource requests instead, not a
-      # volume; its own exclusion below is now a different matter again -- read it.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
-      # virt-launcher's exclusion NO LONGER DOES WHAT ITS ORIGINAL RATIONALE SAID, and is kept
-      # anyway. It was added because virt-launcher mounts two volumes of Kubernetes' `image`
-      # type -- `bootdisk` (the VM's containerDisk) and `launcher-volume` (virt-launcher's own
-      # binary, self-mounted) -- back when `image` was not in the allow-list above. It now is,
-      # so that reason has evaporated. Measured against both live pod specs
-      # (virt-launcher-docker-vm-*, virt-launcher-talos-vm-*): every other volume they carry is
-      # already allow-listed (emptyDir, persistentVolumeClaim, secret), which means as these two
-      # VMs are defined today this exclusion decides nothing at all.
-      #
-      # WHY IT STAYS RATHER THAN BEING DELETED AS DEAD CONFIG. virt-launcher's volume set is
-      # generated per-VMI by virt-controller, not authored here, so "what volumes it has" is a
-      # property of whatever VMI someone writes next, not of these two. A VMI using KubeVirt's
-      # `hostDisk` disk type, or a hostPath-backed virtiofs filesystem, reintroduces hostPath
-      # into that generated pod immediately -- and it cannot be brought into compliance by
-      # editing a manifest here. Deleting the exclusion is therefore a real tightening of the
-      # cluster's posture, not a cleanup, and belongs in its own change with its own argument.
-      #
-      # WHAT IT COSTS TO KEEP: exactly that tightening, foregone. A future VM in sandbox-docker
-      # or sandbox-talos that mounts a host path lands unflagged in the audit stream. That was
-      # equally true before `image` was allow-listed; it is retained here, not introduced.
-      # Reviewing what a new VMI mounts at the point it is defined stays a manual discipline.
-      # Name-scoped, not namespace-scoped, and limited to the same two namespaces as the
-      # virt-launcher exclusions in ../../best-practices/add-emptydir-sizelimit.yaml and
-      # restrict-seccomp-strict.yaml, rather than `kubevirt` (virt-launcher doesn't run there)
-      # or left open to any future VM namespace.
-      - resources:
-          names:
-          - 'virt-launcher*'
-          namespaces:
-          - sandbox-docker
-          - sandbox-talos
-      # Alloy hostPath-mounts node log files (/var/log/pods, /var/log/journal,
-      # /run/log/journal), /etc/machine-id, other pods' CSI-mounted PVC paths under
-      # /var/lib/kubelet/pods, and its own read-offset state to do its job as a
-      # node-level log collector -- hostPath isn't on this policy's allow-list at all,
-      # so it fails the `restricted-volumes` rule below; this is inherent to any
-      # node-level collector, not a shortcut a refactor removes. Alloy runs non-root
-      # (runAsNonRoot, uid/gid 473, supplementalGroups: [0, <journal gid>]), so it
-      # already passes require-run-as-nonroot; this hostPath-driven volume-type
-      # exclusion is the only restricted-profile rule it needs relaxed. Bounded by
-      # namespace (logging) AND name prefix (alloy*) together -- the prefix match is
-      # coarse, so anything else deployed into `logging` named alloy* inherits it too.
-      # Wrong if Alloy ever stops needing node-level file access, or if `logging`
-      # becomes a namespace where arbitrary workloads can be created.
-      - resources:
-          names:
-          - 'alloy*'
-          namespaces:
-          - logging
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # A volume entry carries `name` plus exactly one source key, so "that source key is on the
+  # list" is the whole rule. `.orValue([])` covers a Pod with no volumes; `.all()` also makes the
+  # expression statically bool (see restrict-node-port.yaml's header for why that is required).
+  #
+  # Deliberately NOT the flattened form -- one list of every key of every volume, asserted to
+  # hold nothing off the allow-list. That form needs `name` and `''` as allow-list members purely
+  # to absorb the flattening, and sits one edit away from reading "if ANY key is allowed, pass",
+  # which pod-image-and-hostpath-volume-fail.yaml in the CLI tier exists to catch.
+  #
+  # Continuation lines of a `>-` folded scalar sit at the SAME indent as the first line:
+  # .yamllint sets `indentation.check-multi-line-strings`, which rejects a deeper continuation,
+  # and a deeper line would not be folded at all -- YAML would keep the break inside the CEL
+  # string. Carry structure with operator-at-end-of-line, never indentation.
+  - expression: >-
+      object.spec.?volumes.orValue([]).all(volume,
+      has(volume.configMap) ||
+      has(volume.csi) ||
+      has(volume.downwardAPI) ||
+      has(volume.emptyDir) ||
+      has(volume.ephemeral) ||
+      has(volume.image) ||
+      has(volume.persistentVolumeClaim) ||
+      has(volume.projected) ||
+      has(volume.secret))
+    message: >-
+      Only the following types of volumes may be used: configMap, csi, downwardAPI,
+      emptyDir, ephemeral, image, persistentVolumeClaim, projected, and secret.
+  # `image` IS ALIGNMENT WITH UPSTREAM, NOT A LOCAL RELAXATION -- so it follows upstream back
+  # out if reversed. Kubernetes' own pod-security-admission allows it under `restricted`
+  # (`volume.Image != nil` in the allow-`continue` switch of policy/check_restrictedVolumes.go,
+  # added by https://github.com/kubernetes/kubernetes/pull/130394 and not backported). This
+  # allow-list mirrors that check, NOT the upstream Kyverno policy-library rule, which
+  # transcribes an older PSS revision and omits `image`; resyncing from that library silently
+  # reverts this entry.
+  #
+  # DO NOT "CORRECT" THIS AGAINST kubernetes.io. Its pod-security-standards page lists only the
+  # original eight volume types and is stale, tracked as a docs bug in
+  # https://github.com/kubernetes/website/issues/55370.
+  #
+  # Wanted here because it ships a binary into an egress-denied pod, which no other allowed
+  # source can do: a ConfigMap cannot hold ~100MB, an emptyDir needs filling, and an
+  # initContainer fetching it is bound by the same NetworkPolicy as the pod.
+  #
+  # The godoc on core/v1 `VolumeSource.Image` also promises noexec; that half has come and gone
+  # between release branches, so do not build on it. Read-only is the stable half.

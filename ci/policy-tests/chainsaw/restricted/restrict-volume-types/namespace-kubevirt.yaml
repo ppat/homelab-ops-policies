@@ -1,0 +1,10 @@
+---
+# The exemptions this policy carries are scoped by REAL namespace names, so the test has to
+# create those namespaces rather than use chainsaw's generated per-test namespace. That is also
+# why every test in this repo hardcodes them.
+#
+# Chainsaw deletes what it applied, so this namespace is torn down with the test.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubevirt

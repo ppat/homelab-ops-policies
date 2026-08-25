@@ -1,16 +1,18 @@
 ---
 # yamllint disable rule:line-length
-# The Chainsaw (cluster) tier: distinct from static-analysis.yaml, which needs no live cluster.
-# Stands up a real kind cluster, installs Kyverno via the same Helm chart version the estate
-# runs, then runs `chainsaw test` against ci/policy-tests/chainsaw/. This tier owns exactly what
-# a live cluster can prove and the offline CLI tier in static-analysis.yaml cannot: policy Ready
-# wiring, behaviour through a real admission webhook, mutations landing on live objects, and
-# DeletingPolicy schedules actually firing.
+# The Chainsaw (cluster) tier: distinct from policy-smoke-check.yaml and policy-cli-tests.yaml,
+# neither of which needs a live cluster. Stands up a real kind cluster, installs Kyverno via the
+# same Helm chart version the estate runs, then runs `chainsaw test` against
+# ci/policy-tests/chainsaw/. This tier owns exactly what a live cluster can prove and the offline
+# tiers cannot: policy Ready wiring, behaviour through a real admission webhook, mutations
+# landing on live objects, and DeletingPolicy schedules actually firing.
 #
-# ci/policy-tests/chainsaw/{baseline,restricted,best-practices}/ hold no test directories yet;
-# each one lands in the same change as the policy it covers. Until then, a green run here means
-# only that the cluster came up, Kyverno went Ready, and build-policies.sh produced buildable
-# output -- not that any policy has cluster-level coverage.
+# What runs here: a ready-smoke per profile directory
+# (ci/policy-tests/chainsaw/{baseline,restricted,best-practices}/ready-smoke/), asserting every
+# policy that profile builds to reaches Ready on a real cluster; plus a per-policy test for each
+# policy whose behaviour only a live cluster can settle. A policy with no directory of its own
+# here is covered by its profile's ready-smoke and by the CLI tier -- that is the intended steady
+# state, not a gap.
 name: e2e-tests
 
 on:
@@ -37,8 +39,9 @@ jobs:
     timeout-minutes: 15
     env:
       # Third leg of the lockstep this repo already keeps between the Kyverno CLI version
-      # (static-analysis.yaml's KYVERNO_CLI_VERSION) and the chart version actually deployed by
-      # infra-security-core in homelab-ops-kubernetes-apps -- all three should move together.
+      # (KYVERNO_CLI_VERSION in policy-smoke-check.yaml and policy-cli-tests.yaml) and the chart
+      # version actually deployed by infra-security-core in homelab-ops-kubernetes-apps -- all
+      # three should move together.
       # renovate: datasource=helm depName=kyverno repository=https://kyverno.github.io/kyverno/
       KYVERNO_CHART_VERSION: "3.8.2"
     steps:

@@ -1,0 +1,20 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY. Every other fixture here asserts that some
+# non-NodePort Service is left alone, and each of those would pass just as happily against a
+# policy that had been deleted outright. This one is what distinguishes "restrict-node-port
+# leaves ordinary Services alone" from "restrict-node-port no longer objects to anything".
+apiVersion: v1
+kind: Service
+metadata:
+  name: exposed-admin-ui
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: admin-ui
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30080

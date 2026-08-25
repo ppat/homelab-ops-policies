@@ -1,9 +1,10 @@
 ---
 # A deliberately minimal, otherwise-unremarkable Pod used by the structural-smoke-check job in
-# .github/workflows/static-analysis.yaml to probe that every ClusterPolicy/ClusterCleanupPolicy
-# in this repo still parses and loads into the Kyverno CLI's policy engine. It is not a fixture
-# in the same sense as ci/policy-tests/fixtures/restrict-volume-types/*.yaml -- it asserts no
-# pass/fail/allow/deny outcome of its own, and is intentionally the same one resource across
+# .github/workflows/policy-smoke-check.yaml to probe that every policy in this repo -- legacy
+# ClusterPolicy/ClusterCleanupPolicy and the policies.kyverno.io kinds replacing them alike --
+# still parses and loads into the Kyverno CLI's policy engine. It is not a fixture in the same
+# sense as the per-policy resources under ci/policy-tests/kyverno/ -- it asserts no
+# pass/fail/skip outcome of its own, and is intentionally the same one resource across
 # every policy regardless of the kind each policy targets (Pod, Service, ReplicaSet, ...): see
 # that job's comments for why "kyverno apply" still reports every rule it loaded from a policy
 # file even when the resource's kind doesn't match what the policy is written against.

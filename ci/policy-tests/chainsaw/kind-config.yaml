@@ -10,7 +10,7 @@
 # shared renovate-presets already carry packageRules keyed on the "kindest/node" package name,
 # e.g. grouping/version-separation rules used by other repos in this estate), so no
 # `# renovate: datasource=...` comment is needed here the way it is for values Renovate can only
-# find via this repo's custom regex manager (see static-analysis.yaml's KYVERNO_CLI_VERSION).
+# find via this repo's custom regex manager (see policy-smoke-check.yaml's KYVERNO_CLI_VERSION).
 # The digest pins the exact build; bump both together when the minor changes, never the tag
 # alone.
 kind: Cluster

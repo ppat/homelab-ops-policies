@@ -1,0 +1,22 @@
+---
+# EXPECTED: `pass`.
+#
+# Non-vacuity control on the COMPARISON rather than on the policy's existence: a Service with a
+# non-default, explicitly-set, host-port-adjacent `spec.type` that is nonetheless not NodePort.
+# Without it, a policy mis-edited to `has(object.spec.type)` -- flag anything that sets a type at
+# all -- would still be green on every other fixture here (ClusterIP would fail, but that fixture
+# would then be the only red, reading as one broken case rather than as an inverted rule). This
+# is also the shape this estate actually runs: MetalLB LoadBalancer Services are how workloads
+# get an address here, and a policy that flagged them would be noticed loudly and late.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-nginx-controller
+  namespace: networking
+spec:
+  type: LoadBalancer
+  selector:
+    app: ingress-nginx
+  ports:
+  - port: 443
+    targetPort: 8443

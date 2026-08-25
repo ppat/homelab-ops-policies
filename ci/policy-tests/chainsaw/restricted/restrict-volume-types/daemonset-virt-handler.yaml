@@ -1,0 +1,64 @@
+---
+# EXPECTED: the DaemonSet is admitted, AND its pods are admitted, AND it becomes fully ready.
+#
+# THE TEST THIS WHOLE TIER EXISTS FOR: the CLI tier owns exemption expressions, the cluster tier
+# owns the real-controller case -- a live DaemonSet's pods arriving through actual admission.
+#
+# Note what this is NOT about: a controller-created Pod reaches the webhook with `metadata.name`
+# already populated, since the API server generates it before admission runs. The name-less shape
+# belongs to the CLI tier
+# (../../../kyverno/restricted/restrict-volume-types/pod-virt-handler-generatename-hostpath-skip.yaml).
+#
+# What this test does prove, all of it invisible offline:
+#   * The exemption is evaluated by the real admission webhook against an object the DAEMONSET
+#     CONTROLLER generated, not one a human hand-wrote to look like it. The CLI tier only ever
+#     sees the latter.
+#   * Under a real `Deny` action, the exempted workload actually RUNS -- `numberReady` reaching
+#     `desiredNumberScheduled` is the end-to-end outcome the estate cares about. Delete the
+#     exemption and admission refuses every pod, the kubelet never gets one, and this never
+#     converges.
+#   * `spec.autogen.podControllers.controllers: []` holds against a real pod controller. With
+#     autogen ON Kyverno rewrites `object.` to `object.spec.template.` inside the matchCondition;
+#     this DaemonSet is the shape that would expose it, and no Pod-shaped fixture can.
+#
+# TOLERATIONS are required, not decorative: the kind cluster
+# (../../kind-config.yaml) is a single control-plane node carrying
+# `node-role.kubernetes.io/control-plane:NoSchedule`, so an untolerated DaemonSet schedules zero
+# pods and the readiness assertion would pass vacuously against 0/0 rather than 1/1.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: virt-handler
+  namespace: kubevirt
+spec:
+  selector:
+    matchLabels:
+      app: virt-handler
+  template:
+    metadata:
+      labels:
+        app: virt-handler
+    spec:
+      tolerations:
+      - operator: Exists
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: virt-handler
+        image: registry.k8s.io/pause:3.10
+        volumeMounts:
+        - name: kubelet-pods
+          mountPath: /pods
+          readOnly: true
+      volumes:
+      # hostPath, and only hostPath, is what this exemption still decides -- so hostPath is what
+      # this fixture must carry. An `image`-volume DaemonSet would be admitted whether the
+      # exemption existed or not, since `image` is globally allow-listed, and this test would pass
+      # vacuously. Paths that exist on a kind node, so the pod can actually run.
+      - name: kubelet-pods
+        hostPath:
+          path: /var/lib/kubelet/pods
+          type: DirectoryOrCreate
+      - name: host-log
+        hostPath:
+          path: /var/log
+          type: Directory

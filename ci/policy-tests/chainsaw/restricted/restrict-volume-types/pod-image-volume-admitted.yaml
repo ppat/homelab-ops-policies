@@ -1,0 +1,36 @@
+---
+# EXPECTED: ADMITTED, under a real admission webhook with the policy patched to `Deny`.
+#
+# THE FLAGSHIP CLAIM, live: an `image` volume is permitted by the Restricted profile. The presence
+# of `image` in the allow-list is this repo's most consequential departure from what other policy
+# sources ship (see ../../../../../pod-security-standard/restricted/restrict-volume-types.yaml for
+# the argument), and the CLI tier already asserts it -- what the cluster adds is that a real API
+# server plus a real Kyverno webhook agree, i.e. that the allow-list entry is not something only
+# the offline engine honours.
+#
+# Lands in chainsaw's generated per-test namespace (no `namespace:` field), which is exactly the
+# "ordinary workload, no exemption, boring namespace" shape the claim needs -- and a namespace
+# name no exemption in this repo could possibly match.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: image-volume-consumer
+spec:
+  restartPolicy: Never
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: kubectl-bin
+      mountPath: /opt/kubectl
+      readOnly: true
+    - name: workspace
+      mountPath: /workspace
+  volumes:
+  - name: kubectl-bin
+    image:
+      reference: registry.k8s.io/pause:3.10
+      pullPolicy: IfNotPresent
+  - name: workspace
+    emptyDir:
+      sizeLimit: 16Mi

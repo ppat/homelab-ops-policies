@@ -1,0 +1,43 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-virt-launcher matchCondition -- see
+# pod-virt-handler-hostpath-skip.yaml's header for what the paired expectation buys.
+#
+# SYNTHETIC SHAPE, DELIBERATELY -- do not "correct" it against a live pod. The estate's real
+# virt-launcher pods carry only allow-listed volumes (emptyDir, persistentVolumeClaim, secret,
+# and two `image` volumes), so a faithful copy of one would report `skip` whether the exclusion
+# existed or not: a test passing for the wrong reason. This fixture instead carries the hostPath
+# volume that the exclusion actually decides, which a VMI using KubeVirt's `hostDisk` disk type
+# or a hostPath-backed virtiofs filesystem would generate. No VM does that today, which is
+# exactly why nothing else in the suite would notice the exclusion disappearing.
+#
+# Its NAMESPACE-axis control is pod-virt-launcher-in-kubevirt-hostpath-fail.yaml. The consequence
+# it pins: a VM in these namespaces that mounts a host path lands unflagged in the audit stream.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-talos-vm-zqrlj
+  namespace: sandbox-talos
+spec:
+  restartPolicy: Never
+  containers:
+  - name: compute
+    image: quay.io/kubevirt/virt-launcher:v1.9.0
+    volumeMounts:
+    - name: bootdisk
+      mountPath: /var/run/kubevirt-image-volume/disk_0
+      readOnly: true
+    - name: hostdisk
+      mountPath: /var/run/kubevirt-private/vmi-disks/hostdisk
+  volumes:
+  - name: bootdisk
+    image:
+      reference: quay.io/kubevirt/virt-launcher:v1.9.0
+      pullPolicy: IfNotPresent
+  - name: ephemeral-disks
+    emptyDir: {}
+  - name: hostdisk
+    hostPath:
+      path: /var/lib/kubevirt/hostdisks
+      type: DirectoryOrCreate

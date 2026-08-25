@@ -1,0 +1,32 @@
+---
+# EXPECTED: `pass` against the built policy, `pass` against the pure mirror.
+#
+# An `image` volume is permitted for an ordinary workload -- no exemption, and nothing special
+# about its name or namespace (`default` matches no exemption in this repo).
+#
+# Meaningless alone: it would pass equally against a deleted policy or one allowing everything.
+# The pod-*-fail.yaml fixtures alongside are what give it force. Read this directory as one test.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: image-volume-consumer-6b9f4c8d5-x2kqp
+  namespace: default
+spec:
+  restartPolicy: Never
+  containers:
+  - name: tools
+    image: docker.io/curlimages/curl:8.21.0
+    volumeMounts:
+    - name: kubectl-bin
+      mountPath: /opt/kubectl
+      readOnly: true
+    - name: workspace
+      mountPath: /workspace
+  volumes:
+  - name: kubectl-bin
+    image:
+      reference: registry.k8s.io/kubectl:v1.36.0
+      pullPolicy: IfNotPresent
+  - name: workspace
+    emptyDir:
+      sizeLimit: 512Mi
