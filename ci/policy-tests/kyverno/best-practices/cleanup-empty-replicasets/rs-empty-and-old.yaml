@@ -1,0 +1,19 @@
+---
+# CANDIDATE: replicas=0 AND creationTimestamp is well over 24h in the past. The only fixture
+# here where BOTH conditions hold -- the case the policy exists to clean up.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: empty-old-replicaset
+  namespace: default
+  creationTimestamp: "2020-01-01T00:00:00Z"
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app: empty-old-replicaset}
+  template:
+    metadata: {labels: {app: empty-old-replicaset}}
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10

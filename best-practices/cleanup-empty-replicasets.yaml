@@ -1,6 +1,69 @@
 ---
-apiVersion: kyverno.io/v2beta1
-kind: ClusterCleanupPolicy
+# PROVENANCE: this is NOT an upstream port. Upstream kyverno/policies' `-dpol` rewrite of this
+# policy drops the 24h age guard this file keeps; design doc
+# phase2.0-policy-migration-design-v3.md §3.3 is explicit: "Keep the 24h age guard upstream's
+# dpol dropped -- it is what preserves `kubectl rollout undo`" (a fresh, empty ReplicaSet from an
+# in-progress or just-completed rollout must survive; only genuinely stale ones get cleaned up).
+# What migrates is this repo's own legacy `kyverno.io/v2beta1 ClusterCleanupPolicy`, translated
+# to the new kind per the mapping in §1.2 of the design doc.
+#
+# House style is set by best-practices/restrict-node-port.yaml (`ValidatingPolicy`) and
+# best-practices/cleanup-bare-pods.yaml (the simpler `DeletingPolicy` case -- read both first).
+# This file is the fuller `DeletingPolicy` reference because it hit two things worth recording
+# for whoever writes the next one:
+#
+#   1. FIELD NAME, verified empirically against the live CRD (Kyverno chart 3.8.2 / CLI v1.18.2):
+#      `DeletingPolicy.spec` has NO `matchConditions` field at all. The `ValidatingPolicy`/
+#      `MutatingPolicy` field of that name (design §1.2's translation row for `preconditions`)
+#      does not carry over -- the equivalent is `spec.conditions[]`, same `{name, expression}`
+#      item shape (`MatchCondition`, confirmed via `kubectl get crd deletingpolicies.policies.
+#      kyverno.io -o jsonpath='{.spec.versions[?(@.name=="v1")].schema.openAPIV3Schema.properties.spec}'`).
+#      Writing `matchConditions` on a `DeletingPolicy` is not silently ignored: the CRD is
+#      structural with strict decoding, so the apiserver rejects the whole object outright --
+#      `strict decoding error: unknown field "spec.matchConditions"` -- measured directly. Get
+#      this field name right the first time; there is no quiet-failure mode to catch a typo here
+#      later.
+#   2. `resourceFilters` IN THE KYVERNO CONFIGMAP, NOT THIS POLICY, IS WHAT MOST OFTEN MAKES THIS
+#      POLICY A NO-OP. Verified empirically on a stock `helm install kyverno kyverno/kyverno
+#      --version 3.8.2` (no custom values -- the same install e2e-tests.yaml performs): the
+#      chart's DEFAULT `kyverno` ConfigMap `resourceFilters` value carries `[ReplicaSet,*,*]
+#      [ReplicaSet/?*,*,*]`, which excludes ReplicaSets from EVERY Kyverno policy engine
+#      (admission and background/cleanup alike), upstream of and unrelated to this policy's own
+#      `matchConstraints`/`conditions`. Confirmed by direct experiment: an unconditional
+#      `DeletingPolicy` matching all `apps/v1` ReplicaSets, with correct RBAC and a successful
+#      LIST (200 OK, items present) never reached the controller's per-object match-and-delete
+#      code path -- no "resource matched" log line, no DELETE call -- until the `[ReplicaSet,*,*]`
+#      entries were removed from the ConfigMap, at which point the same policy started deleting
+#      matching ReplicaSets within one schedule cycle. `Deployment`s and `Pod`s are NOT
+#      blanket-filtered this way (only specific `kyverno`-namespaced ones are), which is why
+#      `cleanup-bare-pods` needed none of this. THIS IS A CROSS-REPO DEPENDENCY: this repo cannot
+#      fix it -- the estate's actual Kyverno `HelmRelease` values (in
+#      `homelab-ops-kubernetes-apps`, infra-security-core's kyverno module) must override
+#      `resourceFilters` to drop the `[ReplicaSet,*,*]`/`[ReplicaSet/?*,*,*]` entries for this
+#      policy (old kind or new) to ever do anything. Verify that override exists there; if it
+#      does not, this policy -- and its legacy `ClusterCleanupPolicy` predecessor -- has likely
+#      never actually cleaned up a ReplicaSet in production. The Chainsaw test for this policy
+#      (ci/policy-tests/chainsaw/best-practices/cleanup-empty-replicasets/) applies the same
+#      override test-locally, mirroring the existing cleanup-controller-rbac.yaml pattern for a
+#      comparable cross-repo dependency -- see that test's own header for the full reasoning.
+#
+# Other notes specific to this file:
+#
+#   - `metadata.name` is already `cleanup-empty-replicasets` on both the legacy and new file --
+#      no rename needed (unlike cleanup-bare-pods.yaml).
+#   - No estate exemptions beyond the `kube-system` namespace exclusion already carried by the
+#      legacy policy (design §3.3: "Exclude ns kube-system"). Kept INLINE per best-practices
+#      convention (design §2.1), via `matchConstraints.namespaceSelector` -- the native VAP-shaped
+#      mechanism for a namespace-NAME exclusion (using the automatic `kubernetes.io/metadata.name`
+#      label every Namespace carries since Kubernetes 1.21), the same mechanism this cluster's own
+#      Kyverno webhook configuration uses for its own `kube-system`/`kyverno` exclusions. Note
+#      `resourceFilters` (point 2 above) ALSO already excludes `kube-system` globally
+#      (`[*/*,kube-system,*]`), which makes this namespaceSelector belt-and-braces rather than
+#      load-bearing on its own -- kept anyway per design §2.5's regression tally, which counts
+#      this as one of the estate's 8 namespace-exclusion sets and requires it not be silently
+#      dropped.
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-empty-replicasets
   annotations:
@@ -8,9 +71,11 @@ metadata:
     policies.kyverno.io/category: Cleanup
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: ReplicaSet
-    kyverno.io/kyverno-version: 1.11.1
-    policies.kyverno.io/minversion: 1.9.0
-    kyverno.io/kubernetes-version: "1.27"
+    # Bumped from 1.9.0: `policies.kyverno.io/v1 DeletingPolicy` is first served by Kyverno 1.17.
+    # The legacy `kyverno.io/kyverno-version` annotation this file used to also carry is dropped
+    # as redundant with this one.
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       ReplicaSets serve as an intermediate controller for various Pod controllers like Deployments. When
       a new version of a Deployment is initiated, it generates a new ReplicaSet with the specified number
@@ -20,22 +85,50 @@ metadata:
       specified timeframe, for instance, ReplicaSets created one day ago, ensuring the ability to rollback
       to previous ReplicaSets in case of deployment issues
 spec:
-  match:
-    any:
-    - resources:
-        kinds:
-        - ReplicaSet
-  exclude:
-    any:
-    - resources:
-        namespaces:
-        - kube-system
-  conditions:
-    all:
-    - key: "{{ target.spec.replicas }}"
-      operator: Equals
-      value: 0
-    - key: '{{ time_diff(target.metadata.creationTimestamp, time_now_utc()) }}'
-      operator: GreaterThan
-      value: "24h0m0s"
   schedule: "0 * * * *"
+  matchConstraints:
+    # See point 2 in the header comment before assuming this alone is why ReplicaSets are
+    # excluded from `kube-system` -- the ConfigMap-level `resourceFilters` already excludes that
+    # whole namespace cluster-wide. This is the estate-exemption layer's own record of the
+    # exclusion regardless (design §2.5 regression tally).
+    namespaceSelector:
+      matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+        - kube-system
+    resourceRules:
+    - apiGroups:
+      - apps
+      apiVersions:
+      - v1
+      # See cleanup-bare-pods.yaml's note on this field: verified not to gate which existing
+      # objects a cleanup cycle considers, kept for house-style consistency only.
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - replicasets
+  # Two conditions, ANDed (CRD semantics: "If ALL conditions evaluate to TRUE, the policy is
+  # executed" -- verified against the live CRD schema). Legacy JMESPath equivalents, translated
+  # per design §1.2:
+  #   `{{ target.spec.replicas }}` Equals `0`
+  #   `{{ time_diff(target.metadata.creationTimestamp, time_now_utc()) }}` GreaterThan `24h0m0s`
+  conditions:
+  - name: is-empty
+    # `.orValue(1)`: `spec.replicas` is optional and API-defaulted to 1, so a ReplicaSet that
+    # somehow reached this policy without the field set is correctly treated as non-empty rather
+    # than raising a CEL evaluation error.
+    expression: object.spec.?replicas.orValue(1) == 0
+  - name: is-old-enough
+    # ⚙ verified (design §3.3, re-verified live for this migration): `time.now()` is the CEL
+    # equivalent of the legacy `time_now_utc()`; `timestamp(...)` parses the RFC3339
+    # `creationTimestamp` string into a CEL timestamp for comparison. This is the ONE condition
+    # in this policy that the CLI tier owns exclusively and the Chainsaw tier structurally cannot
+    # -- `creationTimestamp` is server-set, so a live fixture can never construct an
+    # artificially-aged ReplicaSet to exercise the `< 24h` (not-yet-eligible) side of this
+    # comparison. See ci/policy-tests/kyverno/best-practices/cleanup-empty-replicasets/ for the
+    # fixtures that do own it, and
+    # ci/policy-tests/chainsaw/best-practices/cleanup-empty-replicasets/ for the live tier's
+    # narrower, complementary claim (a genuinely fresh ReplicaSet survives a real cleanup cycle).
+    expression: timestamp(object.metadata.creationTimestamp) < time.now() - duration('24h')

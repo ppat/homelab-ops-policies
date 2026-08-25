@@ -1,0 +1,29 @@
+---
+# THE ASSERTION THIS TEST EXISTS FOR: a freshly created, empty (replicas=0) ReplicaSet -- the
+# exact shape a Deployment leaves behind mid-rollout or immediately after one completes -- must
+# survive a real cleanup cycle. Design doc phase2.0-policy-migration-design-v3.md §3.3: the 24h
+# age guard "is what preserves `kubectl rollout undo`", and §6.2 is explicit that the live tier
+# can only ever prove this NEGATIVE direction (a fresh one survives) -- `creationTimestamp` is
+# server-set, so a live fixture can never construct the positive, "old enough" case; that half is
+# the CLI tier's alone (../../../kyverno/best-practices/cleanup-empty-replicasets/).
+#
+# No `creationTimestamp` is set here -- the API server stamps it at CREATE time, which is exactly
+# what makes this fixture "fresh" without this test needing to say so.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: fresh-empty-replicaset
+  namespace: default
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: fresh-empty-replicaset
+  template:
+    metadata:
+      labels:
+        app: fresh-empty-replicaset
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10
