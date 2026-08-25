@@ -1,0 +1,27 @@
+---
+# EXPECTED: admitted and NOT mutated. Asserted by pod-kube-system-exempt-patched.yaml.
+#
+# The estate exemption firing at real admission, in the REAL `kube-system` namespace rather than
+# in chainsaw's generated one -- which is why this test sets `template: false` and hardcodes the
+# name (design §6.4). kube-system already exists on any cluster, so unlike
+# ../../add-emptydir-sizelimit/'s `sandbox-docker` there is no namespace to create.
+#
+# Non-vacuous: this Pod declares no resources at all, exactly like the `app` container in
+# pod-mixed-resources.yaml, so without the exemption it would be mutated. Its control is that
+# very Pod, in the same test, one step earlier.
+#
+# Why the exemption exists: kube-system runs node-level components whose resource shape is set by
+# the Kubernetes distribution. Adding a request moves them from BestEffort to Burstable and
+# therefore changes which pods the kubelet evicts first under node pressure -- these should be
+# evicted last.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: exempt-system-workload
+  namespace: kube-system
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10

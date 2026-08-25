@@ -1,0 +1,27 @@
+---
+# EXPECTED: `pass`, mutated -- `options` created, `nameservers` and `searches` untouched.
+#
+# The FIRST arm of the conditional, in the sub-case where `dnsConfig` exists but carries no
+# `options` list. `.?options.orValue([])` is what covers it; a policy written as
+# `object.spec.dnsConfig.options + [...]` would raise "no such key: options" on this exact Pod
+# and, because there is no Audit backstop for a mutate policy, the failure would surface as a
+# rejected admission with a CEL error in a controller log rather than as a report anyone reads.
+#
+# `nameservers` and `searches` are present so the fixture also pins that the patch writes at
+# `/spec/dnsConfig/options` and not at `/spec/dnsConfig` -- the latter would replace the whole
+# object and take the custom resolver with it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-nameservers-workload
+  namespace: default
+spec:
+  dnsPolicy: None
+  dnsConfig:
+    nameservers:
+    - 10.43.0.10
+    searches:
+    - svc.cluster.local
+  containers:
+  - name: app
+    image: nginx:1.29

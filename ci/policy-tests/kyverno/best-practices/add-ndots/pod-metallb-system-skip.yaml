@@ -1,0 +1,15 @@
+---
+# EXPECTED: `skip`.
+#
+# Namespace exemption for `metallb-system`, one fixture per member of the list so any single member can be
+# dropped and noticed. Non-vacuous: this Pod declares no `dnsConfig` at all, exactly like
+# pod-no-dnsconfig-mutated.yaml, so without the exemption it would be mutated.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-metallb-workload
+  namespace: metallb-system
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29

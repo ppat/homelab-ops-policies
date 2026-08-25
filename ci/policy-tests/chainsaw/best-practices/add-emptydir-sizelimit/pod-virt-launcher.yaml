@@ -1,0 +1,52 @@
+---
+# EXPECTED: admitted, and NOT mutated. Asserted by pod-virt-launcher-patched.yaml.
+#
+# THE EVICTION-LOOP REGRESSION TEST, EXECUTED AGAINST A REAL API SERVER FOR THE FIRST TIME.
+# Design §6.5 selects this policy for cluster time for precisely this fixture; the incident it
+# encodes is described in full in the verbatim comment in
+# ../../../../best-practices/add-emptydir-sizelimit.yaml.
+#
+# What went wrong, restated as what this Pod asserts: this policy silently added a 256Mi
+# sizeLimit to virt-launcher's `ephemeral-disks` emptyDir -- the containerDisk copy-on-write
+# overlay backing every write the guest makes to its root filesystem -- and nothing surfaced it
+# anywhere, because a mutate rule does not report a violation, it just rewrites the object. The
+# VM's writes hit the cap, the kubelet evicted the pod, KubeVirt recreated it, and the loop
+# repeated.
+#
+# Until now that claim has only ever been asserted in the abstract, or against the offline
+# engine. Here the object is admitted by a real webhook and read back from real cluster storage.
+#
+# The volume set is virt-launcher's real one (see the policy file's comment: private, public,
+# sockets, virt-bin-dir, libvirt-runtime, ephemeral-disks), trimmed to the two that matter for
+# the assertion. `name` and `generateName` are BOTH set, which is the shape a live
+# controller-created Pod actually arrives in -- measured, see
+# ../../../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml. The
+# `generateName`-only shape is a CLI-tier shape and lives in
+# ../../../kyverno/best-practices/add-emptydir-sizelimit/.
+#
+# `image:` is `pause`, not a real virt-launcher: this test is about admission and storage, and a
+# real virt-launcher would need KubeVirt installed for no additional assertion.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-vmdocker-x9k2p
+  generateName: virt-launcher-vmdocker-
+  namespace: sandbox-docker
+  labels:
+    kubevirt.io: virt-launcher
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: compute
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: ephemeral-disks
+      mountPath: /var/run/kubevirt-ephemeral-disks
+    - name: libvirt-runtime
+      mountPath: /var/run/libvirt
+  volumes:
+  - name: ephemeral-disks
+    emptyDir: {}
+  - name: libvirt-runtime
+    emptyDir: {}

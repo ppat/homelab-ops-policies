@@ -1,0 +1,22 @@
+---
+# EXPECTED: `pass`, mutated. See patched-resources.yaml for the shape asserted.
+#
+# The base case: an ordinary Pod in an ordinary namespace whose containers declare nothing at
+# all. Without a request a Pod is scheduled BestEffort, which is the QoS class the kubelet
+# evicts first under node pressure -- the whole reason this policy exists.
+#
+# Two containers rather than one, so that `containers.map(...)` is exercised as a map over a
+# list rather than as a single-element special case. `sidecar-ish` is a plain second container,
+# NOT a native sidecar -- that shape is deliberately separate, in
+# pod-native-sidecar-gap-mutated.yaml, because it asserts the opposite outcome.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: besteffort-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  - name: sidecar-ish
+    image: nginx:1.29

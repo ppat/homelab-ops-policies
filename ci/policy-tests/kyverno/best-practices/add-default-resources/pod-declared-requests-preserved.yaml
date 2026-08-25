@@ -1,0 +1,41 @@
+---
+# EXPECTED: `pass`, mutated -- but ONLY in the field that was missing.
+#
+# THE FIXTURE THAT DISTINGUISHES "add a default" FROM "impose a default". `app` declares
+# `requests.cpu: 500m` and `limits.memory: 1Gi`; the policy must add `requests.memory: 32Mi`,
+# leave the declared cpu at 500m, and leave the limit alone. A policy mis-edited to write 32Mi
+# and 32m unconditionally -- the obvious CEL translation of the legacy `+()` add-if-absent
+# anchor, and the easy mistake -- would silently shrink every deliberately-sized request in the
+# estate to a homelab default, with no PolicyReport anywhere saying so because a mutate rule
+# does not report.
+#
+# READ THIS BEFORE COMPARING WITH THE CLUSTER TIER, WHICH ASSERTS A DIFFERENT NUMBER FOR THE
+# SAME FIXTURE SHAPE. This Pod declares `limits.memory: 1Gi` and no memory REQUEST. Kubernetes
+# defaults an absent request from the corresponding limit, and that defaulting happens during
+# decoding -- before any admission webhook runs -- so on a live cluster the policy sees
+# `requests.memory: 1Gi` already present and preserves it. `kyverno test` does no defaulting at
+# all, so here the same YAML genuinely has no memory request and the policy adds 32Mi. Both
+# outcomes are correct; they answer different questions, which is exactly why this policy has
+# both tiers. The live half is
+# ../../../chainsaw/best-practices/add-default-resources/pod-mixed-resources-patched.yaml, and
+# it catches a failure this tier structurally cannot: a policy without the read-back would
+# overwrite an API-server-derived 1Gi request with 32Mi on a real cluster.
+#
+# `limits` is present specifically to pin the granularity of the merge. `resources.requests` is
+# a map and merges key-wise under structured merge diff, so `limits` must survive an apply
+# configuration that names only `requests`. If it ever stops surviving, this fixture is what
+# notices.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: partially-sized-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+    resources:
+      requests:
+        cpu: 500m
+      limits:
+        memory: 1Gi

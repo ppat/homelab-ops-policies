@@ -1,98 +1,231 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: this repo's own legacy `kyverno.io/v1 ClusterPolicy`, translated in place to
+# `policies.kyverno.io/v1 MutatingPolicy`. Upstream kyverno/policies carries an mpol form at
+# other-mpol/add-emptydir-sizelimit/add-emptydir-sizelimit.yaml (commit d84f18c9, "Converting
+# ClusterPolicy to MutatingPolicy [patch 0]", 2025-10-29); its `ApplyConfiguration` skeleton is
+# adopted, its BEHAVIOUR is explicitly rejected on two counts that design §3.3 names and that
+# were re-read from the upstream file rather than taken on trust:
+#
+#   1. Upstream dropped the `medium: Memory` guard entirely. Its expression patches a sizeLimit
+#      onto EVERY emptyDir including memory-backed ones. A `sizeLimit` on a `medium: Memory`
+#      emptyDir is not a disk quota -- it caps a tmpfs whose pages are charged to the Pod's
+#      memory, so it is a second, invisible memory limit on the workload. Applying disk-shaped
+#      reasoning to a memory-backed volume is how this policy turns into an OOM source.
+#   2. Upstream dropped the "already has a sizeLimit" guard and replaced it with a read-back
+#      (`has(v.emptyDir.sizeLimit) ? v.emptyDir.sizeLimit : "100Mi"`). That preserves the VALUE,
+#      but it still rewrites the field on every emptyDir in the cluster and it still emits a
+#      patch for Pods that needed none. This file keeps the real guard: a volume whose author
+#      deliberately set a sizeLimit is not touched, and a Pod with nothing to fix is not
+#      patched at all.
+#
+# The default is 256Mi here and 100Mi upstream. 256Mi is the estate's number and is the policy;
+# do not "sync with upstream".
+#
+# HOUSE STYLE: best-practices/restrict-node-port.yaml is the reference. A `MutatingPolicy` has
+# no `validations[]`, no `validationActions` and no pass/fail outcome -- see
+# best-practices/add-default-resources.yaml's header for what does and does not carry across
+# from the `ValidatingPolicy` reference.
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: add-emptydir-sizelimit
   annotations:
-    pod-policies.kyverno.io/autogen-controllers: none
     policies.kyverno.io/title: Add emptyDir sizeLimit
     policies.kyverno.io/category: Mutations
     policies.kyverno.io/subject: Pod
-    policies.kyverno.io/minversion: 1.6.0
-    kyverno.io/kyverno-version: 1.7.3,1.8.0-rc2
-    kyverno.io/kubernetes-version: "1.24"
+    # See add-default-resources.yaml for why the three version annotations
+    # (`policies.kyverno.io/minversion`, `kyverno.io/kyverno-version`,
+    # `kyverno.io/kubernetes-version`) are dropped rather than carried forward.
+    #
+    # ONE WORD OF THIS DESCRIPTION IS CHANGED FROM THE LEGACY FILE, and it is called out here
+    # because everything else in this migration is a faithful port: the legacy annotation ended
+    # "...and sets it to 100Mi", inherited unedited from upstream, while the rule it described
+    # has set 256Mi in this repo for as long as the file has existed. It was wrong, not a
+    # deviation to preserve. Corrected to 256Mi. This is a documentation fix with no behavioural
+    # component -- the number the policy applies is unchanged and is asserted by both test tiers.
     policies.kyverno.io/description: >-
       When a Pod requests an emptyDir, by default it does not have a size limit which
       may allow it to consume excess or all of the space in the medium backing the volume.
       This can quickly overrun a Node and may result in a denial of service for other
       workloads. This policy adds a sizeLimit field to all Pods mounting emptyDir
-      volumes, if not present, and sets it to 100Mi.
+      volumes, if not present, and sets it to 256Mi.
 spec:
-  rules:
-  - name: mutate-emptydir
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    mutate:
-      foreach:
-      - list: "request.object.spec.volumes[]"
-        preconditions:
-          all:
-          - key: "{{element.keys(@)}}"
-            operator: AnyIn
-            value: emptyDir
-          - key: "{{element.emptyDir.sizeLimit || ''}}"
-            operator: Equals
-            value: ''
-          - key: "{{ element.emptyDir.medium || '' }}"
-            operator: NotEquals
-            value: "Memory"
-        # yamllint disable-line rule:indentation
-        patchesJson6902: |-
-          - path: "/spec/volumes/{{elementIndex}}/emptyDir/sizeLimit"
-            op: add
-            value: 256Mi
-    exclude:
-      any:
-      - resources:
-          namespaces:
-          - kube-system
-          - longhorn-system
-      # IMPORTANT for whoever next tunes a *mutate* policy's exclusions: validationFailureAction
-      # only exists on *validate* rules. Every virt-handler/virt-launcher exclusion elsewhere in
-      # this repo was added to *validate* policies that already run in Audit mode, so "Audit"
-      # felt like a low-stakes backstop while the exclusion list was worked out. A mutate rule
-      # has no such backstop -- it always applies, unconditionally, the moment it matches. That
-      # gap is exactly what caused docker-vm to eviction-loop: this policy silently added a
-      # 256Mi sizeLimit to virt-launcher's internal "ephemeral-disks" emptyDir (the containerDisk
-      # copy-on-write overlay backing every write the guest makes to its root filesystem), and
-      # nothing surfaced it as a violation anywhere because a mutate rule doesn't report one --
-      # it just rewrites the object.
+  autogen:
+    podControllers:
+      # The legacy policy carried `pod-policies.kyverno.io/autogen-controllers: none`; this is
+      # that annotation's replacement spelling (design §1.2), so autogen stays OFF exactly as it
+      # has been. Of the three mutate policies in this directory this is the only one where `[]`
+      # is a straight port of an explicit legacy decision rather than a new one -- the other two
+      # had autogen on and lose pod-controller coverage as an unavoidable consequence of the kind
+      # change. The full measurement behind that is recorded once, in add-default-resources.yaml;
+      # the short version is that a `MutatingPolicy` at chart 3.8.2 registers a webhook for
+      # `pods` only no matter what this field says, while a `ValidatingPolicy` on the same
+      # cluster registers all seven pod-controller kinds.
       #
-      # virt-launcher pods run in the VM's own namespace (sandbox-docker, sandbox-talos here),
-      # not in `kubevirt` -- unlike virt-handler, which is a DaemonSet confined to that one
-      # namespace. A namespace-scoped exclusion targeting `kubevirt` would exclude nothing.
+      # `[]` is therefore inert at the deployed engine version, and is written anyway because the
+      # DEFAULT is not inert forever. Kyverno already computes the rewrite into
+      # `status.autogen.configs`; if a future release wires that to the webhook, a policy relying
+      # on the default starts mutating every pod controller in the estate on an engine upgrade,
+      # with no commit to attribute it to. For THIS policy that is not a cosmetic difference: its
+      # virt-launcher exemption is metadata-based, and design §2.4's measured hazard is that the
+      # autogen rewrite can leave such an exemption no longer matching -- i.e. it would re-arm
+      # the eviction loop the comment below exists to prevent. Pin it.
       #
-      # Whole-pod, not per-volume: every emptyDir a virt-launcher pod carries (private, public,
-      # sockets, virt-bin-dir, libvirt-runtime, ephemeral-disks, and container-disks when image
-      # volumes aren't in use) is created internally by virt-controller for KubeVirt's own
-      # bookkeeping -- kubelet already tears the whole pod down when a VM is deleted, so none of
-      # them benefit from an externally imposed cap. Verified against KubeVirt v1.9.0 source
-      # (pkg/virt-controller/services/rendervolumes.go, the emptyDirVolume() helper all of them
-      # go through): it unconditionally emits EmptyDirVolumeSource{} with no SizeLimit, and
-      # there is no KubeVirt/VirtualMachine CR field that feeds one in -- this isn't a case of
-      # "KubeVirt could set its own limit but doesn't"; it has no such knob.
+      # (What the generated config actually shows at 3.8.2, for whoever revisits this: the
+      # `object.spec.*` paths ARE rewritten to `object.spec.template.spec.*` and the
+      # `object.metadata.*` exemptions are left alone -- which would be correct behaviour, since
+      # a controller's own metadata is what those exemptions should read. §2.4's hazard was
+      # measured on a `ValidatingPolicy`; do not assume it reproduces here without re-measuring.)
       #
-      # Deliberately left uncapped rather than re-added at a bigger, hand-picked number: this
-      # volume backs a real VM's disk writes, so any fixed number is a guess divorced from the
-      # workload, and a long-lived VM's overlay only grows -- a bigger cap just relocates the
-      # same eviction loop further down the timeline, most convincingly right after whoever hit
-      # it has stopped watching. The actual backstop is the one Kubernetes already ships for
-      # exactly this shape of problem: kubelet's node-level ephemeral-storage eviction
-      # (nodefs.available). A VM that needs real persistent capacity belongs on a PVC-backed
-      # virtio disk (KubeVirt dataVolumeTemplates/PVC volumes), not written into this
-      # containerDisk overlay -- that's a workload-level fix, not a policy one, and is out of
-      # scope here.
+      # Note `spec.autogen` has no `enabled` field: `autogen: {enabled: false}` would be pruned
+      # as unknown while leaving autogen at its default (measured, Wave A1 spike §1).
+      controllers: []
+  matchConditions:
+  # RULE SEMANTICS, not an exemption. This is the policy-wide half of the legacy rule's per-item
+  # `foreach.preconditions`; the per-volume half is the `filter()` inside the mutation below, and
+  # BOTH are needed. This one answers "is there anything here to do at all", and its job is to
+  # keep the policy from emitting a patch for a Pod that needs none.
+  #
+  # That is not tidiness. Measured on the pinned CLI v1.18.2 without this condition: a Pod with
+  # no volumes at all comes out of the mutation carrying `volumes: []`, because the
+  # `ApplyConfiguration` expression below always constructs a (possibly empty) list. A gratuitous
+  # patch on every Pod in the estate is precisely the shape of thing that has no Audit backstop
+  # to catch it -- see the eviction-loop comment further down. With this condition the same Pod
+  # is reported `skip` and its object is not touched.
+  - name: only-when-an-uncapped-disk-backed-emptydir-is-present
+    expression: >-
+      object.spec.?volumes.orValue([]).exists(v, has(v.emptyDir) &&
+      v.emptyDir.?sizeLimit.orValue('') == '' &&
+      v.emptyDir.?medium.orValue('') != 'Memory')
+
+  # Estate exemptions, INLINE rather than in a kustomize patch under an exemptions/ directory --
+  # design §2.1, the same split add-default-resources.yaml explains. The rationale text below is
+  # ported VERBATIM from the legacy policy's `exclude:` block; design §3.3 names it "the repo's
+  # canonical 'mutate has no Audit backstop' warning" and treats it as a specification rather
+  # than as history. Do not paraphrase it, do not shorten it, and do not fold it into the
+  # description annotation.
+  #
+  # `kube-system` and `longhorn-system`: same reasoning as add-default-resources.yaml's
+  # exemption -- node-level infrastructure whose storage shape is set by its own chart or by the
+  # Kubernetes distribution. Longhorn in particular runs engine and replica pods whose scratch
+  # volumes are sized by Longhorn itself.
+  - name: exempt-core-system-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['kube-system', 'longhorn-system'])
+
+  # IMPORTANT for whoever next tunes a *mutate* policy's exclusions: validationFailureAction
+  # only exists on *validate* rules. Every virt-handler/virt-launcher exclusion elsewhere in
+  # this repo was added to *validate* policies that already run in Audit mode, so "Audit"
+  # felt like a low-stakes backstop while the exclusion list was worked out. A mutate rule
+  # has no such backstop -- it always applies, unconditionally, the moment it matches. That
+  # gap is exactly what caused docker-vm to eviction-loop: this policy silently added a
+  # 256Mi sizeLimit to virt-launcher's internal "ephemeral-disks" emptyDir (the containerDisk
+  # copy-on-write overlay backing every write the guest makes to its root filesystem), and
+  # nothing surfaced it as a violation anywhere because a mutate rule doesn't report one --
+  # it just rewrites the object.
+  #
+  # virt-launcher pods run in the VM's own namespace (sandbox-docker, sandbox-talos here),
+  # not in `kubevirt` -- unlike virt-handler, which is a DaemonSet confined to that one
+  # namespace. A namespace-scoped exclusion targeting `kubevirt` would exclude nothing.
+  #
+  # Whole-pod, not per-volume: every emptyDir a virt-launcher pod carries (private, public,
+  # sockets, virt-bin-dir, libvirt-runtime, ephemeral-disks, and container-disks when image
+  # volumes aren't in use) is created internally by virt-controller for KubeVirt's own
+  # bookkeeping -- kubelet already tears the whole pod down when a VM is deleted, so none of
+  # them benefit from an externally imposed cap. Verified against KubeVirt v1.9.0 source
+  # (pkg/virt-controller/services/rendervolumes.go, the emptyDirVolume() helper all of them
+  # go through): it unconditionally emits EmptyDirVolumeSource{} with no SizeLimit, and
+  # there is no KubeVirt/VirtualMachine CR field that feeds one in -- this isn't a case of
+  # "KubeVirt could set its own limit but doesn't"; it has no such knob.
+  #
+  # Deliberately left uncapped rather than re-added at a bigger, hand-picked number: this
+  # volume backs a real VM's disk writes, so any fixed number is a guess divorced from the
+  # workload, and a long-lived VM's overlay only grows -- a bigger cap just relocates the
+  # same eviction loop further down the timeline, most convincingly right after whoever hit
+  # it has stopped watching. The actual backstop is the one Kubernetes already ships for
+  # exactly this shape of problem: kubelet's node-level ephemeral-storage eviction
+  # (nodefs.available). A VM that needs real persistent capacity belongs on a PVC-backed
+  # virtio disk (KubeVirt dataVolumeTemplates/PVC volumes), not written into this
+  # containerDisk overlay -- that's a workload-level fix, not a policy one, and is out of
+  # scope here.
+  #
+  # Name-scoped like every other virt-launcher/virt-handler exclusion in this repo, even
+  # though these pods also carry a stable `kubevirt.io: virt-launcher` label that would work
+  # equally well: kept consistent with the 8 existing name-glob exclusions elsewhere rather
+  # than introducing a second selector style for the same controller-owned pods.
+  #
+  # -- END OF THE VERBATIM PORT. Two notes on how the text above reads against the new kind,
+  # added here rather than edited into it, so the specification stays byte-comparable with what
+  # the legacy file said:
+  #
+  #   * "validationFailureAction" is the LEGACY field name. Its replacement on the new kinds is
+  #     `ValidatingPolicy.spec.validationActions` (design §1.2). The claim the sentence makes is
+  #     unchanged and is if anything sharper now: `validationActions` is a field on
+  #     `ValidatingPolicy` and does not exist on `MutatingPolicy` at all, so there is no Audit
+  #     setting to reach for on this file even in principle.
+  #   * "it just rewrites the object" is now, finally, testable against a real API server rather
+  #     than only asserted. ci/policy-tests/chainsaw/best-practices/add-emptydir-sizelimit/ is
+  #     that test: it applies a real virt-launcher-shaped Pod in `sandbox-docker` to a live
+  #     cluster and asserts the ephemeral-disks emptyDir comes back with NO sizeLimit. Design
+  #     §6.5 selects this policy for cluster time for exactly this reason.
+  - name: exempt-virt-launcher-pods-in-vm-namespaces
+    # `(name + generateName).startsWith(...)` is the repo-wide form for a name glob -- see
+    # pod-security-standard/restricted/exemptions/restrict-volume-types.yaml, whose header
+    # records the measurement behind it (a live controller-created Pod carries BOTH fields; a
+    # `kyverno test` fixture may carry only one, which is why the concatenation is kept).
+    # `spec.variables` are not visible inside `matchConditions` (design §4.1), so the namespace
+    # test is inlined rather than shared with the condition above.
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['sandbox-docker', 'sandbox-talos'] &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-launcher'))
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  mutations:
+  - patchType: ApplyConfiguration
+    applyConfiguration:
+      # `ApplyConfiguration`, not `JSONPatch`, and the choice is load-bearing rather than
+      # stylistic. The legacy rule used `patchesJson6902` with `/spec/volumes/{{elementIndex}}/`
+      # -- a POSITIONAL path into the volumes list, produced by a `foreach` that Kyverno indexed
+      # for it. CEL has no such index-carrying iteration, so a JSONPatch port would have to
+      # reconstruct indices by hand, and a positional patch into a list that another mutating
+      # webhook may have reordered is a defect waiting to happen. `spec.volumes` is declared
+      # `listType: map, listMapKey: name`, so structured merge diff matches BY NAME: the
+      # expression below emits one entry per volume that needs a sizeLimit, and every other
+      # volume -- and every other field of the volumes it does touch -- is left exactly as it
+      # was. Verified on the pinned CLI: a Pod carrying a plain emptyDir, a `medium: Memory`
+      # emptyDir, an already-limited emptyDir, a memory-backed-and-already-limited emptyDir and
+      # a configMap volume comes back with ONLY the plain one changed, list order intact.
       #
-      # Name-scoped like every other virt-launcher/virt-handler exclusion in this repo, even
-      # though these pods also carry a stable `kubevirt.io: virt-launcher` label that would work
-      # equally well: kept consistent with the 8 existing name-glob exclusions elsewhere rather
-      # than introducing a second selector style for the same controller-owned pods.
-      - resources:
-          names:
-          - 'virt-launcher*'
-          namespaces:
-          - sandbox-docker
-          - sandbox-talos
+      # THE `filter()` IS THE POLICY. Its three conjuncts, in the order they appear:
+      #   * `has(v.emptyDir)` -- only emptyDir volumes. A configMap or PVC volume is not this
+      #     policy's business and must not gain an `emptyDir` key.
+      #   * `sizeLimit == ''` -- DO NOT OVERWRITE A DELIBERATELY-SET LIMIT. A workload author who
+      #     wrote `sizeLimit: 8Gi` meant it; silently replacing it with 256Mi would evict them,
+      #     with nothing anywhere reporting that the value had been changed.
+      #   * `medium != 'Memory'` -- DO NOT APPLY DISK-SHAPED REASONING TO A tmpfs. See the header.
+      # Upstream's mpol has neither of the last two as guards. Both have a firing fixture in
+      # ci/policy-tests/kyverno/best-practices/add-emptydir-sizelimit/ and a live case in the
+      # Chainsaw test, because a guard with no fixture is a guard that can be deleted by accident.
+      #
+      # `object.spec.volumes` is dereferenced without `.?` here, unlike everywhere else in this
+      # repo, because the `matchConditions` guard above has already established that
+      # `spec.volumes` exists and contains a qualifying volume -- the two are a pair and must be
+      # edited together.
+      #
+      # Reads flat rather than indented by nesting depth for the reason
+      # add-default-resources.yaml states: .yamllint's `indentation.check-multi-line-strings`.
+      expression: >-
+        Object{spec: Object.spec{volumes: object.spec.volumes.filter(v, has(v.emptyDir) &&
+        v.emptyDir.?sizeLimit.orValue('') == '' && v.emptyDir.?medium.orValue('') != 'Memory')
+        .map(v, Object.spec.volumes{name: v.name,
+        emptyDir: Object.spec.volumes.emptyDir{sizeLimit: '256Mi'}})}}

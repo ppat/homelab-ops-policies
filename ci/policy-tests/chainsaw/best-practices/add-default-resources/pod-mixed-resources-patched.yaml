@@ -1,0 +1,51 @@
+---
+# THE ASSERTION. Written as JMESPath expressions rather than as a shape, because two of the three
+# claims are about a field NOT being present and chainsaw's subset matching cannot express that
+# (a subset match on `resources: {}` is satisfied by a container that gained requests).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-resources-workload
+spec:
+  # The rule fired on a container that declared nothing.
+  (containers[?name == 'app'] | [0].resources.requests.memory): 32Mi
+  (containers[?name == 'app'] | [0].resources.requests.cpu): 32m
+  # The declared value survived and the LIMIT survived. A policy that wrote its defaults
+  # unconditionally would show `cpu: 32m` on the first line, and one whose apply configuration
+  # took the sibling map with it would show `null` on the third.
+  (containers[?name == 'sized'] | [0].resources.requests.cpu): 500m
+  (containers[?name == 'sized'] | [0].resources.limits.memory): 1Gi
+  # 1Gi, NOT 32Mi -- AND THIS IS THE LINE WHERE THE CLUSTER TIER DISAGREES WITH THE OFFLINE ONE.
+  # The fixture declares `limits.memory: 1Gi` and no memory REQUEST. Kubernetes defaults an
+  # absent request from the corresponding limit, and that defaulting happens during decoding,
+  # BEFORE any admission webhook runs -- so what this policy actually sees on a live cluster is a
+  # container that already has `requests.memory: 1Gi`, and the read-back preserves it.
+  # `kyverno test` evaluates fixture YAML with no defaulting step at all, so the SAME fixture at
+  # the CLI tier has no memory request and legitimately comes back with 32Mi. Both are right;
+  # they are answering different questions, and the pair of them is the reason this policy needs
+  # both tiers rather than one.
+  #
+  # It is also the sharper form of the guarantee: without the read-back, a container that set
+  # only a memory LIMIT would have its API-server-derived 1Gi request overwritten with 32Mi on a
+  # live cluster -- silently converting a Guaranteed-ish container into a Burstable one that the
+  # kubelet is far more willing to evict. That failure is invisible to the offline tier. This
+  # line is the only place in either tier that catches it.
+  (containers[?name == 'sized'] | [0].resources.requests.memory): 1Gi
+  # THE DOCUMENTED GAP (design §5.7), asserted live rather than described. `logs` is an
+  # initContainer with `restartPolicy: Always` -- a native sidecar, GA since Kubernetes 1.33 --
+  # so it runs for the Pod's whole lifetime and counts toward its QoS class exactly as `app`
+  # does, and it gets NO default request because the mutation reaches `spec.containers` only.
+  #
+  # This is not a bug report for whoever reads it next. It is the record that the gap predates
+  # the migration (the legacy rule iterated all three container lists and then patched
+  # `spec.containers`, discarding the other two) and that fixing it is a SEPARATE follow-up:
+  # extending the mutation to initContainers changes QoS class and eviction ordering for
+  # workloads nobody is currently thinking about, and design §5.7 forbids that riding on a kind
+  # migration. When the follow-up lands, this line changes from `null` to `32Mi`.
+  (initContainers[?name == 'logs'] | [0].resources.requests): null
+  # The plain init container is the same non-target, asserted separately so that a follow-up
+  # extending the mutation to `initContainers` has to decide about BOTH lists explicitly.
+  (initContainers[?name == 'setup'] | [0].resources.requests): null
+status:
+  # Non-vacuity: six null-or-value checks would be satisfied by a Pod that never started.
+  phase: Running

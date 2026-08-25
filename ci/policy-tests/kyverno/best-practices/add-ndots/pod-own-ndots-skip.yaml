@@ -1,0 +1,24 @@
+---
+# EXPECTED: `skip`.
+#
+# THE IDEMPOTENCE GUARD, AND THE POINT OF THIS POLICY'S DIVERGENCE FROM UPSTREAM. This workload
+# declared `ndots: 5` deliberately; the policy must leave it alone. Upstream kyverno/policies'
+# mpol does the opposite on purpose -- its own description says it sets ndots "replacing any
+# existing value", implemented as a `JSONPatch` `op: remove` of the workload's entry followed by
+# an `op: add` of its own -- and design §3.3 names rejecting that as a requirement of this port.
+#
+# 5, not 1, so the fixture cannot pass by coincidence: a policy that overwrote the value would
+# produce a visibly different document rather than the same one.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-declared-workload
+  namespace: default
+spec:
+  dnsConfig:
+    options:
+    - name: ndots
+      value: "5"
+  containers:
+  - name: app
+    image: nginx:1.29

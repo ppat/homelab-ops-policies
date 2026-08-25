@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip`.
+#
+# Namespace exemption for `dns`: these ARE the cluster DNS servers. Lowering their own resolver
+# ndots is at best meaningless and at worst circular. One fixture per member of the list, so any
+# single member can be
+# dropped and noticed. Non-vacuous: this Pod declares no `dnsConfig` at all, exactly like
+# pod-no-dnsconfig-mutated.yaml, so without the exemption it would be mutated.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-dns-workload
+  namespace: dns
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29

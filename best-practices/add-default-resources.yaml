@@ -1,16 +1,44 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: this repo's own legacy `kyverno.io/v1 ClusterPolicy`, translated in place to
+# `policies.kyverno.io/v1 MutatingPolicy`. Upstream kyverno/policies DOES now carry an mpol form
+# at other-mpol/add-default-resources/add-default-resources.yaml (commit d84f18c9, "Converting
+# ClusterPolicy to MutatingPolicy [patch 0]", 2025-10-29) and its ApplyConfiguration shape is
+# where this file's `Object{...}` skeleton comes from -- but its CONTENT is not adopted: it
+# defaults 100Mi/100m, this estate defaults 32Mi/32m, and that difference is the whole reason
+# this policy exists here rather than being consumed from upstream. Do not "sync with upstream"
+# this file; the numbers below are the policy.
+#
+# HOUSE STYLE: see best-practices/restrict-node-port.yaml, the `ValidatingPolicy` reference set
+# by Wave C of this migration (design doc phase2.0-policy-migration-design-v3.md §9 step 2). Its
+# conventions carry over here unchanged -- `metadata.name` equals the file basename, `spec` keys
+# in the CRD's alphabetical order, rationale in YAML comments rather than annotations. What does
+# NOT carry over is the rule mechanics: a `MutatingPolicy` has no `validations[]`, no
+# `validationActions`, and no pass/fail outcome at all. It emits a patch, and the patch lands.
+#
+# READ THIS BEFORE EDITING ANY MUTATION POLICY IN THIS REPO. A validate policy that is wrong is
+# noticed: it ships in `Audit`, so a bad expression shows up as a PolicyReport entry and a human
+# reads it. A mutate policy has no such backstop -- there is no Audit mode for a patch. It
+# rewrites live objects, silently, the moment it matches. The canonical statement of what that
+# cost this estate in practice is the eviction-loop comment in
+# best-practices/add-emptydir-sizelimit.yaml; read it before changing anything here.
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: add-default-resources
   annotations:
     policies.kyverno.io/title: Add Default Resources
     policies.kyverno.io/category: Mutations
     policies.kyverno.io/severity: medium
-    kyverno.io/kyverno-version: 1.10.0-alpha.2
-    policies.kyverno.io/minversion: 1.7.0
-    kyverno.io/kubernetes-version: "1.26"
     policies.kyverno.io/subject: Pod
+    # `policies.kyverno.io/minversion`, `kyverno.io/kyverno-version` and
+    # `kyverno.io/kubernetes-version` are deliberately dropped rather than carried forward. They
+    # were upstream catalogue metadata describing the LEGACY rule's requirements (Kyverno 1.7.0 /
+    # 1.10.0-alpha.2, Kubernetes 1.26); none of those numbers describes this file, and a stale
+    # version claim on a migrated policy is worse than no claim. The versions that actually
+    # constrain this repo are pinned in CI and stated there:
+    # .github/workflows/policy-cli-tests.yaml (KYVERNO_CLI_VERSION),
+    # .github/workflows/e2e-tests.yaml (KYVERNO_CHART_VERSION), and
+    # ci/policy-tests/chainsaw/kind-config.yaml (the node image).
     policies.kyverno.io/description: >-
       Pods which don't specify at least resource requests are assigned a QoS class
       of BestEffort which can hog resources for other Pods on Nodes. At a minimum,
@@ -18,35 +46,169 @@ metadata:
       class Burstable. This sample mutates any container in a Pod which doesn't
       specify memory or cpu requests to apply some sane defaults.
 spec:
-  background: false
-  rules:
-  - name: add-default-requests
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    preconditions:
-      any:
-      - key: "{{request.operation || 'BACKGROUND'}}"
-        operator: AnyIn
-        value:
-        - CREATE
-        - UPDATE
-    mutate:
-      foreach:
-      - list: "request.object.spec.[ephemeralContainers, initContainers, containers][]"
-        patchStrategicMerge:
-          spec:
-            containers:
-            - (name): "{{element.name}}"
-              resources:
-                requests:
-                  +(memory): "32Mi"
-                  +(cpu): "32m"
-    exclude:
-      any:
-      - resources:
-          namespaces:
-          - kube-system
-          - longhorn-system
+  autogen:
+    podControllers:
+      # AUTOGEN OFF, uniformly across all three mutate policies in this directory -- and unlike
+      # the sibling add-emptydir-sizelimit.yaml, this file's legacy ClusterPolicy carried no
+      # `pod-policies.kyverno.io/autogen-controllers` annotation, so autogen WAS on for it and
+      # pod controllers did have their `spec.template.spec.containers` mutated directly. This is
+      # therefore a real change, and the reason it is nonetheless the correct one is a measurement
+      # rather than a preference.
+      #
+      # MEASURED FIRSTHAND against the pinned stack (kind v1.36.1, Kyverno chart 3.8.2 /
+      # v1.18.2), side by side on one cluster:
+      #
+      #   * A `MutatingPolicy` matching `pods`, with `spec.autogen.podControllers.controllers`
+      #     ABSENT and again with it set explicitly to
+      #     [deployments, daemonsets, statefulsets, jobs, cronjobs], registers a webhook whose
+      #     rules cover `pods` AND NOTHING ELSE, in both cases. Kyverno does compute the rewrite
+      #     -- `status.autogen.configs` holds correct `spec.template.spec.` and
+      #     `spec.jobTemplate.spec.template.spec.` variants with matching `matchConstraints` --
+      #     but nothing wires those to a webhook and no `MutatingAdmissionPolicy` is generated,
+      #     so the API server never calls Kyverno for a Deployment. Polled for 100s; the rules
+      #     never changed. A live Deployment applied under both settings came back with its
+      #     template UNMUTATED, while the Pod it created was mutated.
+      #   * A `ValidatingPolicy` matching `pods` with autogen at its default, on the SAME
+      #     cluster, registers `pods,daemonsets,deployments,replicasets,statefulsets,cronjobs,
+      #     jobs`. So this is not a cluster misconfiguration and not a general autogen failure:
+      #     it is specific to `MutatingPolicy` at this engine version.
+      #
+      # CONSEQUENCE, AND IT IS A REAL ONE THIS MIGRATION CANNOT AVOID: pod controllers stop
+      # carrying the injected defaults in their own templates. Every RUNNING container still gets
+      # them, because a controller's Pods reach admission as Pods and are matched here on their
+      # own account -- the outcome that determines QoS class and eviction order is unchanged --
+      # but `kubectl get deploy -o yaml` no longer shows them. Note this is NOT caused by the `[]`
+      # below; it is caused by the kind change, and `[]` is inert with respect to it today.
+      #
+      # WHY WRITE `[]` AT ALL, then. Because the default is not inert FOREVER. If a future
+      # Kyverno release wires the generated configs to the webhook, a policy relying on the
+      # default would silently start mutating every pod controller in the estate on an engine
+      # upgrade -- a behaviour change with no commit behind it and nothing to attribute it to,
+      # which is the exact failure design §5.7 is written against. `[]` pins today's observed
+      # behaviour so that re-enabling it is a deliberate edit with its own fixtures. It also
+      # keeps the offline CLI tier honest: `kyverno apply`/`kyverno test` DO simulate the autogen
+      # rewrite, so with the default left in place the CLI suite would assert a Deployment
+      # mutation the cluster will never perform.
+      #
+      # Note `spec.autogen` has no `enabled` field: the only spellings are
+      # `autogen.podControllers.controllers` and `autogen.mutatingAdmissionPolicy.enabled`, and
+      # `autogen: {enabled: false}` would be pruned as unknown while leaving autogen at its
+      # default (measured, Wave A1 spike §1).
+      controllers: []
+  evaluation:
+    background:
+      # Ported from the legacy `spec.background: false`, per design §1.2's translation table.
+      # Kept rather than reasoned away: the legacy value existed because the rule read
+      # `{{request.operation}}`, a variable that does not exist during a background scan, and
+      # while the new file no longer reads it (`matchConstraints.operations` carries that job
+      # now -- see below), background evaluation of a MUTATE policy is a different and larger
+      # question than the one this migration is answering. Background scanning plus
+      # `mutateExisting` is how a mutate policy reaches objects that already exist in the
+      # cluster; enabling it would put every already-running Pod in scope for a patch. That is a
+      # behaviour change, and it does not ride on a kind migration.
+      enabled: false
+  matchConditions:
+  # The estate exemption, INLINE rather than in a kustomize patch under an exemptions/ directory.
+  # That is the documented split (design §2.1): PSS mirrors are exemption-free so they can be
+  # diffed against the upstream standard, and `best-practices` policies have no external standard
+  # to diff against, so their exemptions stay in the file. Do not "make this consistent" with
+  # pod-security-standard/*/exemptions/ -- the inconsistency is the design.
+  #
+  # `kube-system` and `longhorn-system` are excluded because both run node-level infrastructure
+  # whose resource shape is set by its own chart or by the Kubernetes distribution, not by this
+  # estate: silently adding a 32Mi/32m request to a component that deliberately ships without one
+  # changes its QoS class from BestEffort to Burstable and therefore changes which pods the
+  # kubelet evicts first under node pressure. These are the pods that should be evicted LAST.
+  - name: exempt-core-system-namespaces
+    # `object.metadata.?namespace.orValue('')` rather than `object.metadata.namespace`: house
+    # style (restrict-node-port.yaml, convention 3) is that CEL over a field the API defines as
+    # optional is null-safe and that the outermost operator is statically bool. `!(x in [...])`
+    # satisfies both. It also matters concretely for the offline CLI tier, which evaluates
+    # fixture YAML with no defaulting step, so a namespace-less Pod fixture is a shape this
+    # expression will genuinely meet.
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['kube-system', 'longhorn-system'])
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      # Replaces the legacy rule's `preconditions` on `{{request.operation || 'BACKGROUND'}}`
+      # being `AnyIn [CREATE, UPDATE]`. Design §1.2: a precondition of that shape is obsolete
+      # under the new kinds because `operations` already excludes everything else. Dropped, not
+      # translated.
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  mutations:
+  - patchType: ApplyConfiguration
+    applyConfiguration:
+      # WHAT THIS DOES, and why it is written as a total rewrite of every container rather than
+      # as a patch of the missing fields only. `ApplyConfiguration` is applied by structured
+      # merge diff, and `spec.containers` is a list with `listType: map, listMapKey: name`, so
+      # emitting `{name: <c.name>, resources: {requests: {...}}}` for a container MERGES into
+      # that container by name and leaves every sibling field -- image, ports, volumeMounts,
+      # securityContext -- untouched. `resources.requests` is itself a map and merges key-wise,
+      # so `limits` survives too. Verified on the pinned CLI: a container carrying
+      # `requests.cpu: 500m` and `limits.memory: 1Gi` comes out with cpu 500m preserved, memory
+      # 32Mi added, and the limit intact.
+      #
+      # The read-back-or-default form (`c.?resources.?requests.?memory.orValue('32Mi')`) is the
+      # CEL equivalent of the legacy JMESPath ADD-IF-ABSENT anchor `+(memory): "32Mi"`. Writing
+      # the existing value back is a no-op for the merge, so "leave a declared request alone" and
+      # "add a default where none is declared" are the same expression. Getting this backwards --
+      # writing 32Mi unconditionally -- would silently shrink every deliberately-sized request in
+      # the estate, with no report anywhere saying so.
+      #
+      # THE READ-BACK IS DOING MORE WORK ON A LIVE CLUSTER THAN THE OFFLINE TIER CAN SHOW.
+      # Kubernetes defaults an absent `requests.<resource>` FROM the corresponding
+      # `limits.<resource>`, during decoding, before any admission webhook runs. So a container
+      # that declares only `limits.memory: 1Gi` reaches this policy already carrying
+      # `requests.memory: 1Gi`, and the read-back preserves it; without the read-back it would be
+      # overwritten with 32Mi, silently downgrading a container the author had sized. `kyverno
+      # test` does no defaulting, so that failure is invisible offline -- it is asserted in
+      # ci/policy-tests/chainsaw/best-practices/add-default-resources/pod-mixed-resources-patched.yaml,
+      # where the same fixture shape legitimately expects 1Gi and its CLI-tier twin legitimately
+      # expects 32Mi. Measured; the divergence is real and both halves are correct.
+      #
+      # 32Mi / 32m ARE THE POLICY. Upstream's mpol and legacy files both say 100Mi/100m; this
+      # estate has said 32Mi/32m since before the migration and the numbers are load-bearing for
+      # a homelab-scale node count. A future sync-with-upstream that "fixes" these is a
+      # regression, not a fix.
+      #
+      # KNOWN GAP, DELIBERATELY NOT FIXED HERE -- NATIVE SIDECAR CONTAINERS (design §5.7).
+      # This mutation reaches `spec.containers` and nothing else. `spec.initContainers` carrying
+      # `restartPolicy: Always` -- native sidecars, GA since Kubernetes 1.33 -- are long-running
+      # containers that count toward the Pod's QoS class and its scheduling footprint exactly the
+      # way a regular container does, and they get no default request from this policy. Neither
+      # do plain init containers or ephemeral containers.
+      #
+      # This is NOT new: the legacy rule's `foreach` iterated
+      # `[ephemeralContainers, initContainers, containers][]` but its patch targeted
+      # `spec.containers`, so the two extra lists were traversed and then discarded -- it was
+      # effectively containers-only already, just less obviously so. This file makes the existing
+      # behaviour explicit instead of preserving a misleading traversal.
+      #
+      # The fix is a SEPARATE, DELIBERATE FOLLOW-UP and must not be made here. Design §5.7 is
+      # explicit that "a behaviour change must not ride on a kind migration or its regressions
+      # become unattributable", and this one is a real behaviour change: extending the mutation to
+      # `initContainers` puts a request on every init container in the estate, which alters QoS
+      # class and eviction ordering for workloads nobody is currently thinking about -- the exact
+      # failure shape the add-emptydir-sizelimit comment describes. It needs its own change, its
+      # own fixtures, and its own blast-radius review, with the kind migration already landed and
+      # bisectable underneath it.
+      #
+      # The expression reads flat rather than indented by nesting depth, which for an
+      # object-construction expression is uglier than it is for a boolean one. It is not
+      # optional: .yamllint sets `indentation.check-multi-line-strings`, so a more-indented
+      # continuation line of a `>-` scalar is an error -- and in a folded scalar it would also
+      # stop being folded, silently leaving a newline inside the CEL string. Same reason
+      # pod-security-standard/restricted/restrict-volume-types.yaml reads flat.
+      expression: >-
+        Object{spec: Object.spec{containers: object.spec.containers.map(c,
+        Object.spec.containers{name: c.name, resources: Object.spec.containers.resources{requests: {
+        'memory': c.?resources.?requests.?memory.orValue('32Mi'),
+        'cpu': c.?resources.?requests.?cpu.orValue('32m')}}})}}

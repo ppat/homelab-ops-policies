@@ -1,0 +1,55 @@
+---
+# EXPECTED: `pass`, mutated -- and exactly ONE of its five volumes changed.
+#
+# THE FLAGSHIP FIXTURE OF THIS DIRECTORY. Every guard this policy carries is exercised in a
+# single Pod, which is the only way to test the PER-VOLUME half of the rule: the policy-wide
+# `matchConditions` gate says "this Pod has work to do", and the `filter()` inside the mutation
+# decides which volumes. A Pod carrying only one kind of volume can never distinguish the two.
+#
+# The five volumes and what each one pins:
+#   * `scratch`            -- plain, disk-backed, uncapped. MUST gain `sizeLimit: 256Mi`. Without
+#                             this the fixture would be a test of the guards only.
+#   * `tmpfs-cache`        -- `medium: Memory`, uncapped. MUST be left alone. A sizeLimit on a
+#                             tmpfs is not a disk quota: those pages are charged to the Pod's
+#                             memory, so the "cap" is a second, invisible memory limit.
+#                             Upstream's mpol dropped this guard.
+#   * `author-sized`       -- disk-backed with `sizeLimit: 8Gi`. MUST keep 8Gi. Replacing a
+#                             deliberately-chosen limit with 256Mi is how a workload gets evicted
+#                             by a policy nobody can see acting.
+#   * `tmpfs-author-sized`  -- both guards true at once, so a policy that got the boolean wrong
+#                             (`||` for `&&`, say) shows up here and not in either single-guard
+#                             fixture.
+#   * `settings`           -- a configMap volume, i.e. not this policy's business at all. It must
+#                             not acquire an `emptyDir` key. `has(v.emptyDir)` is what stops that,
+#                             and without this volume a mis-edit that dropped the check would
+#                             corrupt every non-emptyDir volume in the estate silently.
+#
+# Volume ORDER is also asserted by patched-resources.yaml: `spec.volumes` is `listType: map`
+# keyed on `name`, so the apply configuration must merge by name and preserve position. The
+# legacy rule used positional JSON pointers (`/spec/volumes/{{elementIndex}}/`); if this file
+# were ever ported back to `JSONPatch`, this is the fixture that catches an index off by one.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-volume-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  volumes:
+  - name: scratch
+    emptyDir: {}
+  - name: tmpfs-cache
+    emptyDir:
+      medium: Memory
+  - name: author-sized
+    emptyDir:
+      sizeLimit: 8Gi
+  - name: tmpfs-author-sized
+    emptyDir:
+      medium: Memory
+      sizeLimit: 64Mi
+  - name: settings
+    configMap:
+      name: app-settings

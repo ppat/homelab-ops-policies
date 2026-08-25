@@ -1,0 +1,24 @@
+---
+# EXPECTED: `skip` -- the Pod is not patched at all, not merely patched to no effect.
+#
+# The `medium: Memory` guard standing alone. Its twin inside pod-mixed-emptydirs-mutated.yaml
+# proves the guard works per-volume; this one proves the policy-wide gate agrees, so a Pod whose
+# ONLY emptyDir is memory-backed produces no admission patch whatsoever.
+#
+# That distinction is worth a fixture of its own. Measured on the pinned CLI without the gate:
+# the `ApplyConfiguration` expression always constructs a volumes list, so a Pod with nothing to
+# fix came back carrying `volumes: []` -- a gratuitous rewrite of every Pod in the estate, of
+# exactly the sort that has no Audit report to surface it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tmpfs-only-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  volumes:
+  - name: tmpfs-cache
+    emptyDir:
+      medium: Memory

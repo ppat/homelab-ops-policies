@@ -1,0 +1,23 @@
+---
+# EXPECTED: `skip`.
+#
+# The "already has a sizeLimit" guard standing alone, for the same reason as its memory-backed
+# neighbour: a Pod whose emptyDirs are all already sized must produce no patch at all.
+#
+# Upstream kyverno/policies' mpol does NOT skip here -- it rewrites the field with its own value
+# read back (`has(v.emptyDir.sizeLimit) ? v.emptyDir.sizeLimit : "100Mi"`), which preserves the
+# number but still emits a patch and still takes ownership of the field on every Pod in the
+# cluster. This row is where that difference is asserted rather than argued.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: author-sized-only-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  volumes:
+  - name: author-sized
+    emptyDir:
+      sizeLimit: 8Gi

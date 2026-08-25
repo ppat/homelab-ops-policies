@@ -1,0 +1,24 @@
+---
+# Readiness assertion for add-default-resources. Same shape and same reasoning as
+# ../../restricted/restrict-volume-types/policy-ready.yaml -- read that file's header for the
+# verification against the pinned engine and for why the `(conditions[?type == 'X'])` filter
+# form is what makes each arm non-vacuous (chainsaw matches arrays index-wise and by equal
+# length, so a filter selecting zero elements fails rather than passing quietly).
+#
+# The only difference here is `kind: MutatingPolicy`. The status shape is identical: both new
+# kinds report `status.conditionStatus.ready` plus `WebhookConfigured` and
+# `RBACPermissionsGranted` entries -- verified firsthand on chart 3.8.2 for this kind, not
+# assumed from the ValidatingPolicy case.
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
+metadata:
+  name: add-default-resources
+status:
+  conditionStatus:
+    ready: true
+    (conditions[?type == 'WebhookConfigured']):
+    - status: "True"
+      reason: Succeeded
+    (conditions[?type == 'RBACPermissionsGranted']):
+    - status: "True"
+      reason: Succeeded

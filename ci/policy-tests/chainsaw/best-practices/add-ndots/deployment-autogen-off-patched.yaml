@@ -1,0 +1,23 @@
+---
+# BOTH halves of "autogen did not touch this controller", because the failure mode has two
+# distinguishable symptoms and asserting only one would miss the other:
+#
+#   * `spec.dnsConfig` at the DEPLOYMENT's own level must be absent. That is the junk field the
+#     un-rewritten JSON pointer produces. (A real API server prunes unknown fields on a typed
+#     resource, so on a live cluster the symptom of an autogen re-enable may be silence rather
+#     than a visible field -- which is precisely why the second assertion is also needed.)
+#   * `spec.template.spec.dnsConfig` must ALSO be absent, i.e. the option did not arrive at the
+#     level that would actually matter. This is the assertion that survives field pruning.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ndots-autogen-probe
+spec:
+  (dnsConfig): null
+  template:
+    spec:
+      (dnsConfig): null
+status:
+  # Non-vacuity: without this the two null assertions above would be satisfied by a Deployment
+  # whose pods were never admitted -- the opposite of the conclusion a reader would draw.
+  readyReplicas: 1

@@ -1,0 +1,29 @@
+---
+# EXPECTED: admitted AND mutated. Asserted by pod-non-virt-launcher-in-vm-namespace-patched.yaml.
+#
+# THE NON-VACUITY CONTROL FOR THE FIXTURE ABOVE, and it is not optional: an assertion that
+# virt-launcher's volumes have no sizeLimit is equally satisfied by a policy that was never
+# installed, never became Ready, or matches nothing at all. This Pod sits in the SAME namespace,
+# carries the SAME kind of uncapped emptyDir, and differs only in its name -- so if it comes back
+# capped, the policy is demonstrably live and the exemption above is doing real work.
+#
+# It is also the name-axis falsification of the exemption's conjunction: being in
+# `sandbox-docker` must not on its own be enough to escape the policy, because that namespace has
+# ordinary workloads in it too.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sandbox-helper
+  namespace: sandbox-docker
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: scratch
+      mountPath: /scratch
+  volumes:
+  - name: scratch
+    emptyDir: {}

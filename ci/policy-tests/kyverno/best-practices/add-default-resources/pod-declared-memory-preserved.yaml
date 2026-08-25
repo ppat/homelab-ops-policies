@@ -1,0 +1,25 @@
+---
+# EXPECTED: `pass`, mutated -- cpu added, the declared memory left exactly as written.
+#
+# THE MIRROR IMAGE OF pod-declared-requests-preserved.yaml, AND IT EXISTS BECAUSE THE SUITE WAS
+# MUTATION-TESTED AND FOUND VACUOUS ON THIS AXIS. With only the cpu-declaring fixture present,
+# rewriting the policy's memory expression from
+# `c.?resources.?requests.?memory.orValue('32Mi')` to a bare `'32Mi'` -- i.e. removing the
+# read-back that makes the mutation add-if-absent rather than overwrite -- left the whole suite
+# GREEN, because no fixture declared a memory request for the mutant to clobber. Two fixtures,
+# one per resource axis, is the minimum that can falsify the guarantee this policy makes.
+#
+# 512Mi is deliberately far from 32Mi and not a multiple of it, so a diff of the patched output
+# cannot be misread.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-sized-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+    resources:
+      requests:
+        memory: 512Mi

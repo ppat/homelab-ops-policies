@@ -1,0 +1,66 @@
+---
+# Cluster-tier test for add-ndots. See ../add-emptydir-sizelimit/chainsaw-test.yaml for what a
+# MutatingPolicy test does differently from the ValidatingPolicy house-style reference at
+# ../../restricted/restrict-volume-types/chainsaw-test.yaml (no `[Deny]` patch step, no
+# readiness-gate script, the `assert` steps are the gate).
+#
+# WHAT THE CLUSTER ADDS over ../../../kyverno/best-practices/add-ndots/, which already covers
+# the three conditional arms and both exemption axes offline in 9 assertions:
+#
+#   1. The policy reaches Ready against the real webhook -- policy-ready.yaml.
+#   2. THE ATOMIC-LIST PROPERTY, decided by the live schema rather than modelled offline.
+#      `PodDNSConfig.options` is `listType: atomic`: it has no merge key, so anything that writes
+#      it writes all of it. That is what caused this repo's Phase 1 ndots bug, and
+#      pod-sibling-options.yaml is the shape it broke on.
+#   3. THE IDEMPOTENCE GUARD holding on an object a real API server admitted and stored --
+#      pod-own-ndots.yaml. Upstream's mpol deliberately overrides a declared ndots, so this is a
+#      live guarantee, not a preference.
+#   4. WHAT ACTUALLY HAPPENS TO A POD CONTROLLER. The CLI tier cannot assert the absence of a
+#      match, and worse, it SIMULATES an autogen rewrite the cluster does not perform -- for this
+#      policy that simulation produces a visibly wrong patch (a top-level
+#      `Deployment.spec.dnsConfig`). Only the cluster settles what really happens. See
+#      deployment-autogen-off.yaml.
+#
+# All four Pods land in chainsaw's generated per-test namespace, which is the "ordinary workload,
+# no exemption" shape the claims need -- and a namespace name no exemption in this policy could
+# match. The exempt namespaces (`dns`, `kube-system`, `longhorn-system`, `metallb-system`) are
+# covered at the CLI tier, one fixture each; creating four real namespaces here to re-assert what
+# an offline expression already decides would be the "re-run the CLI suite on a cluster" that
+# design §6.2 says a Chainsaw test must not be.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-ndots
+spec:
+  # Repo-wide: chainsaw templating reads `(...)` as JMESPath and CEL is made of parentheses.
+  template: false
+  steps:
+  - name: install-policy
+    try:
+    - apply:
+        file: ../../../.build/best-practices/add-ndots.yaml
+    - assert:
+        file: policy-ready.yaml
+
+  - name: append-ndots-without-losing-the-workloads-own-options
+    try:
+    # The pair is applied together and asserted together, and neither half stands alone: the
+    # untouched Pod would be equally untouched by a policy that was never installed, and the
+    # appended Pod is what proves the policy is live and doing something.
+    - apply:
+        file: pod-sibling-options.yaml
+    - apply:
+        file: pod-own-ndots.yaml
+    - assert:
+        file: pod-sibling-options-patched.yaml
+    - assert:
+        file: pod-own-ndots-patched.yaml
+
+  - name: pod-controllers-are-not-mutated-but-their-pods-are
+    try:
+    - apply:
+        file: deployment-autogen-off.yaml
+    - assert:
+        file: deployment-autogen-off-patched.yaml
+    - assert:
+        file: pod-from-autogen-probe-patched.yaml

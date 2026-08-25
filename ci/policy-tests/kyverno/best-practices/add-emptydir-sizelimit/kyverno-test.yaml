@@ -1,0 +1,92 @@
+---
+# CLI-tier test for add-emptydir-sizelimit. Conventions: ../restrict-node-port/kyverno-test.yaml
+# (1-5, the ValidatingPolicy reference) and ../add-default-resources/kyverno-test.yaml (6-10, what
+# a MutatingPolicy adds). Nothing new is introduced here.
+#
+# WHAT THIS SUITE IS FOR, stated plainly because this is the policy behind the estate's one real
+# mutate incident: it must be impossible to delete any one of this policy's four guards -- the
+# two rule-semantic ones (`medium: Memory`, existing `sizeLimit`) and the two exemption ones
+# (core-system namespaces, virt-launcher in VM namespaces) -- without a row here turning red.
+# Every `skip` fixture is a REAL target of the rule (each carries a plain, uncapped, disk-backed
+# emptyDir, or is the flagship's mixed Pod), so no exemption can pass vacuously, and the two
+# `-mutated` control fixtures falsify the virt-launcher conjunction one conjunct at a time.
+#
+# TWO THINGS THIS TIER CANNOT DO ABOUT POD CONTROLLERS, recorded because the absence of a
+# Deployment fixture looks like an omission:
+#
+#   * It cannot assert the ABSENCE of a match. `spec.autogen.podControllers.controllers: []`
+#     means a pod controller is not matched, and `kyverno test` has no way to say "this resource
+#     must produce no result". Measured: a `result: skip` row for a Deployment is red when
+#     autogen is off (there is no result to match) AND red when it is on (the result is `pass`).
+#   * Worse, it MODELS POD CONTROLLERS WRONGLY. `kyverno apply`/`kyverno test` simulate the
+#     autogen rewrite; a real cluster at chart 3.8.2 registers an mpol webhook for `pods` only,
+#     whatever `spec.autogen` says. Any Deployment row added here would assert behaviour the
+#     estate does not have.
+#
+# Pod-controller behaviour is therefore asserted at the cluster tier --
+# ../../../chainsaw/best-practices/add-emptydir-sizelimit/deployment-autogen-off.yaml applies a
+# real Deployment, asserts its template came back WITHOUT a sizeLimit, and asserts the Pod it
+# created came back WITH one. Do not "restore coverage" by adding a Deployment row here.
+#
+# Otherwise the cluster tier (../../../chainsaw/best-practices/add-emptydir-sizelimit/) does NOT
+# repeat any of this. It exists for the one thing offline evaluation cannot show: the patch
+# landing, or not landing, on an object a real API server has admitted.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-emptydir-sizelimit
+policies:
+- ../../../.build/best-practices/add-emptydir-sizelimit.yaml
+resources:
+- pod-mixed-emptydirs-mutated.yaml
+- pod-only-memory-emptydir-skip.yaml
+- pod-only-author-sized-emptydir-skip.yaml
+- pod-no-volumes-skip.yaml
+- pod-kube-system-skip.yaml
+- pod-longhorn-system-skip.yaml
+- pod-virt-launcher-sandbox-docker-skip.yaml
+- pod-virt-launcher-sandbox-talos-generatename-skip.yaml
+- pod-non-virt-launcher-in-vm-namespace-mutated.yaml
+- pod-virt-launcher-name-outside-vm-namespace-mutated.yaml
+results:
+# The rule doing its job, plus both non-vacuity controls on the virt-launcher exemption. All
+# three are asserted against patched-resources.yaml, which is where the per-volume discrimination
+# actually lives.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/mixed-volume-workload
+  - sandbox-docker/sandbox-helper
+  - default/virt-launcher-impostor
+  patchedResources: patched-resources.yaml
+  failOnMissingResources: true
+  result: pass
+# The two RULE-SEMANTIC guards and the nothing-to-do case, as `skip`: filtered by
+# `matchConditions` before the mutation ran, so no patch is emitted at all. `pass` here would
+# mean the policy rewrote the object and happened to produce the same bytes -- a different and
+# weaker claim, and not the one this policy makes.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/tmpfs-only-workload
+  - default/author-sized-only-workload
+  - default/volumeless-workload
+  result: skip
+# The two ESTATE EXEMPTIONS. Listed in one row because they share a verdict; each namespace and
+# each axis of the virt-launcher conjunction has its own fixture so any single one can be
+# falsified alone.
+#
+# The talos fixture has NO `metadata.name`, so its selector is `sandbox-talos/` -- the
+# `<namespace>/<name>` form with an empty name. That is deliberate and is the only object shape
+# in either test tier that exercises the `generateName`-only branch of the name glob.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/emptydir-system-workload
+  - longhorn-system/emptydir-longhorn-workload
+  - sandbox-docker/virt-launcher-vmdocker-x9k2p
+  - sandbox-talos/
+  result: skip
