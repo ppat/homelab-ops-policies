@@ -1,5 +1,5 @@
 ---
-# EXPECTED: FLAGGED (kyverno apply exits 1).
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
 #
 # Allowing `image` must not become a way to smuggle in something else. The rule's condition
 # flattens the keys of *every* entry in spec.volumes into one list and denies if ANY of them is

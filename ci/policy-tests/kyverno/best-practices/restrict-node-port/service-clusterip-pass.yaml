@@ -1,0 +1,18 @@
+---
+# EXPECTED: `pass`.
+#
+# The ordinary case, with `spec.type` written out explicitly. Paired with
+# service-no-type-pass.yaml, which asserts the same outcome for a Service that OMITS `spec.type`
+# -- the two together are what pin the policy's null-handling, not just its NodePort comparison.
+apiVersion: v1
+kind: Service
+metadata:
+  name: internal-api
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: internal-api
+  ports:
+  - port: 80
+    targetPort: 8080

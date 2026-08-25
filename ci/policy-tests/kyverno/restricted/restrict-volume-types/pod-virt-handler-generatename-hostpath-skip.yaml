@@ -1,0 +1,51 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# NEW WITH THE POLICY-KIND MIGRATION. A Pod carrying `metadata.generateName` and NO
+# `metadata.name`. It pins that the exemption expression
+# `(object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith(...)`
+# in ../../../../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml still
+# matches when only one of the two fields is present -- measured in the Wave A1 spike (§6): a
+# name-only expression `Fail`s this pod while the shipped concatenated form `Skip`s it.
+#
+# READ THIS BEFORE PROMOTING THE FIXTURE TO THE CLUSTER TIER, or before repeating the design
+# doc's §2.2 justification for the concatenation. §2.2 says this is the shape a controller-created
+# Pod has at CREATE, so that a name-only expression would stop firing at real admission time.
+# That is NOT true of the stack this repo pins. Measured against kind v1.36.1 + Kyverno chart
+# 3.8.2 with a probe policy echoing both fields, DaemonSet- and Deployment-created Pods reach the
+# webhook with BOTH populated (`name=[dsprobe-4g8jg] generateName=[dsprobe-]`): the API server
+# generates the name before admission runs. This shape therefore belongs to THIS tier -- raw
+# fixture YAML, evaluated with no API-server name generation -- and a Chainsaw test cannot
+# construct it, exactly as the CLI tier cannot construct a defaulted `Service.spec.type`.
+#
+# It is still worth keeping. The expression it protects is defensive by design, and the cost of
+# an unmatched exemption is a real workload landing in the audit stream (or, under `[Deny]`,
+# refused) -- so the cheaper move is to keep tolerating both shapes and to keep a fixture that
+# says so. Its populated-name twin is pod-virt-handler-hostpath-skip.yaml.
+#
+# ADDRESSING THIS FIXTURE FROM kyverno-test.yaml: its `resources:` selector is `kubevirt/` --
+# namespace, slash, EMPTY name. The bare-name form does not work here (`metadata.name` is `""`,
+# not `virt-handler-`), and a selector matching nothing does not fail the test, it silently
+# broadens to every resource in the file (Wave A1 spike §2, finding B). That is why every
+# selector in this suite is written `<namespace>/<name>` and why the suite mixes pass/fail/skip
+# expectations: a broadened selector then contradicts itself instead of going quietly green.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: virt-handler-
+  namespace: kubevirt
+spec:
+  restartPolicy: Always
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0
+    volumeMounts:
+    - name: libvirt-runtimes
+      mountPath: /var/run/kubevirt-libvirt-runtimes
+  volumes:
+  - name: libvirt-runtimes
+    hostPath:
+      path: /var/run/kubevirt-libvirt-runtimes
+  - name: kubelet
+    hostPath:
+      path: /var/lib/kubelet

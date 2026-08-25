@@ -1,0 +1,69 @@
+---
+# EXPECTED: the DaemonSet is admitted, AND its pods are admitted, AND it becomes fully ready.
+#
+# THE TEST THIS WHOLE TIER EXISTS FOR (design doc phase2.0-policy-migration-design-v3.md §6.2:
+# the CLI tier owns exemption expressions, the cluster tier owns "the real-controller case -- a
+# live DaemonSet's pods arriving through actual admission"). Everything else here could be
+# established offline; this could not.
+#
+# What only a cluster can show, stated precisely -- and NARROWER than the design doc's §6.2 and
+# §2.2 suggest, because those rest on a premise this test disproved. They say a DaemonSet-created
+# Pod reaches the webhook with `generateName` and no `name`. Measured against the pinned stack
+# (kind v1.36.1 + Kyverno chart 3.8.2) with a probe policy echoing both fields, it reaches the
+# webhook with BOTH -- `name=[dsprobe-4g8jg] generateName=[dsprobe-]` -- because the API server
+# generates the name before admission runs. The name-less shape is a CLI-tier shape, and lives in
+# ../../../kyverno/restricted/restrict-volume-types/pod-virt-handler-generatename-hostpath-skip.yaml.
+#
+# What this test therefore does prove, all of it invisible offline:
+#   * The exemption is evaluated by the real admission webhook against an object the DAEMONSET
+#     CONTROLLER generated, not one a human hand-wrote to look like it. The CLI tier only ever
+#     sees the latter.
+#   * Under real `[Deny]`, the exempted workload actually RUNS -- `numberReady` reaching
+#     `desiredNumberScheduled` is the end-to-end outcome the estate cares about. Delete the
+#     exemption and admission refuses every pod, the kubelet never gets one, and this never
+#     converges.
+#   * `spec.autogen.podControllers.controllers: []` holds against a real pod controller. With
+#     autogen ON Kyverno rewrites `object.` to `object.spec.template.` inside the matchCondition;
+#     this DaemonSet is the shape that would expose it, and no Pod-shaped fixture can.
+#
+# TOLERATIONS are required, not decorative: the kind cluster
+# (../../kind-config.yaml) is a single control-plane node carrying
+# `node-role.kubernetes.io/control-plane:NoSchedule`, so an untolerated DaemonSet schedules zero
+# pods and the readiness assertion would pass vacuously against 0/0 rather than 1/1.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: virt-handler
+  namespace: kubevirt
+spec:
+  selector:
+    matchLabels:
+      app: virt-handler
+  template:
+    metadata:
+      labels:
+        app: virt-handler
+    spec:
+      tolerations:
+      - operator: Exists
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: virt-handler
+        image: registry.k8s.io/pause:3.10
+        volumeMounts:
+        - name: kubelet-pods
+          mountPath: /pods
+          readOnly: true
+      volumes:
+      # hostPath, and only hostPath, is what this exemption still decides. An `image`-volume
+      # DaemonSet would be admitted whether the exemption existed or not, now that `image` is
+      # globally allow-listed -- that is a documented past mistake in this suite, not a
+      # hypothetical one. Paths that exist on a kind node, so the pod can actually run.
+      - name: kubelet-pods
+        hostPath:
+          path: /var/lib/kubelet/pods
+          type: DirectoryOrCreate
+      - name: host-log
+        hostPath:
+          path: /var/log
+          type: Directory

@@ -1,12 +1,44 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: ported from upstream kyverno/policies
+# best-practices-vpol/restrict-node-port/restrict-node-port.yaml at commit 702a9bb2 ("feat: add
+# vpol samples", 2026-02-12), which is itself upstream's CEL rewrite of the legacy
+# best-practices/restrict-node-port/restrict-node-port.yaml ClusterPolicy this repo carried
+# until the policies.kyverno.io migration. Two deliberate deviations from that upstream file are
+# marked DEVIATION below; everything else is upstream's text.
+#
+# This file is the HOUSE-STYLE REFERENCE for `ValidatingPolicy` in this repo (design doc
+# phase2.0-policy-migration-design-v3.md §9 step 2). The conventions it sets, in the order a
+# reader meets them:
+#
+#   1. `metadata.name` EQUALS the file basename. The legacy file was `restrict-node-port.yaml`
+#      carrying `metadata.name: restrict-nodeport`; the two are reconciled here rather than
+#      preserved, because ci/scripts/build-policies.sh names its split output after
+#      `metadata.name` (that being the only identifier that survives `kustomize build`), so a
+#      mismatch means a test file referencing `.build/<profile>/<basename>.yaml` silently finds
+#      nothing. Renaming costs one PolicyReport key, which nothing consumes programmatically and
+#      which this migration is already rewriting wholesale (design §2.3 makes the same trade).
+#   2. Every `spec` key is written in the CRD's own alphabetical order, so a pure file and the
+#      `kustomize build` output of its profile diff cleanly against each other.
+#   3. CEL over a field the API defines as optional is written
+#      `object.<path>.?<field>.orValue(<the API's own default>)`, and the OUTERMOST operator of
+#      every expression is a comparison, `!`, `&&`/`||`, or a bool-returning macro. Kyverno's
+#      compiler requires each expression to be STATICALLY bool: `object.spec` is unstructured, so
+#      `object.spec.?x.orValue(true)` types as `dyn` and is REJECTED at compile time even though
+#      it evaluates to a boolean (measured, Wave A1 spike §4). A comparison against a default is
+#      both the null-safe form and the statically-bool form, so one habit buys both.
+#   4. Prose that explains WHY lives in YAML comments, not in `metadata.annotations`. The
+#      `policies.kyverno.io/*` annotations stay short and machine-shaped (they are upstream's
+#      catalogue metadata); the reasoning that a future reader needs is comment text, which
+#      `kustomize build` preserves in neither -- it is here for the repo, not for the cluster.
+#   5. `spec.autogen` is ABSENT here and that is deliberate, not an oversight -- see its own note
+#      below. Do not copy the absence to a Pod-matching policy; copy the reasoning.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
-  name: restrict-nodeport
+  name: restrict-node-port
   annotations:
     policies.kyverno.io/title: Disallow NodePort
     policies.kyverno.io/category: Best Practices
-    policies.kyverno.io/minversion: 1.6.0
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Service
     policies.kyverno.io/description: >-
@@ -16,17 +48,53 @@ metadata:
       with additional upstream security checks. This policy validates that any new Services
       do not use the `NodePort` type.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: validate-nodeport
-    match:
-      any:
-      - resources:
-          kinds:
-          - Service
-    validate:
-      message: "Services of type NodePort are not allowed."
-      pattern:
-        spec:
-          =(type): "!NodePort"
+  # `spec.autogen` is intentionally not set. Autogen only rewrites a policy that matches `pods`
+  # (it synthesises the pod-controller variants of such a policy); this policy matches Services,
+  # so there is nothing for it to rewrite and the field would be inert either way. PSS policies
+  # in this repo DO set `spec.autogen.podControllers.controllers: []` explicitly -- see design
+  # §2.4 -- because there the default (autogen ON) silently rewrites `object.` to
+  # `object.spec.template.` inside `matchConditions` and breaks metadata-based exemptions. That
+  # reasoning does not reach this file. Note also that `spec.autogen` has NO `enabled` field: the
+  # only spellings are `autogen.podControllers.controllers` and
+  # `autogen.validatingAdmissionPolicy.enabled`, and `autogen: {enabled: false}` would be pruned
+  # as unknown while leaving autogen ON (measured, Wave A1 spike §1).
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - services
+  # No estate exemptions apply to this policy, so there is no
+  # `best-practices/exemptions/restrict-node-port.yaml` and no `matchConditions` here. Unlike the
+  # PSS mirrors, `best-practices` policies keep any exemptions they do have INLINE rather than in
+  # a kustomize patch layer (design §2.1: the pure-mirror/exemption split buys diffability
+  # against an external standard, and these policies have no external standard to diff against).
+  validationActions:
+  - Audit
+  validations:
+  # DEVIATION 1 from upstream, which writes `object.spec.type != 'NodePort'`. `Service.spec.type`
+  # is an OPTIONAL field defaulted to ClusterIP by the API server, and CEL has no notion of that
+  # default: on an object where the key is genuinely absent, upstream's form raises an evaluation
+  # error rather than returning true. That is not hypothetical -- the API server defaults
+  # `spec.type` before admission, so a live CREATE always carries it, but the offline
+  # `kyverno test` tier evaluates fixture YAML with no defaulting step at all, and a hand-written
+  # Service fixture that omits `spec.type` is the normal way to write "an ordinary ClusterVIP
+  # Service". Measured: upstream's form errors on exactly that fixture; this form returns true.
+  # The legacy ClusterPolicy this replaces had the same tolerance, spelled as the JMESPath
+  # conditional anchor `=(type): "!NodePort"` ("if type is present, it must not be NodePort"), so
+  # this is preservation of existing behaviour, not a new allowance.
+  - expression: >-
+      object.spec.?type.orValue('ClusterIP') != 'NodePort'
+    # DEVIATION 2 from upstream, which retitles the message. Upstream's vpol rewrite reworded
+    # both the description annotation and this message; this file keeps the LEGACY wording of
+    # both, because they are what already appears in this estate's PolicyReports and there is no
+    # value in churning the human-facing string during a mechanical kind migration.
+    message: Services of type NodePort are not allowed.

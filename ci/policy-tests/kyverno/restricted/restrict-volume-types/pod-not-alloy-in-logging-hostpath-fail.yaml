@@ -1,0 +1,40 @@
+---
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
+#
+# NEW WITH THE POLICY-KIND MIGRATION. The NAME-axis control for the `alloy*` / `logging`
+# exemption: right namespace, wrong name, same hostPath volumes as
+# pod-alloy-hostpath-skip.yaml. If `alloy*` were ever dropped from that exemption -- leaving it
+# scoped to the namespace alone -- this pod would start being skipped and this fixture is the
+# only thing in the suite that would notice.
+#
+# That widening is not a hypothetical shape. `logging` runs more than Alloy (a Loki stack, its
+# gateway, its caches), and "namespace-only" is the easier expression to write, so it is the
+# likely accident. The exemption's own rationale in
+# ../../../../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml already
+# names the residual risk it accepts -- that anything ELSE deployed into `logging` and named
+# `alloy*` inherits the exemption -- and this fixture pins the boundary of that acceptance.
+#
+# The namespace-axis control for the same exemption is every other -fail fixture here: they all
+# carry hostPath outside `logging` and are all flagged.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: loki-backend-0
+  namespace: logging
+spec:
+  restartPolicy: Always
+  containers:
+  - name: loki
+    image: docker.io/grafana/loki:3.6.1
+    volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+      readOnly: true
+  volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: machine-id
+    hostPath:
+      path: /etc/machine-id
+      type: File

@@ -1,0 +1,21 @@
+---
+# `numberReady` EQUAL TO `desiredNumberScheduled`, both pinned to the literal 1, is the ALL-shaped
+# form of "every pod this DaemonSet wants was admitted and is running". Asserting only
+# `numberReady: 1` would not notice a second node appearing and its pod being rejected; asserting
+# only the equality of the two fields would be satisfied by 0 == 0, which is exactly the state a
+# DaemonSet sits in when nothing schedules (see the tolerations note in
+# daemonset-virt-handler.yaml). The literal 1 is coupled to ../../kind-config.yaml being a
+# single-node cluster -- if that config ever grows nodes, this number moves with it.
+#
+# Scalars compare by strict equality and maps are subset-matched, so a status field that is not
+# yet populated simply does not match and chainsaw RETRIES until the step timeout, which is the
+# behaviour wanted here (the DaemonSet needs a moment to pull and start). An expression assertion
+# would instead abort the step on an unpopulated field rather than retry it.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: virt-handler
+  namespace: kubevirt
+status:
+  desiredNumberScheduled: 1
+  numberReady: 1

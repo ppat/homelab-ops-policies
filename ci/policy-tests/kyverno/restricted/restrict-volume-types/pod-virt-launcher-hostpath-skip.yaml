@@ -1,5 +1,8 @@
 ---
-# EXPECTED: ALLOWED (kyverno apply exits 0), by exclusion rather than by the allow-list.
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-virt-launcher matchCondition -- see
+# pod-virt-handler-hostpath-skip.yaml's header for what the paired expectation buys.
 #
 # SYNTHETIC SHAPE, AND DELIBERATELY SO -- read this before "correcting" it against a live pod.
 # Measured against both live virt-launcher pods (virt-launcher-docker-vm-*, ns sandbox-docker;
@@ -15,7 +18,7 @@
 # type or a hostPath-backed virtiofs filesystem would reintroduce hostPath here. Neither VM does
 # today, which is exactly why nothing else in this suite would notice the exclusion disappearing.
 #
-# Its paired control is pod-virt-launcher-in-kubevirt-hostpath-denied.yaml (right name, wrong
+# Its paired control is pod-virt-launcher-in-kubevirt-hostpath-fail.yaml (right name, wrong
 # namespace). Note the honest consequence this fixture pins: the exclusion means a future VM in
 # sandbox-docker or sandbox-talos that mounts a host path lands unflagged in the audit stream.
 # That was true before this change too -- it is retained, not introduced, here.

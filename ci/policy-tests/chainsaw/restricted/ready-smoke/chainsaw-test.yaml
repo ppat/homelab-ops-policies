@@ -1,0 +1,50 @@
+---
+# HOUSE-STYLE REFERENCE for a profile ready-smoke (design doc
+# phase2.0-policy-migration-design-v3.md §6.4). One of three, one per profile directory; the
+# other two (../../baseline/ready-smoke/, ../../best-practices/ready-smoke/) are this file with
+# the profile name changed, plus whatever prerequisites that profile's policies need.
+#
+# WHAT THIS TIER IS FOR, and equally what it is NOT for. It is the live analogue of the offline
+# structural smoke check (.github/workflows/policy-smoke-check.yaml): "every policy this profile
+# ships is accepted by the real Kyverno webhook and reaches Ready". That is the cheapest possible
+# cluster-level catch for the two failure classes the CLI cannot see at all -- CEL the admission
+# webhook refuses, and RBAC the background/cleanup controller lacks -- across every policy in the
+# profile in one test. It asserts NOTHING about what any policy decides; rule semantics belong to
+# the `kyverno test` tier (§6.2), and a Chainsaw test earns its cluster time only where the
+# cluster tells us something the CLI cannot.
+#
+# NOTE ON SCOPE OVERLAP: `restricted`'s kustomization.yaml lists `../baseline` as a resource, so
+# this profile's built output contains baseline's policies too and this test necessarily covers
+# them. ../../baseline/ready-smoke/ is kept anyway, because a consumer can point a Flux
+# Kustomization at `pod-security-standard/baseline` alone (README.md: the nas cluster does), and
+# "baseline builds and goes Ready on its own" is that consumer's claim, not a corollary of this
+# one.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restricted-ready-smoke
+spec:
+  # `template: false` on every test in this repo. Chainsaw's templating treats `(...)` as a
+  # JMESPath expression, and CEL is made of parentheses -- an untemplated policy is not merely
+  # safer, it is the only way these files survive being applied. Upstream kyverno/policies hit
+  # this and it is carried here deliberately, not copied blindly.
+  template: false
+  steps:
+  - name: install-profile
+    try:
+    # A glob, so this test needs no edit as policies are ported one wave at a time -- it always
+    # covers whatever the profile currently builds to. Applying through chainsaw (rather than
+    # kubectl inside the script below) is what registers these cluster-scoped objects for
+    # chainsaw's own cleanup; leaving them behind would leak into every later test.
+    - apply:
+        file: ../../../.build/restricted/*.yaml
+  - name: assert-every-policy-ready
+    try:
+    # An explicit ALL-semantics count, not a chainsaw `assert:` block. A resource-shaped
+    # assertion naming a Kind but no name is satisfied by ANY ONE matching object, so it would go
+    # green with one Ready policy and the rest broken. The script's own header carries the full
+    # reasoning and the reference to this org's assertion-semantics suite that establishes it.
+    - script:
+        content: ../../scripts/assert-built-profile-ready.sh ../../../.build/restricted 120
+        check:
+          ($error == null): true

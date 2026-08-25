@@ -13,10 +13,41 @@ manifests actually look like — don't write one prematurely, and don't stretch
 this file or the README to cover architecture decisions that migration will
 change.
 
+## Migration in progress — read this before trusting the rest of this file
+
+The planned migration off Kyverno's deprecated policy kinds is **underway**,
+so this repo currently holds a MIX of kinds and two statements below are
+already partly false. They are left in place rather than rewritten piecemeal
+because the full README/CLAUDE.md rewrite is a single later step of that
+migration, and a half-rewrite would be harder to review than a marked one.
+What has changed so far:
+
+- **Not every policy is a `ClusterPolicy`.** `best-practices/restrict-node-port.yaml`
+  and `pod-security-standard/restricted/restrict-volume-types.yaml` are
+  `policies.kyverno.io/v1 ValidatingPolicy`. The rest are still legacy kinds
+  and are being ported policy by policy. Read those two first: they are the
+  house-style references, and their file headers state the conventions
+  (`metadata.name` equals the file basename, alphabetical `spec` keys,
+  null-safe statically-bool CEL, where provenance/snapshot comments go).
+- **"Exclusions are not meaningfully patchable from outside" is falsified for
+  the new kinds** — see the section below, which still describes the legacy
+  API. `ValidatingPolicy.spec.matchConditions` is a flat top-level list whose
+  entries are ANDed, so appending to it can only ever narrow a policy. This
+  repo now uses that as a real seam: PSS policy files are exemption-free
+  mirrors, and every estate exemption is a JSON6902 patch under
+  `pod-security-standard/<profile>/exemptions/<policy>.yaml`, wired up by a
+  `patches:` entry in that profile's `kustomization.yaml`. See
+  `pod-security-standard/restricted/exemptions/restrict-volume-types.yaml` --
+  it is the house-style reference for an exemption patch. `best-practices/`
+  policies deliberately keep their exemptions inline.
+- **What a consumer applies is the `kustomize build` output of a profile
+  directory**, not any single file, because a policy and its exemption patch
+  are two files. Both test tiers run against that built output
+  (`ci/scripts/build-policies.sh`), never against a policy file in isolation.
+
 ## What this repo is (and isn't)
 
-This is a content-only repo: Kyverno `ClusterPolicy`/`ClusterCleanupPolicy`
-YAML, nothing else. There is no application code, no Flux wiring, and no
+This is a content-only repo: Kyverno policy YAML, nothing else. There is no application code, no Flux wiring, and no
 cluster awareness — this repo doesn't know what's consuming it, how many
 consumers there are, or what they're called. It's released independently and
 referenced by a pinned tag from wherever it's applied, the same pattern
@@ -93,14 +124,29 @@ whether matching files changed. The `kubernetes-manifests` job runs
 `pod-security-standard/**/*.yaml`, configured by `ci/validation/.env` and
 `ci/validation/kustomization.yaml`.
 
-`.github/workflows/static-analysis.yaml` runs the Kyverno CLI (`kyverno
-apply`, no live cluster required) against the policy YAML on PRs that touch
-policy files, plus weekly: a `volume-types` job that runs the fixture-based
-behavioral suite in `ci/policy-tests/fixtures/restrict-volume-types/` against
-the real `restrict-volume-types` policy, and a `structural-smoke-check` job
-that probes every `ClusterPolicy`/`ClusterCleanupPolicy` in the repo against
-`ci/policy-tests/smoke-resource.yaml` to assert each one still parses and
-loads (not that it behaves any particular way).
+Each remaining CI concern gets its own workflow file rather than sharing one:
+
+- `.github/workflows/policy-smoke-check.yaml` — probes every policy in the
+  repo (both the shipped per-file YAML and the `kustomize build` output of
+  each profile) against `ci/policy-tests/smoke-resource.yaml` with `kyverno
+  apply`, asserting each one still parses, is accepted by Kyverno's CRD
+  schema, and has no CEL compile or runtime error. Not that it behaves any
+  particular way.
+- `.github/workflows/policy-cli-tests.yaml` — the `kyverno test` tier:
+  `cli.kyverno.io/v1alpha1 Test` files under `ci/policy-tests/kyverno/`,
+  mirroring the policy tree by profile and policy name. This is where a
+  policy's rule semantics and its exemption expressions are asserted, per
+  resource, with pass/fail/skip distinguished. No cluster required.
+- `.github/workflows/e2e-tests.yaml` — the Chainsaw cluster tier: a real kind
+  cluster on the estate's pinned Kubernetes minor plus the estate's pinned
+  Kyverno chart, running `ci/policy-tests/chainsaw/`. Reserved for what a
+  cluster can prove and the CLI cannot (policy readiness against the real
+  webhook, rejection under `[Deny]`, an exemption firing for a
+  controller-created pod), not a re-run of the CLI tier.
+
+The Kyverno CLI version, the kind node image, and the Kyverno Helm chart
+version are kept in lockstep across those three files and with what the
+estate actually runs; each pin carries a comment saying so.
 
 `.github/workflows/release.yaml` runs release-please on pushes to `main`.
 `.pre-commit-config.yaml` mirrors the yamllint/markdownlint/shellcheck/

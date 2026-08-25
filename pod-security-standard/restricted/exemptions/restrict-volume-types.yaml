@@ -1,0 +1,137 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../restrict-volume-types.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml; this file is NOT a Kubernetes manifest and is not in `resources:`. It is
+# a JSON6902 patch document, and on its own it is not valid Kyverno YAML -- which is why both
+# test tiers run against `kustomize build` output rather than against a policy file directly
+# (design §6.3, ci/scripts/build-policies.sh).
+#
+# THIS FILE IS THE HOUSE-STYLE REFERENCE for an exemption patch. The conventions:
+#
+#   1. ONE PATCH FILE PER POLICY, named after the policy, under `<profile>/exemptions/`. Each
+#      entry is `op: add` onto `/spec/matchConditions/-` -- a per-item append onto the empty list
+#      the pure file declares. Never a whole-list `op: add`/`op: replace`: an append can only
+#      ever NARROW the policy, which is the correct failure mode for an exemption seam, whereas a
+#      whole-list write can silently drop a sibling exemption.
+#   2. EVERY `matchConditions` ENTRY IS ANDed and states when the policy SHOULD APPLY. An
+#      exemption is therefore the NEGATION of "this is the exempt workload" -- hence the leading
+#      `!(...)` on all three below. Getting this backwards disables the policy for everything
+#      except the exempt workload, which no fixture asserting a `pass` would notice; the paired
+#      `-fail` fixtures in ci/policy-tests/kyverno/restricted/restrict-volume-types/ are what
+#      catch it.
+#   3. NAME MATCHING CONCATENATES `name` AND `generateName`, always:
+#      `(object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))`.
+#      This is defensive, and its rationale is NARROWER than the design doc's §2.2 states -- read
+#      this before repeating the design's reasoning to anyone. §2.2 (and the Wave A1 spike's §6,
+#      which measured the CLI only) says a controller-created Pod reaches CREATE with
+#      `generateName` and an EMPTY `name`, so that a name-only expression would stop firing at
+#      admission time. MEASURED FIRSTHAND against the real stack (kind v1.36.1 + Kyverno chart
+#      3.8.2, a probe policy echoing both fields via `messageExpression`), that is NOT what
+#      happens: a DaemonSet- and a Deployment-created Pod both arrive at the webhook carrying
+#      BOTH fields --
+#          name=[dsprobe-4g8jg]                  generateName=[dsprobe-]
+#          name=[deployprobe-77955b8c45-52ls7]   generateName=[deployprobe-77955b8c45-]
+#      -- because the API server generates the name before admission runs. A hand-written bare
+#      Pod carries `name` and no `generateName`. So at LIVE admission a name-only expression
+#      would in fact have worked.
+#      The concatenation is kept anyway, and downstream waves should keep it, because it costs
+#      nothing and it covers the shapes where only one field is present: `kyverno test` fixtures,
+#      which are raw YAML evaluated with no API-server defaulting or name generation (the CLI
+#      tier's ...-generatename-...-skip.yaml fixture is exactly that shape and is what A1
+#      measured), and any future path that presents an object pre-name-generation. What must NOT
+#      be repeated is the claim that live admission needs it.
+#   3b. A corollary worth stating because it looks like a bug: on a live Pod the concatenation
+#      evaluates to something like `"dsprobe-4g8jg" + "dsprobe-"`. `startsWith` reads the `name`
+#      half, which is what the glob was always about. A false positive would need a Pod whose
+#      combined string starts with the glob only by straddling the join -- i.e. a short `name`
+#      supplying a prefix the `generateName` completes -- which cannot arise from generated names
+#      (a generated name always BEGINS with its generateName) and would additionally have to land
+#      in the exempted namespace.
+#   4. A TRAILING-`*` GLOB BECOMES `.startsWith(<the glob minus its star>)`. Every legacy
+#      `names:` entry this repo carries is of that shape; anything else needs thought, not a
+#      mechanical translation.
+#   5. NAMESPACE IS ALWAYS PART OF THE PREDICATE, never dropped, because every legacy exclusion
+#      was scoped by name AND namespace and a name-only exemption is a materially weaker policy.
+#      One namespace uses `==`; several use `in [...]`.
+#   6. `spec.variables` are NOT in scope inside `matchConditions` (compile error: undefined
+#      field), so these expressions inline everything (design §4.1). Accept the repetition.
+#   7. The rationale comments below are ported VERBATIM from the legacy policy's `exclude:` block.
+#      They are the reason these exemptions can be re-judged rather than merely inherited; §3.2
+#      of the design names this set as a specification, not as history.
+
+# virt-handler mounts hostPath volumes for libvirt/qemu runtime state, kubelet's
+# pod/device dirs, and node-labeller data (see ../baseline/disallow-host-path.yaml) --
+# hostPath isn't in this policy's allow-list at all, so anything using it needs this
+# exclusion. Measured on the live DaemonSet pod: six of them
+# (/var/run/kubevirt-libvirt-runtimes, /var/run/kubevirt, /var/run/kubevirt-private,
+# /var/lib/kubelet/pods, /var/lib/kubelet, /var/lib/kubevirt-node-labeller) and zero
+# `image` volumes, so allow-listing `image` above changes nothing here: this exclusion is
+# about hostPath and only hostPath. virt-launcher gets its device access
+# (kvm/tun/vhost-net) through Kubernetes device-plugin resource requests instead, not a
+# volume; its own exclusion below is now a different matter again -- read it.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith('virt-handler'))
+
+# virt-launcher's exclusion NO LONGER DOES WHAT ITS ORIGINAL RATIONALE SAID, and is kept
+# anyway. It was added because virt-launcher mounts two volumes of Kubernetes' `image`
+# type -- `bootdisk` (the VM's containerDisk) and `launcher-volume` (virt-launcher's own
+# binary, self-mounted) -- back when `image` was not in the allow-list above. It now is,
+# so that reason has evaporated. Measured against both live pod specs
+# (virt-launcher-docker-vm-*, virt-launcher-talos-vm-*): every other volume they carry is
+# already allow-listed (emptyDir, persistentVolumeClaim, secret), which means as these two
+# VMs are defined today this exclusion decides nothing at all.
+#
+# WHY IT STAYS RATHER THAN BEING DELETED AS DEAD CONFIG. virt-launcher's volume set is
+# generated per-VMI by virt-controller, not authored here, so "what volumes it has" is a
+# property of whatever VMI someone writes next, not of these two. A VMI using KubeVirt's
+# `hostDisk` disk type, or a hostPath-backed virtiofs filesystem, reintroduces hostPath
+# into that generated pod immediately -- and it cannot be brought into compliance by
+# editing a manifest here. Deleting the exclusion is therefore a real tightening of the
+# cluster's posture, not a cleanup, and belongs in its own change with its own argument.
+#
+# WHAT IT COSTS TO KEEP: exactly that tightening, foregone. A future VM in sandbox-docker
+# or sandbox-talos that mounts a host path lands unflagged in the audit stream. That was
+# equally true before `image` was allow-listed; it is retained here, not introduced.
+# Reviewing what a new VMI mounts at the point it is defined stays a manual discipline.
+# Name-scoped, not namespace-scoped, and limited to the same two namespaces as the
+# virt-launcher exclusions in ../../best-practices/add-emptydir-sizelimit.yaml and
+# restrict-seccomp-strict.yaml, rather than `kubevirt` (virt-launcher doesn't run there)
+# or left open to any future VM namespace.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-launcher
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['sandbox-docker', 'sandbox-talos'] &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith('virt-launcher'))
+
+# Alloy hostPath-mounts node log files (/var/log/pods, /var/log/journal,
+# /run/log/journal), /etc/machine-id, other pods' CSI-mounted PVC paths under
+# /var/lib/kubelet/pods, and its own read-offset state to do its job as a
+# node-level log collector -- hostPath isn't on this policy's allow-list at all,
+# so it fails the `restricted-volumes` rule below; this is inherent to any
+# node-level collector, not a shortcut a refactor removes. Alloy runs non-root
+# (runAsNonRoot, uid/gid 473, supplementalGroups: [0, <journal gid>]), so it
+# already passes require-run-as-nonroot; this hostPath-driven volume-type
+# exclusion is the only restricted-profile rule it needs relaxed. Bounded by
+# namespace (logging) AND name prefix (alloy*) together -- the prefix match is
+# coarse, so anything else deployed into `logging` named alloy* inherits it too.
+# Wrong if Alloy ever stops needing node-level file access, or if `logging`
+# becomes a namespace where arbitrary workloads can be created.
+#
+# MIGRATION NOTE: "it fails the `restricted-volumes` rule below" referred to the legacy
+# ClusterPolicy's single named rule. `ValidatingPolicy` has no per-rule names -- there is one
+# `spec.validations[]` list -- so read that clause as "it fails ../restrict-volume-types.yaml's
+# volume-type allow-list".
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-alloy
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'logging' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith('alloy'))

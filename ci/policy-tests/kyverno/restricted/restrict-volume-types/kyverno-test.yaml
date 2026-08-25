@@ -1,0 +1,141 @@
+---
+# CLI tier for restrict-volume-types. Read
+# ../../best-practices/restrict-node-port/kyverno-test.yaml first -- it is the house-style
+# reference and its five numbered conventions all apply here without restating.
+#
+# WHAT THIS FILE ADDS, and why it is TWO `Test` documents rather than one. This policy is the
+# first with a Layer-2 estate-exemption patch (design doc phase2.0-policy-migration-design-v3.md
+# §2.2), so there are two artifacts worth asserting against and they are not the same policy:
+#
+#   * `restrict-volume-types-built` runs the fixtures against
+#     ../../../.build/restricted/restrict-volume-types.yaml -- `kustomize build` output, i.e. pure
+#     mirror + exemptions/restrict-volume-types.yaml. This is what a consumer actually applies,
+#     so it is the authority on shipped behaviour.
+#   * `restrict-volume-types-pure` runs THE SAME fixtures against the pure mirror file in the
+#     shipped tree, with the exemption layer absent.
+#
+# The pair is §2.5's "firing fixture" rule in falsifiable form. Against the built policy each
+# exempted pod reports `skip`; against the pure mirror the same pod reports `fail`. Either half
+# alone is vacuous:
+#
+#   * `skip` alone does not prove the pod was ever a violation. That is not a theoretical worry
+#     in this policy -- it is documented history. The pre-migration suite's virt-launcher fixture
+#     originally used `image` volumes, and once `image` was allow-listed globally that fixture
+#     passed identically with the exclusion present and with it deleted. Every exemption fixture
+#     here is built from hostPath for exactly that reason, and the `pure` document is what proves
+#     it stayed that way.
+#   * `fail` alone says nothing about whether the exemption reaches the pod it was written for.
+#
+# Both documents live in one file because `kyverno test` loads every `Test` document in a
+# `kyverno-test.yaml` and runs each independently (verified against the pinned CLI v1.18.2). They
+# cannot be merged into one document: result rows key on `policy:` name, and both artifacts carry
+# `metadata.name: restrict-volume-types`.
+#
+# The `pure` document is the ONE place this repo's test tiers reference a policy file in the
+# shipped tree rather than built output. §2.5 licenses it explicitly ("rule tests may
+# additionally target pure files"); it is an addition to the built-output assertion, never a
+# substitute for it.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-volume-types-built
+policies:
+- ../../../.build/restricted/restrict-volume-types.yaml
+resources:
+- pod-image-volume-pass.yaml
+- pod-image-volume-other-namespace-pass.yaml
+- pod-hostpath-volume-fail.yaml
+- pod-image-and-hostpath-volume-fail.yaml
+- pod-virt-handler-hostpath-skip.yaml
+- pod-virt-handler-generatename-hostpath-skip.yaml
+- pod-virt-launcher-hostpath-skip.yaml
+- pod-virt-launcher-in-kubevirt-hostpath-fail.yaml
+- pod-alloy-hostpath-skip.yaml
+- pod-not-alloy-in-logging-hostpath-fail.yaml
+results:
+# `image` is allowed GLOBALLY -- asserted in two unrelated namespaces under two unrelated names,
+# because one fixture cannot tell a global allowance apart from a name-and-namespace-scoped
+# exemption. This is the repo's most important content customisation (§5.1).
+- policy: restrict-volume-types
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/image-volume-consumer-6b9f4c8d5-x2kqp
+  - monitoring/unrelated-workload-844d7c96b-fq8vn
+  result: pass
+# hostPath is still refused for ordinary workloads -- including alongside a permitted `image`
+# volume (which catches an allow-list mis-edit reading "if ANY source key is allowed, pass"), and
+# including for a pod that matches exactly one half of each exemption's name/namespace predicate.
+- policy: restrict-volume-types
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - monitoring/mixed-volumes-workload-7c8d6f9b4-mk2rl
+  - kubevirt/virt-launcher-talos-vm-zqrlj
+  - logging/loki-backend-0
+  result: fail
+# The three estate exemptions firing. `skip`, NOT `pass`: these pods carry hostPath volumes that
+# are not on the allow-list, so `pass` here would mean the allow-list had been widened rather than
+# the exemption applied -- a genuinely different policy. Declaring `pass` on any of these rows
+# makes the suite fail with "Want pass, got skip", so the distinction is observable in this tier
+# and is not cosmetic.
+#
+# `kubevirt/` -- namespace, slash, EMPTY name -- addresses the generateName-only fixture. See its
+# own header; this is the only selector form that reaches it.
+- policy: restrict-volume-types
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  - sandbox-talos/virt-launcher-talos-vm-zqrlj
+  - logging/alloy-logs-9k2vq
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-volume-types-pure
+policies:
+- ../../../../../pod-security-standard/restricted/restrict-volume-types.yaml
+resources:
+- pod-image-volume-pass.yaml
+- pod-image-volume-other-namespace-pass.yaml
+- pod-hostpath-volume-fail.yaml
+- pod-image-and-hostpath-volume-fail.yaml
+- pod-virt-handler-hostpath-skip.yaml
+- pod-virt-handler-generatename-hostpath-skip.yaml
+- pod-virt-launcher-hostpath-skip.yaml
+- pod-virt-launcher-in-kubevirt-hostpath-fail.yaml
+- pod-alloy-hostpath-skip.yaml
+- pod-not-alloy-in-logging-hostpath-fail.yaml
+results:
+# Unchanged by the exemption layer: `image` is allow-listed by the MIRROR, not by an exemption.
+# If these two ever needed an exemption to pass, §5.1's whole argument would have collapsed.
+- policy: restrict-volume-types
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/image-volume-consumer-6b9f4c8d5-x2kqp
+  - monitoring/unrelated-workload-844d7c96b-fq8vn
+  result: pass
+# THE FIRING ASSERTION. Every pod that the built policy skips is a real violation of the pure
+# mirror -- so each `skip` above is attributable to its exemption and to nothing else. The four
+# pods that fail under both policies are listed here too, so this document is not merely "the
+# same rows with skip rewritten to fail": under the pure mirror there is no `skip` result at all,
+# and a `matchConditions` entry leaking into the mirror file would turn one of these rows red.
+- policy: restrict-volume-types
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - monitoring/mixed-volumes-workload-7c8d6f9b4-mk2rl
+  - kubevirt/virt-launcher-talos-vm-zqrlj
+  - logging/loki-backend-0
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  - sandbox-talos/virt-launcher-talos-vm-zqrlj
+  - logging/alloy-logs-9k2vq
+  result: fail

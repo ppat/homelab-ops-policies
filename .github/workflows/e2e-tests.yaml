@@ -1,19 +1,19 @@
 ---
 # yamllint disable rule:line-length
-# The Chainsaw (cluster) tier: distinct from static-analysis.yaml, which needs no live cluster.
-# Stands up a real kind cluster, installs Kyverno via the same Helm chart version the estate
-# runs, then runs `chainsaw test` against ci/policy-tests/chainsaw/ -- see design doc
-# phase2.0-policy-migration-design-v3.md §6 for the full tier-ownership rationale (what a live
-# cluster can prove that the offline CLI tier in static-analysis.yaml cannot: policy Ready
-# wiring, behaviour under a real admission webhook, mutations landing on live objects,
-# DeletingPolicy schedule firing).
+# The Chainsaw (cluster) tier: distinct from policy-smoke-check.yaml and policy-cli-tests.yaml,
+# neither of which needs a live cluster. Stands up a real kind cluster, installs Kyverno via the
+# same Helm chart version the estate runs, then runs `chainsaw test` against
+# ci/policy-tests/chainsaw/ -- see design doc phase2.0-policy-migration-design-v3.md §6 for the
+# full tier-ownership rationale (what a live cluster can prove that the offline tiers cannot:
+# policy Ready wiring, behaviour under a real admission webhook, mutations landing on live
+# objects, DeletingPolicy schedule firing).
 #
-# ci/policy-tests/chainsaw/{baseline,restricted,best-practices}/ are empty scaffolding today --
-# actual Chainsaw test directories land with each policy port in a later PR (design doc §6.7),
-# so a green run here today just means the cluster came up, Kyverno went Ready, and the two
-# built-in checks below (structural build sanity via build-policies.sh, and `chainsaw test`
-# finding zero test directories) both succeeded -- not that any policy has cluster-level
-# coverage yet.
+# What runs here today: a profile ready-smoke per profile directory
+# (ci/policy-tests/chainsaw/{baseline,restricted,best-practices}/ready-smoke/), asserting every
+# policy the profile builds to reaches Ready on a real cluster; plus the per-policy tests of the
+# policies §6.5 selects for cluster time -- currently restrict-volume-types, with more landing
+# alongside each port (§6.7). A policy with no directory here is covered by its profile's
+# ready-smoke and by the CLI tier, which is the intended steady state, not a gap.
 name: e2e-tests
 
 on:
@@ -40,8 +40,9 @@ jobs:
     timeout-minutes: 15
     env:
       # Third leg of the lockstep this repo already keeps between the Kyverno CLI version
-      # (static-analysis.yaml's KYVERNO_CLI_VERSION) and the chart version actually deployed by
-      # infra-security-core in homelab-ops-kubernetes-apps -- all three should move together.
+      # (KYVERNO_CLI_VERSION in policy-smoke-check.yaml and policy-cli-tests.yaml) and the chart
+      # version actually deployed by infra-security-core in homelab-ops-kubernetes-apps -- all
+      # three should move together.
       # renovate: datasource=helm depName=kyverno repository=https://kyverno.github.io/kyverno/
       KYVERNO_CHART_VERSION: "3.8.2"
     steps:

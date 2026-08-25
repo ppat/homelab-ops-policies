@@ -1,7 +1,7 @@
 ---
-# EXPECTED: ALLOWED (kyverno apply exits 0).
+# EXPECTED: `pass` against the built policy, `pass` against the pure mirror.
 #
-# Same claim as pod-image-volume-allowed.yaml, asserted a second time in a second unrelated
+# Same claim as pod-image-volume-pass.yaml, asserted a second time in a second unrelated
 # namespace with a second unrelated name, because the specific thing being pinned is that
 # `image` is allowed *globally* -- not in one namespace, not for one workload. An earlier
 # revision of this policy carried a name-and-namespace-scoped exclusion instead; a single

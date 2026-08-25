@@ -1,0 +1,48 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# NEW WITH THE POLICY-KIND MIGRATION. The `alloy*` / `logging` exemption is the third of this
+# policy's three estate exemptions and it had NO fixture at all under the pre-migration suite --
+# it could have been deleted, mistyped, or scoped to the wrong namespace and nothing would have
+# gone red. Design doc phase2.0-policy-migration-design-v3.md §2.5 makes a firing fixture per
+# exemption a rule precisely so that gap cannot recur; this closes it.
+#
+# The volume set is the hostPath half of what Alloy actually mounts as a node-level log
+# collector (node log dirs, machine-id, other pods' kubelet dirs, its own read-offset state).
+# Its non-hostPath volumes are allow-listed anyway and are omitted -- the policy reads volume
+# source keys only. hostPath is what this exemption still decides, which is why the fixture is
+# built from hostPath rather than from anything else Alloy carries.
+#
+# Its paired control on the NAME axis is pod-not-alloy-in-logging-hostpath-fail.yaml (right
+# namespace, wrong name). Without that control this fixture would pass just as happily against a
+# blanket exemption for the whole `logging` namespace, which is a materially wider policy than
+# the one this repo intends.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: alloy-logs-9k2vq
+  namespace: logging
+spec:
+  restartPolicy: Always
+  containers:
+  - name: alloy
+    image: docker.io/grafana/alloy:v1.12.1
+    volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+      readOnly: true
+  volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: machine-id
+    hostPath:
+      path: /etc/machine-id
+      type: File
+  - name: kubelet-pods
+    hostPath:
+      path: /var/lib/kubelet/pods
+  - name: positions
+    hostPath:
+      path: /var/lib/alloy/positions
+      type: DirectoryOrCreate

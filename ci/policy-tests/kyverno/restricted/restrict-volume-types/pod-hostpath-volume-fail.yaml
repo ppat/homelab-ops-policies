@@ -1,5 +1,5 @@
 ---
-# EXPECTED: FLAGGED (kyverno apply exits 1).
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
 #
 # THE LOAD-BEARING CONTROL OF THIS WHOLE DIRECTORY. Every other fixture here is about `image`
 # being permitted; without this one the suite cannot distinguish "we allowed `image`" from "we

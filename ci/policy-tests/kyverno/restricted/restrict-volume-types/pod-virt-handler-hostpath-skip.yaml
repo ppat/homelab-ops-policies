@@ -1,5 +1,12 @@
 ---
-# EXPECTED: ALLOWED (kyverno apply exits 0), by exclusion rather than by the allow-list.
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-virt-handler matchCondition (design doc
+# phase2.0-policy-migration-design-v3.md §2.5). The two expectations together are the whole
+# point: `fail` against the pure mirror proves this pod IS a genuine violation, so the `skip`
+# against the built policy can only be coming from the exemption patch. Either half alone is
+# vacuous. Note this is the POST-CREATION pod shape (metadata.name populated); its CREATE-time
+# twin is pod-virt-handler-generatename-hostpath-skip.yaml, and the exemption has to cover both.
 #
 # The `virt-handler*` / kubevirt exclusion is the one exclusion in this policy that has nothing
 # to do with `image` volumes, and it must survive the allow-listing of `image` untouched.
@@ -11,7 +18,7 @@
 # policy reads volume *keys* only.
 #
 # So this exclusion is entirely justified by hostPath and is unaffected by the `image` change.
-# Its paired control is pod-virt-launcher-in-kubevirt-hostpath-denied.yaml, which pins that the
+# Its paired control is pod-virt-launcher-in-kubevirt-hostpath-fail.yaml, which pins that the
 # exclusion is still scoped by NAME and not merely by namespace -- without that control this
 # fixture would pass just as happily against a blanket exemption for the whole kubevirt
 # namespace, which is a materially different and much worse policy.

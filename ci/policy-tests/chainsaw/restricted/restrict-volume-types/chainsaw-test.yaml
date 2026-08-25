@@ -1,0 +1,116 @@
+---
+# HOUSE-STYLE REFERENCE for a per-policy Chainsaw (cluster-tier) test. Design doc
+# phase2.0-policy-migration-design-v3.md §6.4 writes its `ValidatingPolicy` skeleton against this
+# exact policy; §6.5 lists which policies earn a cluster test at all.
+#
+# THE BAR FOR ADDING ONE OF THESE, since the answer is "most policies do not get one": a Chainsaw
+# test exists only where the cluster tells us something the CLI tier cannot (§6.2). It is NOT a
+# re-run of the `kyverno test` suite on a cluster. Concretely, the four things below are here
+# because each is invisible offline:
+#
+#   1. The policy reaches Ready against the real webhook -- policy-ready.yaml.
+#   2. `[Deny]` actually rejects. The CLI approximates this with an exit code; only a cluster can
+#      show the API server refusing the write.
+#   3. The exemption fires for a pod the DAEMONSET CONTROLLER created and the real webhook saw --
+#      daemonset-virt-handler.yaml, whose header also records where the design doc's stated
+#      reason for this step turned out to be wrong. This is the class of bug the autogen hazard
+#      hid.
+#   4. `image` volumes are accepted by a real 1.36 API server, not only by the offline engine.
+#
+# Everything about WHICH volume types are allowed lives in
+# ../../../kyverno/restricted/restrict-volume-types/kyverno-test.yaml, where it is cheaper and
+# more thorough. Do not duplicate it here.
+#
+# NON-VACUOUS PAIRING, the discipline upstream kyverno/policies' single good/bad pair lacks:
+# every `admitted` fixture below has a `rejected` sibling that differs in exactly one axis, so no
+# fixture can pass because the webhook was never wired up, and no exemption fixture can pass
+# because its pod was compliant anyway (all of them carry hostPath, which is never allow-listed).
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-volume-types
+spec:
+  # See ../ready-smoke/chainsaw-test.yaml -- `template: false` is repo-wide, because chainsaw's
+  # templating reads `(...)` as JMESPath and CEL is made of parentheses.
+  template: false
+  steps:
+  - name: install-policy
+    try:
+    # Built output, never the file in the shipped tree: what a consumer applies is
+    # `kustomize build pod-security-standard/restricted`, i.e. the pure mirror WITH its
+    # exemptions/ patch. Applying the pure file would leave the exemption layer -- the subject of
+    # half this test -- untested. (§6.3, ci/scripts/build-policies.sh.)
+    - apply:
+        file: ../../../.build/restricted/restrict-volume-types.yaml
+    # In-test only. The shipped policy authors `Audit` and must keep authoring it: enforcement
+    # mode is a point-of-use decision (README.md, CLAUDE.md) and a consumer overrides it with its
+    # own Kustomization patch. `Audit` here would make every `expect: ($error != null)` below
+    # unfalsifiable, because nothing would ever be rejected.
+    - patch:
+        resource:
+          # `policies.kyverno.io/v1`, NOT the stale `v1alpha1` that upstream kyverno/policies'
+          # test assets still carry. v1 is served at Kyverno 1.18.2; v1beta1 is the storage
+          # version, which is what you get back if you read a policy off the cluster without
+          # naming a version -- irrelevant to this patch, which matches by what is written here.
+          apiVersion: policies.kyverno.io/v1
+          kind: ValidatingPolicy
+          metadata:
+            name: restrict-volume-types
+          spec:
+            validationActions:
+            - Deny
+    - assert:
+        file: policy-ready.yaml
+    # DETERMINISTIC READINESS GATE, replacing upstream's blind `sleep 10s`. Ready conditions say
+    # the webhook is CONFIGURED; they do not say the API server has picked the configuration up,
+    # and that window is where a `sleep` is either too short (flaky red) or too long (slow
+    # green). The script's own header carries the full reasoning; it polls a server-side dry-run
+    # of the known-bad pod until admission refuses it, which does not consume the fixture -- the
+    # same pod is applied for real in the next step, where its rejection is the assertion rather
+    # than the gate. Shared with every other `[Deny]` test in this repo rather than inlined,
+    # partly so the reasoning lives in one place and partly because this repo's yamllint runs
+    # `indentation.check-multi-line-strings`, which rejects indented shell inside a `content: |`.
+    - script:
+        content: ../../scripts/wait-for-webhook-deny.sh pod-hostpath-volume-rejected.yaml 90
+        check:
+          ($error == null): true
+
+  - name: allow-image-deny-hostpath
+    try:
+    # The flagship pair, live and under real `[Deny]`. Neither half means anything without the
+    # other: the admitted pod alone would be green against a deleted policy, and the rejected pod
+    # alone would be green against a policy that refused everything.
+    - apply:
+        file: pod-image-volume-admitted.yaml
+    - apply:
+        file: pod-hostpath-volume-rejected.yaml
+        expect:
+        - check:
+            ($error != null): true
+
+  - name: exemption-fires-for-a-real-controller
+    try:
+    - apply:
+        file: namespace-kubevirt.yaml
+    - apply:
+        file: daemonset-virt-handler.yaml
+    # Polls until the DaemonSet's pod is admitted, scheduled, and running. If the exemption did
+    # not reach a controller-created pod, admission refuses it and this never converges.
+    - assert:
+        file: daemonset-virt-handler-ready.yaml
+
+  - name: exemption-is-scoped-by-name-and-namespace
+    try:
+    # The two conjuncts of the exemption, falsified one at a time. Both pods carry the same
+    # hostPath volume the DaemonSet above carries, so the only difference between admitted and
+    # rejected is the predicate under test.
+    - apply:
+        file: pod-not-virt-handler-in-kubevirt-rejected.yaml
+        expect:
+        - check:
+            ($error != null): true
+    - apply:
+        file: pod-virt-handler-name-outside-kubevirt-rejected.yaml
+        expect:
+        - check:
+            ($error != null): true

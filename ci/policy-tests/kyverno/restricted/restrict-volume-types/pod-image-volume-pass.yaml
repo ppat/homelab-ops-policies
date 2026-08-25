@@ -1,5 +1,5 @@
 ---
-# EXPECTED: ALLOWED (kyverno apply exits 0).
+# EXPECTED: `pass` against the built policy, `pass` against the pure mirror.
 #
 # The headline claim of the change these fixtures pin: an `image` volume is permitted by
 # restrict-volume-types for an ordinary workload, with no exclusion, no exemption and nothing
@@ -7,13 +7,13 @@
 # boring namespace on the cluster -- it appears nowhere in the policy's exclude list.
 #
 # This fixture on its own proves almost nothing: it would also pass against a policy that had
-# been deleted, or one that allowed everything. What gives it meaning is the pod-*-denied.yaml
-# fixtures alongside it, which must still fail. Read this directory as one test, not seven.
+# been deleted, or one that allowed everything. What gives it meaning is the pod-*-fail.yaml
+# fixtures alongside it, which must still fail. Read this directory as one test, not ten.
 #
 # Only the fields the policy actually reads are kept -- it inspects the *keys* of each entry in
 # spec.volumes and nothing else -- plus enough container to be a valid Pod. The `emptyDir` is
 # here so the fixture also exercises the ordinary-volume path rather than being all-`image`.
-# See .github/workflows/static-analysis.yaml for how the expected outcome is asserted.
+# See kyverno-test.yaml in this directory for how the expected outcome is asserted.
 apiVersion: v1
 kind: Pod
 metadata:

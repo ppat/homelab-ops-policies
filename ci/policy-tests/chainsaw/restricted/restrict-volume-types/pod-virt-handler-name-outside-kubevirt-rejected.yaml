@@ -1,0 +1,23 @@
+---
+# EXPECTED: REJECTED by the admission webhook.
+#
+# NAMESPACE-AXIS control for the exempt-virt-handler matchCondition: right name prefix, wrong
+# namespace (chainsaw's generated per-test namespace). If the exemption were ever written against
+# the name alone, this pod would start being admitted and this fixture is what notices.
+#
+# Its name-axis twin is pod-not-virt-handler-in-kubevirt-rejected.yaml. Both are needed: the
+# exemption is a conjunction, and a fixture can only falsify one conjunct at a time.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-impostor
+spec:
+  restartPolicy: Never
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+  volumes:
+  - name: host-log
+    hostPath:
+      path: /var/log
+      type: Directory

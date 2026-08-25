@@ -1,0 +1,86 @@
+---
+# yamllint disable rule:line-length
+# The `kyverno test` (CLI) tier: `cli.kyverno.io/v1alpha1 Test` files under
+# ci/policy-tests/kyverno/, mirroring the policy tree by profile and policy name. Asserts what
+# each policy DECIDES about specific resources -- pass, fail, or skip -- with no cluster
+# required. Per design doc phase2.0-policy-migration-design-v3.md §6.2 this tier OWNS
+# validation-rule semantics and exemption expressions; the Chainsaw tier (e2e-tests.yaml) covers
+# only what a live cluster adds.
+#
+# One of this repo's four CI concerns, each in its own workflow file (the others: lint.yaml for
+# style/formatting/manifest schemas, policy-smoke-check.yaml for the structural/CEL-compile
+# probe, e2e-tests.yaml for the Chainsaw cluster tier). Split out of a former
+# `static-analysis.yaml` that bundled several unrelated jobs.
+#
+# This workflow also replaces the former `volume-types` job, a bash loop over
+# ci/policy-tests/fixtures/restrict-volume-types/ that asserted `kyverno apply`'s exit code per
+# fixture. Its seven fixtures live on under ci/policy-tests/kyverno/restricted/restrict-volume-types/
+# with their rationale comments intact; what they gained by moving is that an exit code cannot
+# tell "the resource satisfied the rule" (pass) from "an exemption filtered it out before the
+# rule ran" (skip) -- both are 0 -- and `kyverno test` asserts the two separately. Running both
+# mechanisms against one policy was never the intent; see design §8.2.
+name: policy-cli-tests
+
+on:
+  pull_request:
+    paths:
+    - '.github/workflows/policy-cli-tests.yaml'
+    - 'best-practices/**/*.yaml'
+    - 'pod-security-standard/**/*.yaml'
+    - 'ci/policy-tests/kyverno/**'
+    - 'ci/scripts/build-policies.sh'
+  schedule:
+  - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  kyverno-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      # Kept in lockstep with policy-smoke-check.yaml's pin and with e2e-tests.yaml's
+      # KYVERNO_CHART_VERSION, for the same reason: the CLI's policy engine should match the
+      # kyverno actually deployed by infra-security-core.
+      # renovate: datasource=github-releases depName=kyverno/kyverno
+      KYVERNO_CLI_VERSION: "v1.18.2"
+    steps:
+    - name: Setup repository and tools
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@9c16506c3c527478b6314c86ca961c0011d9f94a # v2.2.0
+      with:
+        current_git_ref: ${{ github.head_ref || github.ref }}
+        current_repository: ${{ github.repository }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        mise_toml: |
+          [tools]
+          kyverno = "${{ env.KYVERNO_CLI_VERSION }}"
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.*)$
+          kustomize = "5.8.1"
+          # renovate: datasource=github-releases depName=mikefarah/yq
+          yq = "4.53.6"
+
+    - name: Build policy profiles (ci/scripts/build-policies.sh)
+      working-directory: ./current
+      shell: bash
+      # NOT optional, and not shared boilerplate copied from the sibling workflow: every Test
+      # file's `policies:` entry points at ci/policy-tests/.build/<profile>/<policy>.yaml, which
+      # is gitignored and regenerated. Without this step `kyverno test` fails to load its
+      # policies rather than silently passing, but the error is about a missing file and says
+      # nothing about why -- hence this comment.
+      run: mise exec -- ./ci/scripts/build-policies.sh
+
+    - name: Run kyverno test
+      working-directory: ./current
+      shell: bash
+      # `kyverno test` recursively discovers files named exactly `kyverno-test.yaml` under the
+      # given path and exits 0 with "No test yamls available" when it finds none, so this step
+      # stays honest as coverage grows: a profile with no tests yet is a no-op, not a failure.
+      # `--detailed-results` prints the per-resource table on success too, which is what makes a
+      # CI log useful for auditing WHAT was asserted rather than only that something was.
+      run: mise exec -- kyverno test ci/policy-tests/kyverno --detailed-results --remove-color

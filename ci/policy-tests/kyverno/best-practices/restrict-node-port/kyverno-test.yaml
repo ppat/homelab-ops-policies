@@ -1,0 +1,65 @@
+---
+# HOUSE-STYLE REFERENCE for a `kyverno test` (CLI-tier) file. Discovered and run by
+# .github/workflows/policy-cli-tests.yaml, which walks ci/policy-tests/kyverno/ recursively
+# looking for files named exactly `kyverno-test.yaml`. Layout mirrors the policy tree:
+# ci/policy-tests/kyverno/<profile>/<policy-name>/, one directory per policy, fixtures beside
+# the test file. See design doc phase2.0-policy-migration-design-v3.md §6.1/§6.2/§6.3.
+#
+# The conventions, in the order they bite:
+#
+#   1. `policies:` POINTS AT BUILT OUTPUT, never at the policy file in the shipped tree:
+#      `../../../.build/<profile>/<policy>.yaml`, produced by ci/scripts/build-policies.sh from
+#      `kustomize build <profile-dir>`. What a consumer applies is the built stream (pure policy
+#      + any estate-exemption patch), so that is what has to be under test (§6.3). The `../../../`
+#      depth is fixed by the layout above; `.build/` is gitignored and regenerated, so the CI job
+#      must run build-policies.sh before this one.
+#   2. `isValidatingPolicy: true` IS REQUIRED on every result row. Without it the CLI does not
+#      recognise the policy kind and the row is not matched (likewise `isMutatingPolicy` /
+#      `isDeletingPolicy` for the other two kinds).
+#   3. `resources:` SELECTORS ARE ALWAYS `<namespace>/<name>`. Never the bare-name form, and
+#      never `resourceSpecs:`. Read the next point before treating this as pedantry.
+#   4. A SELECTOR THAT MATCHES NOTHING DOES NOT FAIL -- IT BROADENS. Measured against the pinned
+#      CLI v1.18.2 (Wave A1 spike §2, finding B; the code path is `printTestResult()`'s
+#      "The test specifies no resources, check all results" branch): a typo'd fixture name makes
+#      the row apply to EVERY resource in the file, and the suite still reports green. The only
+#      defence is that the suite as a whole must be self-contradicting under that broadening --
+#      which is why every policy tested here needs at least one expected-`fail` (or `skip`) row
+#      standing beside its expected-`pass` rows. A file whose rows all say `pass` cannot detect
+#      its own selectors rotting.
+#   5. `result:` DISTINGUISHES `pass` FROM `skip`, and that distinction is the point of this tier
+#      for any policy with exemptions. `pass` means the resource was evaluated and satisfied the
+#      rule; `skip` means a `matchConditions` entry filtered it out before evaluation. The
+#      pre-migration fixture suite this replaced could not tell those apart -- it only had
+#      `kyverno apply`'s exit code, which is 0 for both. See
+#      ../../restricted/restrict-volume-types/kyverno-test.yaml, where it carries real weight.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-node-port
+policies:
+- ../../../.build/best-practices/restrict-node-port.yaml
+resources:
+- service-nodeport-fail.yaml
+- service-clusterip-pass.yaml
+- service-no-type-pass.yaml
+- service-loadbalancer-pass.yaml
+results:
+# The one row that proves the policy still objects to anything. If this goes green while the
+# others stay green, a broadened selector (point 4 above) is the first thing to check.
+- policy: restrict-node-port
+  isValidatingPolicy: true
+  kind: Service
+  resources:
+  - default/exposed-admin-ui
+  result: fail
+# `pass`, not `skip`: this policy has no `matchConditions` at all, so nothing can be filtered out
+# before evaluation. A `skip` appearing here would mean someone added an exemption seam to a
+# best-practices policy, which is a design change (§2.1), not a test failure to paper over.
+- policy: restrict-node-port
+  isValidatingPolicy: true
+  kind: Service
+  resources:
+  - default/internal-api
+  - monitoring/headless-peers
+  - networking/ingress-nginx-controller
+  result: pass

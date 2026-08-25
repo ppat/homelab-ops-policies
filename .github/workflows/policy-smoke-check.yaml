@@ -1,0 +1,140 @@
+---
+# yamllint disable rule:line-length
+# Structural smoke check: "does every policy in the repo still parse, get accepted by Kyverno's
+# own CRD schema, and compile its CEL" -- nothing about behaviour. Needs no live cluster.
+#
+# One of this repo's four CI concerns, each in its own workflow file (the others: lint.yaml for
+# style/formatting/manifest schemas, policy-cli-tests.yaml for the `kyverno test` tier,
+# e2e-tests.yaml for the Chainsaw cluster tier). Split out of a former `static-analysis.yaml`
+# that bundled several unrelated jobs.
+name: policy-smoke-check
+
+on:
+  pull_request:
+    paths:
+    - '.github/workflows/policy-smoke-check.yaml'
+    - 'best-practices/**/*.yaml'
+    - 'pod-security-standard/**/*.yaml'
+    - 'ci/policy-tests/smoke-resource.yaml'
+    - 'ci/scripts/build-policies.sh'
+  schedule:
+  - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  structural-smoke-check:
+    # "Does every policy in the repo still parse and get accepted by Kyverno's own CRD schema,
+    # with no CEL compile error" -- not "does it behave correctly". Behaviour is the `kyverno
+    # test` tier's job (policy-cli-tests.yaml) and the Chainsaw tier's (e2e-tests.yaml); this is
+    # deliberately shallow and is not a substitute for either.
+    #
+    # `kyverno apply` has no separate "just validate this policy" entrypoint (there is no
+    # `kyverno validate` subcommand in this CLI version, and `kyverno apply <policy>` with no
+    # `--resource` refuses to run at all: "Error: resource file(s) or cluster required"), so this
+    # runs every policy individually against one shared, deliberately unremarkable
+    # Pod (ci/policy-tests/smoke-resource.yaml) and inspects what the CLI says it loaded --
+    # both the pure per-file policy YAML this repo ships, AND (per design doc §8.1) the
+    # `kustomize build` output of each profile directory (ci/scripts/build-policies.sh), so
+    # exemption-patch CEL is compile-checked too.
+    #
+    # That "what it says it loaded" step is load-bearing and NOT optional: a malformed policy --
+    # broken YAML, or YAML that fails Kyverno's own CRD schema -- is silently DROPPED by
+    # `kyverno apply`, not rejected. It still prints "Applying 0 policy rule(s) to 1
+    # resource(s)..." and exits 0. Verified locally against both a syntactically broken copy and
+    # a schema-invalid copy (rules turned into a scalar instead of a list) of a real policy from
+    # this repo: both produced that same "0 policy rule(s)" line and an EXIT 0, indistinguishable
+    # from success by exit code alone. So this job never checks `kyverno apply`'s exit code -- a
+    # real, non-excluded policy is expected to both Pass and Fail rules against an arbitrary
+    # resource depending on what the resource looks like and which kind the policy targets (e.g.
+    # a Service-scoped policy run against this job's Pod resource never matches at all), and none
+    # of that is a structural problem.
+    #
+    # Two signals are trusted, neither the exit code:
+    #   - the rule count `kyverno apply` reports it loaded from each file: for every legitimate
+    #     policy in this repo (verified locally) that count is at least 1, so a count of 0 means
+    #     the file was silently dropped, and a missing "Applying" line at all means the CLI
+    #     errored out before getting that far.
+    #   - any line matching `^Error:` in the CLI's own output. This is the fix for the CEL blind
+    #     spot (design doc §4.2/§8.1): a `ValidatingPolicy`/`MutatingPolicy`/`DeletingPolicy` with
+    #     a CEL compile error still reports "Applying 1 policy rule(s)" -- the rule count alone
+    #     is coarser for the new kinds than it was for `ClusterPolicy` (it always reads 1
+    #     regardless of how many `validations[]` a rule has), so the count check can no longer be
+    #     trusted on its own to catch this failure class the way it could for the legacy kinds --
+    #     but the CLI also emits a distinct `Error:` line for a compile error, which the count
+    #     check doesn't see. Deliberately narrower than trusting exit code (a policy that
+    #     legitimately Fails the smoke resource also exits non-zero) but exact for this class.
+    #     Note it also catches a CEL RUNTIME error, e.g. `object.spec.type` on a Service that
+    #     omits the field: "Error: failed to load context: no such key: type".
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      # Kept in lockstep with policy-cli-tests.yaml's pin and with e2e-tests.yaml's
+      # KYVERNO_CHART_VERSION, for the same reason: the CLI's policy engine should match the
+      # kyverno actually deployed by infra-security-core.
+      # renovate: datasource=github-releases depName=kyverno/kyverno
+      KYVERNO_CLI_VERSION: "v1.18.2"
+    steps:
+    - name: Setup repository and tools
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@9c16506c3c527478b6314c86ca961c0011d9f94a # v2.2.0
+      with:
+        current_git_ref: ${{ github.head_ref || github.ref }}
+        current_repository: ${{ github.repository }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        mise_toml: |
+          [tools]
+          kyverno = "${{ env.KYVERNO_CLI_VERSION }}"
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.*)$
+          kustomize = "5.8.1"
+          # renovate: datasource=github-releases depName=mikefarah/yq
+          yq = "4.53.6"
+
+    - name: Build policy profiles (ci/scripts/build-policies.sh)
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- ./ci/scripts/build-policies.sh
+
+    - name: Assert every policy still loads, with no CEL compile error (Kyverno CLI, no cluster required)
+      working-directory: ./current
+      shell: bash
+      # yamllint disable-line rule:indentation
+      run: |
+        set -uo pipefail
+        resource=ci/policy-tests/smoke-resource.yaml
+        status=0
+        # Pure per-file policy YAML this repo ships, plus the built output of every profile
+        # directory -- see the job comment above for why both are probed. `exemptions/` is
+        # excluded from the pure sweep: those files are JSON6902 patch documents, not policies,
+        # and `kyverno apply` would legitimately load 0 rules from one. They are still covered,
+        # because the built output they patch into is probed below.
+        mapfile -t policies < <(find best-practices pod-security-standard -type f -name '*.yaml' ! -name 'kustomization.yaml' ! -path '*/exemptions/*' | sort)
+        mapfile -t built < <(find ci/policy-tests/.build -type f -name '*.yaml' | sort)
+        policies+=("${built[@]}")
+        echo "Found ${#policies[@]} policies to probe (${#built[@]} from built profile output)..."
+        for policy in "${policies[@]}"; do
+          echo "::group::${policy}"
+          # `|| true` is load-bearing here: Actions runs this step under an inherited `set -e`,
+          # and a policy whose rules Fail against the shared smoke resource is an entirely
+          # expected outcome (this resource is not written to comply with anything), not a script
+          # error. This job never inspects that exit code at all -- see the job-level comment
+          # above for why rule count and the `^Error:` check, not exit code, are what's asserted.
+          output=$(mise exec -- kyverno apply "${policy}" --resource "${resource}" --table --detailed-results --remove-color 2>&1) || true
+          echo "${output}"
+          echo "::endgroup::"
+          rule_count=$(grep -oE 'Applying [0-9]+ policy rule\(s\)' <<<"${output}" | grep -oE '[0-9]+' || true)
+          if [[ -z "${rule_count}" || "${rule_count}" -eq 0 ]]; then
+            echo "::error file=${policy}::kyverno apply reported loading 0 policy rule(s) from this file (or errored out before reporting at all). A malformed policy is silently DROPPED by the CLI, not rejected -- it still exits 0 -- so a rule count of 0 here means this file did not load, not that it has nothing to say about the probe resource."
+            status=1
+          fi
+          if grep -qE '^Error:' <<<"${output}"; then
+            echo "::error file=${policy}::kyverno apply reported an Error: line -- this is the CEL-compile-error signal a rule count alone cannot see (a policy with a CEL compile error still reports 'Applying 1 policy rule(s)' for the new policies.kyverno.io kinds), not a resource that merely failed the probe Pod's rules"
+            status=1
+          fi
+        done
+        exit "${status}"

@@ -10,3 +10,25 @@ resources:
 - require-run-as-nonroot.yaml
 - restrict-seccomp-strict.yaml
 - restrict-volume-types.yaml
+
+# LAYER 2 -- estate exemptions (design doc phase2.0-policy-migration-design-v3.md §2.2). Each
+# entry attaches one file from exemptions/ to the policy of the same basename. The files under
+# exemptions/ are JSON6902 patch documents, NOT manifests, so they must never appear in
+# `resources:` above.
+#
+# The `target:` block is matched by group+version+kind+name; `version: v1` here must track the
+# apiVersion the policy file itself declares (`policies.kyverno.io/v1`). Note that v1 is a SERVED
+# but non-storage version at Kyverno 1.18.2 (storage is v1beta1) -- that affects what you read
+# back off a live cluster, not what kustomize matches here, which is purely textual.
+#
+# A patch whose target matches nothing is a SILENT NO-OP in kustomize: it does not fail the
+# build. The thing that actually catches a mistyped target is the CLI-tier test asserting `skip`
+# on each exemption's firing fixture (ci/policy-tests/kyverno/restricted/restrict-volume-types/)
+# -- without the exemption those fixtures report `fail`. Do not add an entry here without one.
+patches:
+- path: exemptions/restrict-volume-types.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: restrict-volume-types

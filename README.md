@@ -1,11 +1,32 @@
 # homelab-ops-policies
 
-Cluster-agnostic [Kyverno](https://kyverno.io/) `ClusterPolicy`/`ClusterCleanupPolicy`
-definitions. This repo holds policy content only — no Flux wiring, no
+Cluster-agnostic [Kyverno](https://kyverno.io/) policy definitions. This repo
+holds policy content only — no Flux wiring, no
 cluster-specific configuration, no awareness of what's consuming it. It's
 released independently and referenced by tag from wherever it's applied,
 the same way [`homelab-ops-kubernetes-apps`](https://github.com/ppat/homelab-ops-kubernetes-apps)
 modules are referenced from the cluster-wiring repo.
+
+> **Migration in progress.** Kyverno's `ClusterPolicy` and
+> `ClusterCleanupPolicy` kinds are deprecated and are being replaced here by
+> the CEL-based `policies.kyverno.io/v1` kinds (`ValidatingPolicy`,
+> `MutatingPolicy`, `DeletingPolicy`). The port is happening policy by policy,
+> so both kinds are present in the tree today, and the sections below still
+> describe the legacy shape in places — most importantly the consumer patch
+> under "Consuming this repo", which targets `kind: ClusterPolicy` and
+> silently matches nothing once a policy has been ported. A consumer pinning a
+> released tag is unaffected until it moves to a tag containing ported
+> policies; that cutover is a coordinated change on both sides. This notice
+> and the text it qualifies are rewritten once the migration completes.
+>
+> Two policies are ported so far and are the house-style references for the
+> rest: `best-practices/restrict-node-port.yaml` and
+> `pod-security-standard/restricted/restrict-volume-types.yaml`. The ported
+> Pod Security Standards policies are exemption-free mirrors of the upstream
+> standard; the estate-specific exemptions they used to carry inline now live
+> beside them as kustomize patches in
+> `pod-security-standard/<profile>/exemptions/`, which build into the same
+> shipped result.
 
 ## Groups
 
