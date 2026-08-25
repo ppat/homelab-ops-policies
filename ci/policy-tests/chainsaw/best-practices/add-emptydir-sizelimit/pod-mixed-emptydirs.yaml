@@ -1,0 +1,51 @@
+---
+# EXPECTED: admitted, and mutated in exactly one of its four volumes. Asserted by
+# pod-mixed-emptydirs-patched.yaml.
+#
+# THE THREE DISTINCT LIVE CASES IN ONE POD, which is the only way to exercise the PER-VOLUME
+# filter against a real API server:
+#   * `scratch`      -- disk-backed, uncapped -> must come back with `sizeLimit: 256Mi`
+#   * `tmpfs-cache`  -- `medium: Memory`      -> must come back with NO sizeLimit at all
+#   * `author-sized` -- `sizeLimit: 8Gi`      -> must come back still 8Gi
+#   * `settings`     -- a configMap volume    -> must come back with no `emptyDir` key
+#
+# The CLI tier asserts the same discrimination offline and more cheaply. What the cluster adds is
+# that the patch survives the API server: an apply configuration is applied by structured merge
+# diff against the SCHEMA, and `spec.volumes` being `listType: map` keyed on `name` is a property
+# of the live schema, not of the offline engine's model of it. If that were wrong -- if the
+# merge replaced the list instead of merging into it -- this Pod would come back with one volume
+# and the offline suite would never have said so.
+#
+# It runs (`pause`, no command) rather than merely being admitted, because a Pod that the API
+# server accepts but the kubelet rejects is a failure this policy could plausibly cause: a
+# `sizeLimit` is enforced by the kubelet, not by admission.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-volume-workload
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: scratch
+      mountPath: /scratch
+    - name: tmpfs-cache
+      mountPath: /cache
+    - name: author-sized
+      mountPath: /big
+  volumes:
+  - name: scratch
+    emptyDir: {}
+  - name: tmpfs-cache
+    emptyDir:
+      medium: Memory
+  - name: author-sized
+    emptyDir:
+      sizeLimit: 8Gi
+  - name: settings
+    configMap:
+      name: app-settings
+      optional: true

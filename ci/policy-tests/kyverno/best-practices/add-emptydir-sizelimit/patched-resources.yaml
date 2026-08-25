@@ -1,0 +1,74 @@
+---
+# THE EXPECTED OUTPUT OF THE MUTATION. See
+# ../add-default-resources/patched-resources.yaml for why a mutate policy needs this file at all
+# (`result: pass` only says a patch was produced without error; this is what says WHAT).
+# Documents are matched to fixtures by kind + namespace + name.
+
+# ---------------------------------------------------------------------------------------------
+# From pod-mixed-emptydirs-mutated.yaml. READ THE VOLUMES ONE BY ONE -- this document is the
+# whole policy stated as an outcome:
+#   * `scratch`            gained `sizeLimit: 256Mi`   (the rule)
+#   * `tmpfs-cache`        unchanged, still no sizeLimit (the `medium: Memory` guard)
+#   * `author-sized`       unchanged, still 8Gi          (the existing-sizeLimit guard)
+#   * `tmpfs-author-sized` unchanged, still Memory/64Mi  (both guards together)
+#   * `settings`           unchanged, still a configMap  (`has(v.emptyDir)`)
+# and the list is in its original ORDER, which is what proves the apply configuration merged by
+# `name` rather than replacing the list.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-volume-workload
+  namespace: default
+spec:
+  containers:
+  - image: nginx:1.29
+    name: app
+  volumes:
+  - emptyDir:
+      sizeLimit: 256Mi
+    name: scratch
+  - emptyDir:
+      medium: Memory
+    name: tmpfs-cache
+  - emptyDir:
+      sizeLimit: 8Gi
+    name: author-sized
+  - emptyDir:
+      medium: Memory
+      sizeLimit: 64Mi
+    name: tmpfs-author-sized
+  - configMap:
+      name: app-settings
+    name: settings
+---
+# From pod-non-virt-launcher-in-vm-namespace-mutated.yaml. The name-axis control on the
+# virt-launcher exemption: an ordinary workload in `sandbox-docker` IS capped.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sandbox-helper
+  namespace: sandbox-docker
+spec:
+  containers:
+  - image: nginx:1.29
+    name: app
+  volumes:
+  - emptyDir:
+      sizeLimit: 256Mi
+    name: scratch
+---
+# From pod-virt-launcher-name-outside-vm-namespace-mutated.yaml. The namespace-axis control: the
+# `virt-launcher` name prefix alone buys nothing outside the two VM namespaces.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-impostor
+  namespace: default
+spec:
+  containers:
+  - image: nginx:1.29
+    name: app
+  volumes:
+  - emptyDir:
+      sizeLimit: 256Mi
+    name: scratch

@@ -1,0 +1,32 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../add-default-resources.yaml, applied by the `patches:` entry
+# in ../kustomization.yaml. A JSON6902 patch document, NOT a manifest: it must never appear in
+# `resources:`.
+#
+# HOUSE-STYLE REFERENCE for an exemption patch is
+# ../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml. Its numbered
+# conventions govern this file too and are not restated here.
+#
+# WHAT DIFFERS FOR A MUTATE POLICY, and it raises the stakes on getting the predicate right: an
+# inverted or too-wide entry here does not produce a wrong PolicyReport row, it produces a wrongly
+# rewritten object. ../exemptions/add-emptydir-sizelimit.yaml carries this repo's account of what
+# that has already cost. The falsifiability discipline that answers it is the paired CLI documents
+# in ci/policy-tests/kyverno/best-practices/add-default-resources/kyverno-test.yaml: every fixture
+# this patch turns into a `skip` must be a real target of the rule, and the `-pure` document is
+# what proves it.
+
+# kube-system and longhorn-system run node-level infrastructure whose resource shape is set by the
+# Kubernetes distribution or by Longhorn's own chart, not by this estate. Adding a request moves a
+# component that deliberately ships without one from BestEffort to Burstable, which changes which
+# pods the kubelet evicts first under node pressure -- and these are the pods that should be
+# evicted last. No manifest change in this repo makes them compliant, because this repo does not
+# author them.
+#
+# COST: a genuinely BestEffort workload deployed into either namespace is silently uncapped too.
+# Wrong if either namespace ever becomes a place ordinary workloads are deployed.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-infrastructure-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['kube-system', 'longhorn-system'])

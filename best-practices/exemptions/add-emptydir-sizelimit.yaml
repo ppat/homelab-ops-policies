@@ -1,0 +1,83 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../add-emptydir-sizelimit.yaml, applied by the `patches:` entry
+# in ../kustomization.yaml. A JSON6902 patch document, NOT a manifest: it must never appear in
+# `resources:`.
+#
+# HOUSE-STYLE REFERENCE for an exemption patch is
+# ../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml. Its numbered
+# conventions govern this file too and are not restated here.
+#
+# THIS FILE IS THE REPO'S CANONICAL RECORD OF WHY A MUTATE POLICY'S EXEMPTIONS ARE HIGHER-STAKES
+# THAN A VALIDATE POLICY'S. Read the virt-launcher entry below before tuning any exclusion on any
+# mutate policy in this repo.
+
+# kube-system and longhorn-system run node-level infrastructure whose storage shape is set by the
+# Kubernetes distribution or by Longhorn's own chart, not by this estate. Longhorn in particular
+# runs engine and replica pods whose scratch volumes it sizes itself; an externally imposed 256Mi
+# cap on a volume backing block-device replication is a data-path failure, not a tidy default.
+#
+# COST: an ordinary workload deployed into either namespace keeps an uncapped emptyDir. Wrong if
+# either namespace ever becomes a place ordinary workloads are deployed.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-infrastructure-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['kube-system', 'longhorn-system'])
+
+# IMPORTANT for whoever next tunes a *mutate* policy's exclusions: `validationActions` is a field
+# on `ValidatingPolicy` and does not exist on `MutatingPolicy` at all. Every virt-handler/
+# virt-launcher exclusion elsewhere in this repo was added to *validate* policies that already run
+# in Audit mode, so "Audit" felt like a low-stakes backstop while the exclusion list was worked
+# out. A mutate rule has no such backstop -- it always applies, unconditionally, the moment it
+# matches. That gap is exactly what caused docker-vm to eviction-loop: the policy silently added a
+# 256Mi sizeLimit to virt-launcher's internal "ephemeral-disks" emptyDir (the containerDisk
+# copy-on-write overlay backing every write the guest makes to its root filesystem), the VM's
+# writes hit the cap, the kubelet evicted the pod, KubeVirt recreated it, and the loop repeated --
+# with nothing surfacing it as a violation anywhere, because a mutate rule does not report one, it
+# just rewrites the object.
+#
+# virt-launcher pods run in the VM's own namespace (sandbox-docker, sandbox-talos here), not in
+# `kubevirt` -- unlike virt-handler, which is a DaemonSet confined to that one namespace. A
+# namespace-scoped exclusion targeting `kubevirt` would exclude nothing.
+#
+# WHOLE-POD, NOT PER-VOLUME: every emptyDir a virt-launcher pod carries (private, public, sockets,
+# virt-bin-dir, libvirt-runtime, ephemeral-disks, and container-disks when image volumes aren't in
+# use) is created internally by virt-controller for KubeVirt's own bookkeeping -- kubelet already
+# tears the whole pod down when a VM is deleted, so none of them benefit from an externally imposed
+# cap. Verified against KubeVirt v1.9.0 source (pkg/virt-controller/services/rendervolumes.go, the
+# emptyDirVolume() helper all of them go through): it unconditionally emits EmptyDirVolumeSource{}
+# with no SizeLimit, and there is no KubeVirt/VirtualMachine CR field that feeds one in -- this
+# isn't a case of "KubeVirt could set its own limit but doesn't"; it has no such knob.
+#
+# DELIBERATELY LEFT UNCAPPED rather than re-added at a bigger, hand-picked number: this volume
+# backs a real VM's disk writes, so any fixed number is a guess divorced from the workload, and a
+# long-lived VM's overlay only grows -- a bigger cap just relocates the same eviction loop further
+# down the timeline, most convincingly right after whoever hit it has stopped watching. The actual
+# backstop is the one Kubernetes already ships for exactly this shape of problem: kubelet's
+# node-level ephemeral-storage eviction (nodefs.available). A VM that needs real persistent
+# capacity belongs on a PVC-backed virtio disk (KubeVirt dataVolumeTemplates/PVC volumes), not
+# written into this containerDisk overlay -- that's a workload-level fix, not a policy one.
+#
+# NAME-SCOPED like every other virt-launcher/virt-handler exclusion in this repo, even though these
+# pods also carry a stable `kubevirt.io: virt-launcher` label that would work equally well: kept
+# consistent with the existing name-glob exclusions rather than introducing a second selector style
+# for the same controller-owned pods. Scoped to the same two namespaces as those exclusions
+# (../exemptions/require-probes.yaml and
+# ../../pod-security-standard/restricted/exemptions/{restrict-volume-types,restrict-seccomp-strict}.yaml)
+# rather than left open to any future VM namespace; a new VM namespace needs all of them updated
+# together.
+#
+# COST: an ordinary emptyDir on a virt-launcher pod -- one KubeVirt did not generate -- is uncapped
+# too. Live-tested rather than only asserted:
+# ci/policy-tests/chainsaw/best-practices/add-emptydir-sizelimit/ applies a virt-launcher-shaped
+# Pod in `sandbox-docker` to a real cluster and reads it back with its emptyDirs uncapped, beside a
+# same-namespace control that comes back capped.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-launcher
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['sandbox-docker', 'sandbox-talos'] &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-launcher'))

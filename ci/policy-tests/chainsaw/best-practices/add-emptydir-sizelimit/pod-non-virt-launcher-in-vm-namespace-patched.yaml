@@ -1,0 +1,13 @@
+---
+# The control's assertion: capped at the estate's 256Mi. If this ever reads `null` while
+# pod-virt-launcher-patched.yaml still passes, the correct conclusion is that the POLICY stopped
+# working, not that the exemption got better.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sandbox-helper
+  namespace: sandbox-docker
+spec:
+  (volumes[?name == 'scratch'] | [0].emptyDir.sizeLimit): 256Mi
+status:
+  phase: Running

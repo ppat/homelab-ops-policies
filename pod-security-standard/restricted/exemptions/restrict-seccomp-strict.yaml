@@ -32,7 +32,7 @@
 # are created per-VMI in whatever namespace the VMI lives in and never run in `kubevirt`, so a
 # `kubevirt`-scoped copy of this entry would exempt nothing while looking like it did. Every other
 # virt-launcher exclusion in this repo is bounded by the same two namespaces for the same reason
-# (./restrict-volume-types.yaml, ../../../best-practices/add-emptydir-sizelimit.yaml,
+# (./restrict-volume-types.yaml, ../../../best-practices/exemptions/add-emptydir-sizelimit.yaml,
 # ../../../best-practices/exemptions/require-probes.yaml); a new VM namespace needs all of them updated
 # together.
 - op: add

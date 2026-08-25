@@ -1,0 +1,31 @@
+---
+# EXPECTED: `pass`, mutated -- and the initContainers left UNTOUCHED.
+#
+# THIS FIXTURE ASSERTS A KNOWN GAP, ON PURPOSE. It is not a bug report waiting to be fixed by
+# whoever reads it next. `logs` is a native sidecar -- a `spec.initContainers` entry with
+# `restartPolicy: Always` -- so it runs for the whole life of the Pod and counts toward its QoS
+# class exactly the way `app` does, and it still gets no default request, because the mutation
+# reaches `spec.containers` and nothing else. `setup` is a plain init container and is equally
+# untouched.
+#
+# Closing the gap is a real behaviour change: it puts a request on every init container in the
+# estate and moves QoS class and eviction ordering for workloads nobody is currently thinking
+# about. It needs its own change and its own blast-radius review. WHEN IT LANDS, this fixture is
+# what it edits -- the expectation in patched-resources.yaml moves so `logs` gains `requests`, and
+# the assertion flips from documenting the gap to documenting the fix. Deleting the fixture instead
+# would lose the only record that plain init containers are a deliberate non-target too.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-workload
+  namespace: default
+spec:
+  initContainers:
+  - name: setup
+    image: busybox:1.37
+  - name: logs
+    image: busybox:1.37
+    restartPolicy: Always
+  containers:
+  - name: app
+    image: nginx:1.29

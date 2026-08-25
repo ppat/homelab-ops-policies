@@ -1,0 +1,67 @@
+---
+# Cluster-tier test for add-default-resources. See ../add-emptydir-sizelimit/chainsaw-test.yaml
+# for what a MutatingPolicy test does differently from the ValidatingPolicy house-style reference
+# at ../../restricted/restrict-volume-types/chainsaw-test.yaml (no `[Deny]` patch step, no
+# readiness-gate script, the `assert` steps are the gate).
+#
+# WHY THIS POLICY GETS CLUSTER TIME, given that all three mutate policies have one and most
+# policies in this repo have none: a mutation has no Audit backstop, so the estate has no other way
+# to observe a wrong patch before it lands. The three things this adds over
+# ../../../kyverno/best-practices/add-default-resources/ (cheaper and more thorough about which
+# containers get what):
+#
+#   1. The policy reaches Ready against the real webhook -- policy-ready.yaml.
+#   2. THE GATE MEETS WHAT A CLUSTER REALLY SENDS. The API server materialises `resources: {}` on
+#      every container before any webhook runs, so the arm of the gate that fires in production is
+#      not the one that fires against fixture YAML, and it derives `requests` from declared
+#      `limits` in the same pass. Both are behaviours of the API server, not of the policy engine;
+#      the offline tier cannot show either. pod-mixed-resources-patched.yaml pins them, including
+#      the one line whose live value differs from what an add-if-absent read-back would produce.
+#   3. WHAT ACTUALLY HAPPENS TO A POD CONTROLLER, which is not what the offline tier says: a
+#      `MutatingPolicy` registers a webhook for `pods` only regardless of `spec.autogen`, while
+#      `kyverno apply`/`kyverno test` DO simulate the autogen rewrite and will happily report a
+#      Deployment mutated. See deployment-pod-controllers.yaml for the measurement.
+#
+# The native-sidecar gap is asserted here too, in pod-mixed-resources-patched.yaml: it is
+# deliberate and unfixed, and having it fail loudly the day someone "fixes" it in passing is the
+# point.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-default-resources
+spec:
+  # `template: false` repo-wide -- see ../../restricted/restrict-volume-types/chainsaw-test.yaml.
+  template: false
+  steps:
+  - name: install-policy
+    try:
+    - apply:
+        file: ../../../.build/best-practices/add-default-resources.yaml
+    - assert:
+        file: policy-ready.yaml
+
+  - name: default-only-containers-that-declare-no-resources
+    try:
+    - apply:
+        file: pod-mixed-resources.yaml
+    - assert:
+        file: pod-mixed-resources-patched.yaml
+
+  - name: exemption-fires-in-the-real-kube-system-namespace
+    try:
+    # The control for this step is the previous one: the same "declares nothing" container shape
+    # is mutated in an ordinary namespace one step above, so an unmutated Pod here cannot be
+    # explained by the policy being absent or un-Ready.
+    - apply:
+        file: pod-kube-system-exempt.yaml
+    - assert:
+        file: pod-kube-system-exempt-patched.yaml
+
+  - name: pod-controllers-are-not-mutated-but-their-pods-are
+    try:
+    - apply:
+        file: deployment-pod-controllers.yaml
+    - assert:
+        file: deployment-pod-controllers-patched.yaml
+    - assert:
+        file: pod-from-deployment-patched.yaml

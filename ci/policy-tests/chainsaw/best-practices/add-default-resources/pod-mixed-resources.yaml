@@ -1,0 +1,55 @@
+---
+# EXPECTED: admitted, mutated -- and mutated per-container, not uniformly.
+# Asserted by pod-mixed-resources-patched.yaml.
+#
+# Four claims in one Pod, each of which needs the LIVE schema or the live API server rather than
+# the offline engine's model of them:
+#   * `app`         declares nothing -> gains both 32Mi and 32m. What actually reaches the webhook
+#     is `resources: {}`, because the API server materialises it; this is the container that proves
+#     the policy's gate handles the shape a cluster really sends.
+#   * `sized`       declares `requests.cpu: 500m` and `limits.memory: 1Gi` -> gains nothing, and
+#     keeps every field it declared. `spec.containers` is `listType: map` keyed on `name`, so a
+#     container the mutation does not name is not addressed at all.
+#   * `limits-only` declares `limits.memory: 1Gi` and no requests -> gains nothing either, and this
+#     is the one container in either tier whose LIVE outcome differs from what an add-if-absent
+#     read-back would produce. See the patched file.
+#   * `logs`        is a NATIVE SIDECAR (an initContainer with `restartPolicy: Always`) -> gains
+#     nothing. Deliberate, documented gap; see the patched file.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-resources-workload
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  initContainers:
+  # A PLAIN init container, and it must EXIT for the Pod to progress -- hence a command rather
+  # than the `pause` image every other container here uses. Learned the hard way: an init
+  # container running `pause` blocks the Pod in `Init:0/2` forever and the `status.phase: Running`
+  # assertion below then times out, which reads like a policy failure and is not one.
+  - name: setup
+    image: busybox:1.37
+    command: ['/bin/true']
+  # THE NATIVE SIDECAR: `restartPolicy: Always` on an initContainer. It is expected to keep
+  # running for the Pod's lifetime, so `pause` is right here, and the Pod reaches Running once
+  # the sidecar has started.
+  - name: logs
+    image: registry.k8s.io/pause:3.10
+    restartPolicy: Always
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  - name: sized
+    image: registry.k8s.io/pause:3.10
+    resources:
+      requests:
+        cpu: 500m
+      limits:
+        memory: 1Gi
+  # NO `requests` AT ALL, only a limit. The API server derives `requests.memory: 1Gi` from it
+  # before admission; `requests.cpu` stays absent, and must still be absent afterwards.
+  - name: limits-only
+    image: registry.k8s.io/pause:3.10
+    resources:
+      limits:
+        memory: 1Gi

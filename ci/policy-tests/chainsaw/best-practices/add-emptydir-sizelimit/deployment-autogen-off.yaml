@@ -1,0 +1,47 @@
+---
+# EXPECTED: the Deployment's OWN template is NOT rewritten, while the Pod it creates IS.
+# Asserted by deployment-autogen-off-patched.yaml and pod-from-autogen-probe-patched.yaml.
+#
+# THE ONE CLAIM ABOUT THIS POLICY THE CLI TIER CANNOT MAKE, and the one it actively gets wrong.
+#
+# What the CLI tier cannot do: assert the ABSENCE of a match. A `result: skip` row for an
+# unmatched Deployment fails when autogen is off (there is no result to match) and also fails
+# when autogen is on (the result is `pass`), so it is red in both states and asserts nothing.
+# Measured; see ../../../kyverno/best-practices/add-emptydir-sizelimit/kyverno-test.yaml.
+#
+# What the CLI tier gets wrong: `kyverno apply`/`kyverno test` SIMULATE the autogen rewrite, so
+# with autogen at its default they report a Deployment cheerfully mutated at
+# `spec.template.spec.volumes`. A real cluster does not do that -- the measurement is recorded
+# once, in ../add-default-resources/deployment-pod-controllers.yaml.
+#
+# HONEST LIMITATION: because the setting is inert at this engine version, this fixture does NOT
+# discriminate `controllers: []` from the default -- it passes under both. It pins the OUTCOME,
+# which is what an engine upgrade would change, and which nothing else in either tier checks.
+#
+# WHY IT MATTERS FOR THIS POLICY SPECIFICALLY: its virt-launcher exemption is metadata-based, and
+# an autogen rewrite that left such an exemption no longer matching would re-arm the eviction loop
+# ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml describes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emptydir-autogen-probe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: emptydir-autogen-probe
+  template:
+    metadata:
+      labels:
+        app: emptydir-autogen-probe
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.10
+        volumeMounts:
+        - name: scratch
+          mountPath: /scratch
+      volumes:
+      - name: scratch
+        emptyDir: {}

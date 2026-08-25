@@ -1,0 +1,22 @@
+---
+# EXPECTED: `pass`, mutated. See patched-resources.yaml.
+#
+# THE OFFLINE STAND-IN FOR WHAT A CLUSTER ACTUALLY SENDS. `resources: {}` is written out here
+# because this tier does no API defaulting, while the API server materialises exactly that on every
+# container of every Pod before any webhook runs. So on a live cluster `has(c.resources)` is
+# ALWAYS true and the gate's `!has(c.resources)` arm never fires -- the container reaches the
+# mutation only via `!has(c.resources.requests) && !has(c.resources.limits)`.
+#
+# WHAT IT CATCHES: a gate reduced to `!has(c.resources)` alone. That passes every other fixture in
+# this directory, because none of them writes an empty `resources` map, and then fails to mutate a
+# single Pod in production.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: empty-resources-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+    resources: {}

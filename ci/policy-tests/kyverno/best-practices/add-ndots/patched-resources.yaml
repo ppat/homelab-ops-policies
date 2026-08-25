@@ -1,0 +1,65 @@
+---
+# THE EXPECTED OUTPUT OF THE MUTATION. See ../add-default-resources/patched-resources.yaml for
+# why a mutate policy needs this file at all. Documents are matched to fixtures by
+# kind + namespace + name.
+
+# ---------------------------------------------------------------------------------------------
+# From pod-no-dnsconfig-mutated.yaml. The whole `dnsConfig` object created (second arm of the
+# conditional).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-plain-workload
+  namespace: default
+spec:
+  containers:
+  - image: nginx:1.29
+    name: app
+  dnsConfig:
+    options:
+    - name: ndots
+      value: "1"
+---
+# From pod-dnsconfig-without-options-mutated.yaml. `options` created; `nameservers`, `searches`
+# and `dnsPolicy: None` all still here, which is what proves the patch targeted
+# `/spec/dnsConfig/options` and not `/spec/dnsConfig`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-nameservers-workload
+  namespace: default
+spec:
+  containers:
+  - image: nginx:1.29
+    name: app
+  dnsConfig:
+    nameservers:
+    - 10.43.0.10
+    options:
+    - name: ndots
+      value: "1"
+    searches:
+    - svc.cluster.local
+  dnsPolicy: None
+---
+# From pod-sibling-options-preserved-mutated.yaml. THE LOAD-BEARING DOCUMENT OF THIS FILE, and the
+# regression record for this repo's own ndots clobbering bug: THREE options, the workload's own two
+# FIRST and in their original order, ndots appended LAST. `spec.dnsConfig.options` is an atomic
+# list, so anything that writes it writes all of it; a policy that replaced the list rather than
+# concatenating would show exactly one entry here.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-sibling-options-workload
+  namespace: default
+spec:
+  containers:
+  - image: nginx:1.29
+    name: app
+  dnsConfig:
+    options:
+    - name: edns0
+    - name: attempts
+      value: "3"
+    - name: ndots
+      value: "1"

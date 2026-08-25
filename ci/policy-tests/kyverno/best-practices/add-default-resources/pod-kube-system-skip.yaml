@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` -- filtered by `matchConditions` before the mutation ran, not `pass`.
+#
+# The estate exemption (../../../../best-practices/exemptions/add-default-resources.yaml, which
+# carries the reasoning) firing on `kube-system`. Non-vacuous: this Pod declares no requests at
+# all, exactly like pod-no-requests-mutated.yaml, so without the exemption it would be mutated --
+# which the `-pure` document in kyverno-test.yaml asserts directly. An exemption fixture asserted
+# on an already-compliant resource would prove nothing.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-ish
+  namespace: kube-system
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29

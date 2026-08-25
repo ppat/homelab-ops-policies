@@ -1,0 +1,15 @@
+---
+# Exactly one option, and it is the workload's own 5. Equal-length array matching is what makes
+# this non-vacuous in both directions: a policy that appended its own entry would produce length
+# 2 and fail, and a policy that replaced the value would produce `value: "1"` and fail.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-declared-workload
+spec:
+  dnsConfig:
+    options:
+    - name: ndots
+      value: "5"
+status:
+  phase: Running

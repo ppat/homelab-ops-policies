@@ -1,0 +1,158 @@
+---
+# CLI-tier test for add-default-resources. The house-style reference is
+# ../restrict-node-port/kyverno-test.yaml -- read its five numbered conventions first; they all
+# apply here. What a MUTATING policy adds on top of them, and what the other two mutate suites in
+# this tree refer back to:
+#
+#   6. `isMutatingPolicy: true`, not `isValidatingPolicy`. Same trap as convention 2: with the
+#      wrong flag the CLI does not recognise the kind and the row is not matched.
+#   7. `result: pass` MEANS ONLY "a mutation was produced WITHOUT ERROR". `patchedResources:` is
+#      where the real assertion lives -- a file of expected post-mutation documents, matched by
+#      kind/namespace/name. A `pass` row with no `patchedResources` on a policy that rewrites live
+#      objects with no Audit backstop is very nearly a no-op.
+#   8. `failOnMissingResources: true` on every such row. Without it, a `patchedResources` file that
+#      no longer contains a document for one of the row's resources degrades quietly instead of
+#      failing -- the same "matches nothing, so broadens" hazard as convention 4, one level down.
+#   9. NO POD-CONTROLLER FIXTURES, on any of the three mutate policies. This tier cannot assert the
+#      ABSENCE of a match -- a `result: skip` row for an unmatched Deployment is red when autogen
+#      is off (there is no result) and red when it is on (the result is `pass`), so it asserts
+#      nothing in either state. Worse, it MODELS pod controllers wrongly: `kyverno test` simulates
+#      the autogen rewrite, while a real cluster registers an mpol webhook for `pods` only. Pod
+#      controllers are asserted at the cluster tier instead --
+#      ../../../chainsaw/best-practices/add-default-resources/deployment-pod-controllers.yaml. Do
+#      not "restore coverage" by adding a Deployment row here.
+#  10. FIXTURE IDENTITIES MUST BE UNIQUE. `resources:` selects by `<namespace>/<name>`; two fixture
+#      files sharing a namespace+name collide silently and one of them stops being tested. No name
+#      here is reused by the sibling add-emptydir-sizelimit/ and add-ndots/ directories either.
+#
+# NON-VACUITY WITHOUT A `fail` VERDICT. A mutate policy has no failing outcome, so the pairing that
+# keeps this suite honest is `pass`+patched against `skip`. Four fixtures must come back changed in
+# a precisely specified way; five must come back untouched, and they are untouched for TWO
+# different reasons that this file keeps apart:
+#   * three by the policy's own gate -- they declare resources, so the rule has no business with
+#     them. These skip in BOTH documents below.
+#   * two by the estate exemption -- they are real targets of the rule (they declare nothing at
+#     all) and skip only in the built document.
+# Delete the exemption layer and the second group goes red. Delete the gate and the first group
+# goes red. Delete the mutation and the `pass` rows go red.
+#
+# TWO `Test` DOCUMENTS, because this policy carries a Layer-2 estate-exemption patch:
+#   * `add-default-resources-built` runs against the `kustomize build` output -- the pure policy
+#     plus best-practices/exemptions/add-default-resources.yaml. That is what a consumer applies,
+#     so it is the authority on shipped behaviour.
+#   * `add-default-resources-pure` runs THE SAME fixtures against the exemption-free policy file.
+#     Each exemption `skip` above becomes a `pass` there, which is what makes it attributable to
+#     the exemption rather than to a fixture that was never a target. Without this document a
+#     mistyped `patches:` target in best-practices/kustomization.yaml -- a silent no-op in
+#     kustomize -- would leave both documents green. The gate `skip`s stay `skip`s in both, which
+#     is the same discrimination run the other way.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-default-resources-built
+policies:
+- ../../../.build/best-practices/add-default-resources.yaml
+resources:
+- pod-no-requests-mutated.yaml
+- pod-mixed-container-resources-mutated.yaml
+- pod-empty-resources-mutated.yaml
+- pod-native-sidecar-gap-mutated.yaml
+- pod-declared-requests-skip.yaml
+- pod-declared-memory-skip.yaml
+- pod-declared-limits-only-skip.yaml
+- pod-kube-system-skip.yaml
+- pod-longhorn-system-skip.yaml
+results:
+# Pods the policy must mutate, and exactly how. Grouped in one row because they share a kind and a
+# verdict; the discrimination between them is entirely in patched-resources.yaml.
+- policy: add-default-resources
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/besteffort-workload
+  - default/mixed-container-workload
+  - default/empty-resources-workload
+  - default/sidecar-workload
+  patchedResources: patched-resources.yaml
+  failOnMissingResources: true
+  result: pass
+# THE GATE, asserted as a verdict. Each of these declares resources on its only container, so
+# `spec.matchConditions` filters the Pod before the mutation runs. No `patchedResources`, and that
+# is the point: the object these produce is identical to the one an add-if-absent read-back would
+# produce, so only the verdict can tell the two apart. Three fixtures because the gate has three
+# distinguishable ways to be weakened -- requests-only, memory axis, limits-only -- and each
+# fixture is the only one that catches its own.
+- policy: add-default-resources
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/partially-sized-workload
+  - default/memory-sized-workload
+  - default/limits-only-workload
+  result: skip
+# THE EXEMPTION, also a `skip` but for an unrelated reason: filtered by the appended
+# `matchConditions` entry, not by the gate. Both namespaces appear so that either half of the
+# exemption's list can be falsified on its own. The `-pure` document below is what separates this
+# row's cause from the one above it.
+- policy: add-default-resources
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/kube-proxy-ish
+  - longhorn-system/longhorn-manager-ish
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-default-resources-pure
+policies:
+- ../../../../../best-practices/add-default-resources.yaml
+resources:
+- pod-no-requests-mutated.yaml
+- pod-mixed-container-resources-mutated.yaml
+- pod-empty-resources-mutated.yaml
+- pod-native-sidecar-gap-mutated.yaml
+- pod-declared-requests-skip.yaml
+- pod-declared-memory-skip.yaml
+- pod-declared-limits-only-skip.yaml
+- pod-kube-system-skip.yaml
+- pod-longhorn-system-skip.yaml
+results:
+# Unchanged by the exemption layer: these Pods are in no exempt namespace, so the same patched
+# documents must still be produced. If a `matchConditions` entry ever leaked back into the policy
+# file, one of these would turn into a `skip` and this row would go red.
+- policy: add-default-resources
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/besteffort-workload
+  - default/mixed-container-workload
+  - default/empty-resources-workload
+  - default/sidecar-workload
+  patchedResources: patched-resources.yaml
+  failOnMissingResources: true
+  result: pass
+# STILL `skip` WITH NO EXEMPTION LAYER AT ALL. That is what makes these three attributable to the
+# policy's own gate and to nothing else -- a consumer that dropped the kustomize patch layer would
+# still not overwrite a container its author had sized.
+- policy: add-default-resources
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/partially-sized-workload
+  - default/memory-sized-workload
+  - default/limits-only-workload
+  result: skip
+# THE FIRING ASSERTION for the exemption. Without the exemption layer both of these are mutated, so
+# each `skip` in the built document is caused by the exemption and by nothing else. No
+# `patchedResources` here on purpose: the claim is that a patch is produced at all; what it
+# contains is already pinned above for the same container shape.
+- policy: add-default-resources
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/kube-proxy-ish
+  - longhorn-system/longhorn-manager-ish
+  result: pass

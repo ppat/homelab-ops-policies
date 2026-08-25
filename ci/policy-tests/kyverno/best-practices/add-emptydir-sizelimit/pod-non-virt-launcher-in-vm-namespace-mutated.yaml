@@ -1,0 +1,23 @@
+---
+# EXPECTED: `pass`, mutated.
+#
+# NAME-AXIS CONTROL for the virt-launcher exemption: right namespace, wrong name. The exemption
+# is a conjunction, and a fixture can only falsify one conjunct at a time -- this one asserts
+# that being in `sandbox-docker` is not on its own enough to escape the policy.
+#
+# It matters concretely rather than theoretically: `sandbox-docker` is a namespace with ordinary
+# workloads in it as well as virt-launcher pods, and those ordinary workloads are exactly what
+# the emptyDir cap is for. An exemption widened to the whole namespace would quietly stop
+# capping them.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sandbox-helper
+  namespace: sandbox-docker
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  volumes:
+  - name: scratch
+    emptyDir: {}

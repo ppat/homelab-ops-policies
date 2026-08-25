@@ -1,0 +1,24 @@
+---
+# EXPECTED: admitted, and NOT mutated. Asserted by pod-own-ndots-patched.yaml.
+#
+# THE IDEMPOTENCE GUARD, LIVE. A workload that chose `ndots: 5` keeps it. Upstream
+# kyverno/policies' mpol deliberately does the opposite -- its description says it sets ndots
+# "replacing any existing value", implemented as a JSONPatch `op: remove` of the workload's own
+# entry followed by an `op: add` of its own -- so "someone syncs this file with upstream" is a
+# concrete, live way for the guarantee to be lost, not a hypothetical.
+#
+# 5, not 1, so the assertion cannot pass by coincidence.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-declared-workload
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  dnsConfig:
+    options:
+    - name: ndots
+      value: "5"
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10

@@ -1,0 +1,20 @@
+---
+# Readiness assertion for add-emptydir-sizelimit. Shape and reasoning: see
+# ../../restricted/restrict-volume-types/policy-ready.yaml, including why the
+# `(conditions[?type == 'X'])` filter form is what makes each arm non-vacuous.
+#
+# `MutatingPolicy` reports the same `status.conditionStatus` shape as `ValidatingPolicy` --
+# verified firsthand on the pinned chart for this kind rather than assumed from that one.
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
+metadata:
+  name: add-emptydir-sizelimit
+status:
+  conditionStatus:
+    ready: true
+    (conditions[?type == 'WebhookConfigured']):
+    - status: "True"
+      reason: Succeeded
+    (conditions[?type == 'RBACPermissionsGranted']):
+    - status: "True"
+      reason: Succeeded

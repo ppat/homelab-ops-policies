@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip`.
+#
+# The second namespace in the same exemption entry, falsifiable independently of the first: a
+# fixture for only one member would stay green if the other were dropped from the list.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: emptydir-longhorn-workload
+  namespace: longhorn-system
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  volumes:
+  - name: scratch
+    emptyDir: {}

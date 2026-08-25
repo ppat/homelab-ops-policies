@@ -19,15 +19,36 @@ resources:
 # apiVersion the policy file itself declares, not whichever version Kyverno uses for storage.
 #
 # A patch whose target matches nothing is a SILENT NO-OP in kustomize: it does not fail the build.
-# What catches a mistyped target is the CLI-tier test asserting `skip` on each exemption's firing
-# fixture against the built output and `fail` on the same fixture against the pure policy file
-# (ci/policy-tests/kyverno/best-practices/require-probes/). Do not add an entry here without one.
+# What catches a mistyped target -- `kind:` above all, since this directory now holds two policy
+# kinds behind this layer -- is the CLI-tier test asserting the exemption's firing fixture against
+# the built output AND against the pure policy file, where its verdict must differ
+# (ci/policy-tests/kyverno/best-practices/require-probes/ for the validate shape,
+# .../add-emptydir-sizelimit/ for the mutate shape). Do not add an entry here without one.
 #
-# No other policy here has an entry. The remaining `ValidatingPolicy` files carry no estate
-# exemption and declare no `matchConditions` seam, so exempting one means adding both. The
-# `ClusterPolicy` files are out of this layer's reach entirely: their exclusions live in each
-# rule's own `exclude:` block, which is per-rule and has no policy-wide seam to append to.
+# The policies with no entry carry no estate exemption and declare no `matchConditions` seam, so
+# exempting one means adding both. The two `DeletingPolicy` files are out of this layer's reach:
+# that kind has no `matchConditions` field at all (its equivalent is `spec.conditions`), and
+# cleanup-empty-replicasets' `kube-system` exclusion is a `namespaceSelector`, which is not an
+# appendable seam either.
 patches:
+- path: exemptions/add-default-resources.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: MutatingPolicy
+    name: add-default-resources
+- path: exemptions/add-emptydir-sizelimit.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: MutatingPolicy
+    name: add-emptydir-sizelimit
+- path: exemptions/add-ndots.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: MutatingPolicy
+    name: add-ndots
 - path: exemptions/require-probes.yaml
   target:
     group: policies.kyverno.io

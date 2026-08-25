@@ -69,7 +69,7 @@
 # signal at all, kubelet's or KubeVirt's, and no audit row would say so.
 #
 # Scoped to the same two namespaces as every other virt-launcher exclusion in this repo
-# (../add-emptydir-sizelimit.yaml and
+# (./add-emptydir-sizelimit.yaml and
 # ../../pod-security-standard/restricted/exemptions/{restrict-volume-types,restrict-seccomp-strict}.yaml)
 # rather than left open to any future VM namespace; a new VM namespace needs all of them updated
 # together. Its `kyverno test` fixture is necessarily synthetic and labelled as such -- it still

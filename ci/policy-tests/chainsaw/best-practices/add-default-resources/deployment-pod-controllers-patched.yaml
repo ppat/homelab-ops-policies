@@ -1,0 +1,14 @@
+---
+# The controller object's template is untouched: no `resources` on its container.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resources-podcontroller-probe
+spec:
+  template:
+    spec:
+      (containers[?name == 'pause'] | [0].resources.requests): null
+status:
+  # Non-vacuity: without this the null assertion would be satisfied by a Deployment whose pods
+  # were never admitted at all.
+  readyReplicas: 1

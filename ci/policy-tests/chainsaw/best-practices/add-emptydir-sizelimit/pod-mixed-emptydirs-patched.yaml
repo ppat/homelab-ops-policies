@@ -1,0 +1,40 @@
+---
+# THE ASSERTION. Chainsaw `assert` polls until this matches or the step times out, so no sleep is
+# needed anywhere in this test.
+#
+# READ THE ASSERTION STYLE BEFORE EDITING. Chainsaw matches maps as SUBSETS, so writing
+#     - name: tmpfs-cache
+#       emptyDir:
+#         medium: Memory
+# would ALSO match a volume that had gained a `sizeLimit` -- extra keys are invisible to a subset
+# match. Every "must NOT have been changed" claim in this file is therefore written as an
+# explicit JMESPath expression that resolves to `null` when the field is absent, which is a
+# statement a subset match cannot make. The one "must have been changed" claim is written the
+# same way for symmetry and so that the four lines read as one table.
+#
+# `volumes[?name == '...'] | [0]` rather than an index: the API server does not promise to
+# preserve list order across admission plugins, and an index-based assertion that silently
+# started reading a different volume would be the worst possible failure here -- it would assert
+# the right thing about the wrong object.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-volume-workload
+spec:
+  # The rule fired: the plain, disk-backed, uncapped volume got the estate's default.
+  (volumes[?name == 'scratch'] | [0].emptyDir.sizeLimit): 256Mi
+  # The `medium: Memory` guard held. `null` means the key is absent -- not "present and empty".
+  # A sizeLimit here would be a second, invisible memory limit on the workload, since tmpfs pages
+  # are charged to the Pod's memory rather than to node disk.
+  (volumes[?name == 'tmpfs-cache'] | [0].emptyDir.sizeLimit): null
+  (volumes[?name == 'tmpfs-cache'] | [0].emptyDir.medium): Memory
+  # The existing-sizeLimit guard held: the author's 8Gi is still 8Gi, not 256Mi.
+  (volumes[?name == 'author-sized'] | [0].emptyDir.sizeLimit): 8Gi
+  # `has(v.emptyDir)` held: a configMap volume did not acquire an emptyDir.
+  (volumes[?name == 'settings'] | [0].emptyDir): null
+status:
+  # Non-vacuity for the whole document: an assertion tree of five null-or-value checks would be
+  # satisfiable by a Pod that never started. This pins that the kubelet accepted the mutated
+  # volumes and actually ran the container -- a `sizeLimit` is enforced by the kubelet, so
+  # "admission accepted it" is not the same claim as "it works".
+  phase: Running
