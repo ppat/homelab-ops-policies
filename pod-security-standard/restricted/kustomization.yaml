@@ -12,6 +12,11 @@ resources:
 # exemption to the add-check.
 - disallow-capabilities-strict.yaml
 - disallow-privilege-escalation.yaml
+# NEW in the Phase 2 migration: PSS gained the Restricted-tier `procMount_restricted` check at
+# policy version v1.35, which re-tightens what Baseline now relaxes for user-namespaced pods
+# (design §5.5c). It has no legacy ClusterPolicy and no upstream kyverno/policies ancestor. It is
+# a matched pair with ../baseline/disallow-proc-mount.yaml -- read the two together.
+- disallow-proc-mount-strict.yaml
 - require-drop-all.yaml
 - require-run-as-non-root-user.yaml
 - require-run-as-nonroot.yaml
@@ -33,10 +38,12 @@ resources:
 # on each exemption's firing fixture (ci/policy-tests/kyverno/restricted/restrict-volume-types/)
 # -- without the exemption those fixtures report `fail`. Do not add an entry here without one.
 #
-# ONE POLICY IN THIS PROFILE DELIBERATELY HAS NO ENTRY: disallow-capabilities-strict, the
+# TWO POLICIES IN THIS PROFILE DELIBERATELY HAVE NO ENTRY: disallow-capabilities-strict (the
 # add-check half of the §2.3 split -- attaching require-drop-all's virt-handler exemption to it is
-# the specific mistake the split exists to prevent. It still declares `matchConditions: []` in its
-# own file, which is the seam a future exemption appends to.
+# the specific mistake the split exists to prevent) and disallow-proc-mount-strict (new; §5.5c's
+# position is that a userns workload gets a scoped exemption when it exists, not before). Both
+# still declare `matchConditions: []` in their own files, which is the seam a future exemption
+# appends to.
 patches:
 - path: exemptions/disallow-privilege-escalation.yaml
   target:
