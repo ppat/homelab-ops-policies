@@ -17,6 +17,10 @@
 # any particular way against any resource. This is deliberately shallow. Deeper, fixture-based
 # behavioral coverage for individual policies (in the style of volume-types below) is a later
 # phase's job, not this baseline's.
+#
+# kyverno-test runs the `kyverno test` (CLI) tier -- cli.kyverno.io/v1alpha1 Test files under
+# ci/policy-tests/kyverno/, recursively. Empty today (per-policy tests land with each ported
+# policy); a no-op run is expected and must not fail the job.
 name: static-analysis
 
 on:
@@ -227,3 +231,35 @@ jobs:
           fi
         done
         exit "${status}"
+
+  kyverno-test:
+    # The `kyverno test` (CLI) tier: cli.kyverno.io/v1alpha1 Test files under
+    # ci/policy-tests/kyverno/, mirroring the policy tree by profile and policy name. Empty
+    # today -- per design doc §8.3, "the harness cannot come after the translation", so this
+    # scaffolding lands before any policy is ported; per-policy tests then land *with* each
+    # ported policy in a later PR, not later in time. `kyverno test` recursively discovers
+    # `kyverno-test.yaml` files under the given path and exits 0 with "No test yamls available"
+    # when it finds none (verified locally against this repo's currently-empty tree), so this
+    # step is a legitimate no-op today rather than a failure waiting to happen.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      # Kept in lockstep with the jobs above, for the same reason: the CLI's policy engine
+      # should match the kyverno actually deployed by infra-security-core.
+      # renovate: datasource=github-releases depName=kyverno/kyverno
+      KYVERNO_CLI_VERSION: "v1.18.2"
+    steps:
+    - name: Setup repository and tools
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@9c16506c3c527478b6314c86ca961c0011d9f94a # v2.2.0
+      with:
+        current_git_ref: ${{ github.head_ref || github.ref }}
+        current_repository: ${{ github.repository }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        mise_toml: |
+          [tools]
+          kyverno = "${{ env.KYVERNO_CLI_VERSION }}"
+
+    - name: Run kyverno test
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- kyverno test ci/policy-tests/kyverno
