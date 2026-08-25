@@ -12,11 +12,14 @@
 #
 # check_seLinuxOptions.go: `seLinuxOptions.type`, if set, must be one of the allowed types (pod
 # and every container/initContainer/ephemeralContainer level); `seLinuxOptions.user`/`.role` must
-# be empty at every level, unconditionally, at every policy version. This is the MECHANICAL
-# kind-migration commit -- allowed types stay the three the legacy file carried
-# (container_t, container_init_t, container_kvm_t). The `container_engine_t` addition (design
-# §5.6, allowed since PSS policy v1.31) lands in a separate follow-up commit on this same file, so
-# a revert of just that content refresh is possible without reverting the kind migration.
+# be empty at every level, unconditionally, at every policy version.
+#
+# CONTENT DELTA (design §5.6): `container_engine_t` added to the allow-list, on top of the
+# structural kind-migration commit that ported this file with the legacy three-entry list
+# unchanged. Allowed since PSS policy v1.31 (`selinuxAllowedTypes1_31`, pss-research.md, commit
+# 840e4a82d "PSA: allow container_engine_t selinux type", 2024-07-17). Confirmed unchanged by this
+# addition: `seLinuxOptions.user`/`.role` must still be empty at every level -- the second
+# `validations[]` entry below is untouched.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -55,12 +58,12 @@ spec:
   validations:
   - expression: >-
       object.spec.?securityContext.?seLinuxOptions.?type.orValue('container_t') in
-      ['container_t', 'container_init_t', 'container_kvm_t'] &&
+      ['container_t', 'container_init_t', 'container_kvm_t', 'container_engine_t'] &&
       (object.spec.containers +
       object.spec.?initContainers.orValue([]) +
       object.spec.?ephemeralContainers.orValue([])).all(c,
       c.?securityContext.?seLinuxOptions.?type.orValue('container_t') in
-      ['container_t', 'container_init_t', 'container_kvm_t'])
+      ['container_t', 'container_init_t', 'container_kvm_t', 'container_engine_t'])
     message: >-
       Setting the SELinux type is restricted. The fields
       spec.securityContext.seLinuxOptions.type,
@@ -68,7 +71,7 @@ spec:
       spec.initContainers[*].securityContext.seLinuxOptions.type, and
       spec.ephemeralContainers[*].securityContext.seLinuxOptions.type
       must either be unset or set to one of the allowed values
-      (container_t, container_init_t, or container_kvm_t).
+      (container_t, container_init_t, container_kvm_t, or container_engine_t).
   - expression: >-
       object.spec.?securityContext.?seLinuxOptions.?user.orValue('') == '' &&
       object.spec.?securityContext.?seLinuxOptions.?role.orValue('') == '' &&

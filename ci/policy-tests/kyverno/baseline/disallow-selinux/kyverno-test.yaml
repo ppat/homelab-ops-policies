@@ -5,9 +5,8 @@
 # document: this policy carries no estate exemptions (design §3.1), so built output and the pure
 # mirror are identical.
 #
-# pod-container-engine-t.yaml's expected result tracks which commit is checked out -- see that
-# fixture's own header. It reads `fail` on the structural kind-migration commit and `pass` once
-# the container_engine_t content-delta commit lands on the same PR.
+# pod-container-engine-t.yaml now asserts `pass` -- the content-delta commit added
+# container_engine_t to the mirror's allow-list. See that fixture's own header.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -27,12 +26,12 @@ results:
   resources:
   - default/ordinary-workload
   - default/allowed-type-workload
+  - default/container-engine-workload
   result: pass
 - policy: disallow-selinux
   isValidatingPolicy: true
   kind: Pod
   resources:
   - default/disallowed-type-workload
-  - default/container-engine-workload
   - default/user-role-set-workload
   result: fail
