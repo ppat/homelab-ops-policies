@@ -1,0 +1,18 @@
+---
+# EXPECTED: `fail` ("Using a mutable image tag e.g. 'latest' is not allowed.").
+#
+# THE REGRESSION FIXTURE, half two of two -- `ephemeralContainers`, the other list upstream's vpol
+# dropped. Both halves are kept as separate fixtures because they are separate terms in the
+# policy's `allContainers` variable: deleting either term leaves the other's fixture green.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mutable-debugger
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.internal/app:v2.3.0
+  ephemeralContainers:
+  - name: debugger
+    image: registry.internal/debug-tools:latest

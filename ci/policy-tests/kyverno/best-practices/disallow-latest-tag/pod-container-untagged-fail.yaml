@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail` ("An image tag is required.").
+#
+# The other rule. An untagged reference resolves to `:latest` at pull time, so it is the same
+# hazard spelled differently -- but it produces a DIFFERENT message, and the two messages are why
+# the policy keeps two `validations[]` entries rather than one. Confirm the message in the
+# `--detailed-results` table the CI job prints; `kyverno test` result rows cannot assert on it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: untagged-app
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.internal/app

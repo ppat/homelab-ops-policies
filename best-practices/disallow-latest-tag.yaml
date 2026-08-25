@@ -1,12 +1,28 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: hand-ported from this repo's own legacy best-practices/disallow-latest-tag.yaml
+# (`kyverno.io/v1 ClusterPolicy`, two `validate.foreach` rules, each iterating all THREE container
+# lists with the glob patterns `image: "*:*"` and `image: "!*:latest"`).
+#
+# Upstream kyverno/policies best-practices-vpol/disallow-latest-tag/ was read at commit ef9843f0
+# and is NOT the source for this file. Its CEL rewrite checks `object.spec.containers` ONLY --
+# `initContainers` and `ephemeralContainers` were dropped in the translation from its own legacy
+# policy, which iterates all three. That is a coverage REGRESSION, verified firsthand against the
+# upstream file rather than taken on faith, and design doc phase2.0-policy-migration-design-v3.md
+# §3.3 instructs this repo not to repeat it ("keep all three container lists"). An untagged
+# `initContainer` is exactly as mutable as an untagged app container; nothing about the upstream
+# expression suggests the omission was reasoned.
+#
+# House style for a `best-practices`-group `ValidatingPolicy` is set by ./restrict-node-port.yaml;
+# read that file first. Its five numbered conventions apply here unrestated, except convention 5
+# (`spec.autogen` absent) -- see the autogen note below and ./disallow-cri-sock-mount.yaml, which
+# has the same reason.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-latest-tag
   annotations:
     policies.kyverno.io/title: Disallow Latest Tag
     policies.kyverno.io/category: Best Practices
-    policies.kyverno.io/minversion: 1.6.0
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
     policies.kyverno.io/description: >-
@@ -15,42 +31,63 @@ metadata:
       a specific version of an application Pod. This policy validates that the image
       specifies a tag and that it is not called `latest`.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: require-image-tag
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "An image tag is required."
-      foreach:
-      - list: "request.object.spec.containers"
-        pattern:
-          image: "*:*"
-      - list: "request.object.spec.initContainers"
-        pattern:
-          image: "*:*"
-      - list: "request.object.spec.ephemeralContainers"
-        pattern:
-          image: "*:*"
-  - name: validate-image-tag
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Using a mutable image tag e.g. 'latest' is not allowed."
-      foreach:
-      - list: "request.object.spec.containers"
-        pattern:
-          image: "!*:latest"
-      - list: "request.object.spec.initContainers"
-        pattern:
-          image: "!*:latest"
-      - list: "request.object.spec.ephemeralContainers"
-        pattern:
-          image: "!*:latest"
+  # `spec.autogen` intentionally not set -- autogen stays at its default (ON). Same reasoning as
+  # ./disallow-cri-sock-mount.yaml's autogen note, which spells it out: this policy matches
+  # `pods`, the legacy `ClusterPolicy` it replaces carried no `autogen-controllers` annotation
+  # (which for that kind also means "all pod controllers"), and design §2.4's rewrite hazard needs
+  # a `matchConditions` entry to bite -- this policy has none. The rewrite that autogen DOES
+  # perform here, `object.spec.containers` to `object.spec.template.spec.containers` in
+  # `spec.variables` below, is the correct one; a Deployment fixture in
+  # ci/policy-tests/kyverno/best-practices/disallow-latest-tag/ fails, which is what proves
+  # autogen is running rather than assumed.
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # Two `validations[]` entries mirroring the legacy policy's two rules, and keeping their two
+  # distinct messages: "no tag at all" and "the tag is `latest`" are different mistakes with
+  # different fixes, and a PolicyReport row that says which one is more useful than one that
+  # doesn't. The legacy wording of both messages is preserved rather than reworded -- they are
+  # what already appears in this estate's PolicyReports, and a kind migration is the wrong moment
+  # to churn a human-facing string (./restrict-node-port.yaml, DEVIATION 2, same call).
+  #
+  # KNOWN LIMITATION, carried over deliberately rather than fixed here: `contains(':')` treats a
+  # registry port as a tag, so `registry.internal:5000/app` satisfies the first check while being
+  # untagged. The legacy glob `image: "*:*"` has exactly the same hole (it matches the colon in
+  # the port), so this is preservation, not a new gap. Tightening it is a behaviour change and
+  # must not ride on a kind migration -- the same rule design §5.7 applies to the
+  # `add-default-resources` sidecar gap.
+  - expression: >-
+      variables.allContainers.all(container, container.image.contains(':'))
+    message: An image tag is required.
+  # `endsWith(':latest')` rather than a `.matches()` regex, for the reason spelled out at length in
+  # ./disallow-cri-sock-mount.yaml: CEL's `.matches()` is an unanchored RE2 search and `.` is a
+  # metaclass. `endsWith` is anchored by construction and is the exact reading of the legacy glob
+  # `!*:latest`. Note this correctly leaves `app:latest@sha256:...` alone -- a digest-pinned
+  # reference is immutable no matter what the tag says, and the legacy glob agreed.
+  - expression: >-
+      variables.allContainers.all(container, !container.image.endsWith(':latest'))
+    message: Using a mutable image tag e.g. 'latest' is not allowed.
+  variables:
+  # ALL THREE container lists, which is the whole point of not copying upstream (see the header).
+  # `spec.containers` is required by the Pod schema so it needs no null guard; the other two are
+  # optional and get `.?…orValue([])`. Under autogen's rewrite all three paths gain
+  # `spec.template.`, and all three keep the same required/optional character there.
+  - name: allContainers
+    expression: >-
+      object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])

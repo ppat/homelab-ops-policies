@@ -1,0 +1,26 @@
+---
+# EXPECTED: `fail`.
+#
+# THE AUTOGEN FIXTURE. ../../../../../best-practices/disallow-latest-tag.yaml leaves
+# `spec.autogen` unset so autogen stays ON, reproducing the legacy `ClusterPolicy`'s
+# controller-level coverage. The mutable image here sits at `spec.template.spec.containers`, a
+# path the policy's own `spec.variables` expression never mentions, so this row is reachable only
+# through autogen's `object.` -> `object.spec.template.` rewrite. Set
+# `spec.autogen.podControllers.controllers: []` and it becomes "Not found".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mutable-web
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: mutable-web
+  template:
+    metadata:
+      labels:
+        app: mutable-web
+    spec:
+      containers:
+      - name: web
+        image: registry.internal/web:latest
