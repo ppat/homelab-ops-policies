@@ -6,54 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - [README.md](./README.md) — what this repo is, the policy groups, how a
   downstream repo consumes it, how it's released
-
-There is no `DESIGN.md` yet. It's deliberately deferred until a planned
-migration off deprecated Kyverno policy kinds settles what this repo's
-manifests actually look like — don't write one prematurely, and don't stretch
-this file or the README to cover architecture decisions that migration will
-change.
-
-## Migration in progress — read this before trusting the rest of this file
-
-The planned migration off Kyverno's deprecated policy kinds is **underway**,
-so this repo currently holds a MIX of kinds and two statements below are
-already partly false. They are left in place rather than rewritten piecemeal
-because the full README/CLAUDE.md rewrite is a single later step of that
-migration, and a half-rewrite would be harder to review than a marked one.
-What has changed so far:
-
-- **Not every policy is a `ClusterPolicy`.** `best-practices/restrict-node-port.yaml`
-  and `pod-security-standard/restricted/restrict-volume-types.yaml` are
-  `policies.kyverno.io/v1 ValidatingPolicy`. The rest are still legacy kinds
-  and are being ported policy by policy. Read those two first: they are the
-  house-style references, and their file headers state the conventions
-  (`metadata.name` equals the file basename, alphabetical `spec` keys,
-  null-safe statically-bool CEL, where provenance/snapshot comments go).
-- **"Exclusions are not meaningfully patchable from outside" is falsified for
-  the new kinds** — see the section below, which still describes the legacy
-  API. `ValidatingPolicy.spec.matchConditions` is a flat top-level list whose
-  entries are ANDed, so appending to it can only ever narrow a policy. This
-  repo now uses that as a real seam: PSS policy files are exemption-free
-  mirrors, and every estate exemption is a JSON6902 patch under
-  `pod-security-standard/<profile>/exemptions/<policy>.yaml`, wired up by a
-  `patches:` entry in that profile's `kustomization.yaml`. See
-  `pod-security-standard/restricted/exemptions/restrict-volume-types.yaml` --
-  it is the house-style reference for an exemption patch. `best-practices/`
-  policies deliberately keep their exemptions inline.
-- **What a consumer applies is the `kustomize build` output of a profile
-  directory**, not any single file, because a policy and its exemption patch
-  are two files. Both test tiers run against that built output
-  (`ci/scripts/build-policies.sh`), never against a policy file in isolation.
+- [DESIGN.md](./DESIGN.md) — why the repo is shaped this way: the pure-mirror /
+  exemption-patch layering, the migration off the deprecated policy kinds, the
+  test tiers, the regression tally, and the decisions still open
 
 ## What this repo is (and isn't)
 
-This is a content-only repo: Kyverno policy YAML, nothing else. There is no application code, no Flux wiring, and no
-cluster awareness — this repo doesn't know what's consuming it, how many
-consumers there are, or what they're called. It's released independently and
-referenced by a pinned tag from wherever it's applied, the same pattern
-`homelab-ops-kubernetes-apps` uses for its modules: one versioned artifact,
-consumed via a Flux `GitRepository` + `Kustomization.spec.path` pair defined
-entirely on the consumer's side.
+This is a content-only repo: Kyverno policy YAML, nothing else. There is no
+application code, no Flux wiring, and no cluster awareness — this repo doesn't
+know what's consuming it, how many consumers there are, or what they're called.
+It's released independently and referenced by a pinned tag from wherever it's
+applied, the same pattern `homelab-ops-kubernetes-apps` uses for its modules:
+one versioned artifact, consumed via a Flux `GitRepository` +
+`Kustomization.spec.path` pair defined entirely on the consumer's side.
 
 If a task starts to require knowing about a specific cluster, a specific
 `Kustomization`, or Flux state — that's out of scope here. It belongs in the
@@ -61,56 +26,182 @@ repo that wires this content up (currently `homelab-ops-kubernetes-clusters`).
 
 ## Repository layout
 
-- `best-practices/` — validate/mutate/cleanup `ClusterPolicy`/`ClusterCleanupPolicy`
-  objects not tied to Pod Security Standards
-- `pod-security-standard/baseline/` — Kubernetes Pod Security Standards,
-  Baseline profile, ported to Kyverno
-- `pod-security-standard/restricted/` — Restricted profile; its
-  `kustomization.yaml` lists `../baseline` as a resource, so applying
-  `restricted` also applies everything in `baseline`
+The policy directories **are** the released artifact — a consumer points a Flux
+`Kustomization.spec.path` straight at one. Nothing test-shaped may live in them.
+
+```text
+best-practices/                     # Validate/Mutate/Delete policies not tied to PSS.
+                                    #   Exemptions stay INLINE in each policy file.
+pod-security-standard/
+  baseline/                         # PSS Baseline mirrors (pure, exemption-free)
+    exemptions/<policy>.yaml        #   JSON6902 patch docs, one per exemption-bearing policy
+    kustomization.yaml              #   resources: + patches: wiring the two together
+  restricted/                       # PSS Restricted; lists ../baseline as a resource
+    exemptions/<policy>.yaml
+    kustomization.yaml
+ci/
+  policy-tests/
+    kyverno/<profile>/<policy>/     # `kyverno test` tier (offline)
+    chainsaw/<profile>/<policy>/    # Chainsaw tier (live kind cluster)
+    chainsaw/<profile>/ready-smoke/ #   one per profile: every policy reaches Ready
+    chainsaw/scripts/               #   shared helper scripts used by chainsaw steps
+    chainsaw/.chainsaw.yaml         #   shared Chainsaw config
+    chainsaw/kind-config.yaml       #   the CI kind cluster
+    smoke-resource.yaml             # the one Pod policy-smoke-check.yaml probes against
+    .build/                         # GITIGNORED: `kustomize build` output, per policy
+  scripts/build-policies.sh         # produces .build/ — run it before running tests locally
+  validation/                       # kubeconform harness config for lint.yaml
+```
 
 No `policies/` prefix directory — the whole repo *is* the policies content,
 so a wrapping directory would just be noise.
+
+## Policy kinds and house style
+
+Everything is `policies.kyverno.io/v1`: `ValidatingPolicy`, `MutatingPolicy`,
+`DeletingPolicy`. The legacy `kyverno.io/v1 ClusterPolicy` and
+`kyverno.io/v2beta1 ClusterCleanupPolicy` kinds are gone from this repo and must
+not come back — they are deprecated since Kyverno v1.17 and removed in v1.20.
+
+Read these files first; they set the house style and their headers state the
+conventions rather than merely following them:
+
+- `best-practices/restrict-node-port.yaml` — the `ValidatingPolicy` shape and
+  CEL conventions (`metadata.name` equals the file basename, alphabetical `spec`
+  keys, null-safe statically-bool CEL, where provenance comments go).
+- `pod-security-standard/restricted/restrict-volume-types.yaml` — the PSS-mirror
+  family conventions: the `PSS-SNAPSHOT` marker, the empty `matchConditions`
+  seam, autogen off.
+- `pod-security-standard/restricted/exemptions/restrict-volume-types.yaml` — the
+  exemption-patch shape, including the seven numbered rules its header states
+  (negation direction, `name`+`generateName` concatenation and the *narrower*
+  rationale that actually justifies it, glob translation, namespace always part
+  of the predicate).
+- `best-practices/cleanup-empty-replicasets.yaml` — the fuller `DeletingPolicy`
+  reference, including the field-name trap below.
+
+Traps worth knowing before writing CEL here:
+
+- **`spec.variables` are not visible inside `spec.matchConditions`** — compile
+  error, `undefined field`. Exemption expressions inline everything.
+- **`DeletingPolicy.spec` has no `matchConditions` field.** The equivalent is
+  `spec.conditions[]`, same `{name, expression}` item shape. The CRD is
+  structural with strict decoding, so a typo here is rejected outright rather
+  than silently ignored.
+- **Autogen is off (`spec.autogen.podControllers.controllers: []`) on every
+  policy in this repo, deliberately.** Autogen rewrites `object.` to
+  `object.spec.template.` throughout a policy *including* `matchConditions`, so
+  a metadata-based exemption silently stops matching on real controllers. Off by
+  construction beats managed per policy. Re-enabling it anywhere means
+  re-checking every exemption in that policy.
+- **A kustomize patch whose `target:` matches nothing is a silent no-op**, not a
+  build error. The thing that catches a mistyped target is the CLI-tier fixture
+  asserting `skip` on that exemption's firing resource.
 
 ## Keeping policies cluster-agnostic
 
 Policy content in this repo must not bake in assumptions about which cluster,
 or how many clusters, will apply it. Concretely:
 
-- **`validationFailureAction` (Audit vs. Enforce, only present on `Validate`
-  rules — `Mutate` policies and `ClusterCleanupPolicy` don't have it) is a
-  point-of-use decision, not something to hardcode per intended consumer
-  here.** A consumer that wants a different enforcement mode overrides it
-  with a `Kustomization.spec.patches` entry targeting `kind: ClusterPolicy`,
-  the same way the current `homelab-ops-kubernetes-clusters` repo's
-  `policy-*.yaml` Kustomizations do it today. Don't add cluster-flavored
-  variants of the same policy to work around this.
-- **Namespace/workload `exclude` blocks are judged by whether the exemption
-  is universal, not by which cluster happens to run the excluded thing.** An
-  exclusion for `kube-system`, `cert-manager`, or similar runs-everywhere
-  infra is fine to bake into the policy itself — every consumer needs it. An
-  exclusion that only makes sense for one specific consumer's environment
-  does not belong here; it belongs in a patch at the point of use.
+- **Enforcement mode is a point-of-use decision.** `spec.validationActions`
+  exists only on `ValidatingPolicy` (`MutatingPolicy` and `DeletingPolicy` have
+  no equivalent). Everything here ships `[Audit]`; a consumer that wants
+  `[Deny]` or `[Audit, Warn]` overrides it with a `Kustomization.spec.patches`
+  entry targeting `kind: ValidatingPolicy`. Don't add cluster-flavored variants
+  of the same policy to work around this.
+- **Namespace/workload exemptions are judged by whether the exemption is
+  universal, not by which cluster happens to run the excluded thing.** An
+  exemption for `kube-system`, `cert-manager`, or similar runs-everywhere infra
+  is fine to carry here — every consumer needs it. One that only makes sense for
+  one specific consumer's environment belongs in a patch at the point of use.
 
-This is a narrower reading of the modules-repo principle ("`dependsOn`/
-`components`/`postBuild`/`patches` apply only at the point of use, never
-inside the module") than it might first look: modules there compose cleanly
-because each cluster's `Kustomization` can layer config *on top of* an
-unmodified module. A Kyverno `ClusterPolicy` is more monolithic — there's no
-equivalent "layer a patch that adds one more allowed namespace" primitive
-inside the policy's own rule logic without rewriting the rule, so the
-practical dividing line is enforcement mode and blanket exclusions (patchable
-from outside) versus what the policy actually validates/mutates (not
-meaningfully patchable, so it has to be right for every consumer as
-authored).
+### Exclusions *are* patchable from outside now — this repo's older claim is false
+
+An earlier version of this file said policy exclusions were "not meaningfully
+patchable from outside," so the practical dividing line was enforcement mode and
+blanket exclusions versus everything else. **That was true of the legacy
+`ClusterPolicy` API and is no longer true.** It described `exclude:` blocks
+nested inside positional `rules[]`, where an outside patch had to index into a
+list whose order was part of the policy's meaning.
+
+The new kinds have a genuine seam:
+
+- `ValidatingPolicy` and `MutatingPolicy` carry a flat, top-level
+  `spec.matchConditions[]` of `{name, expression}` items; `DeletingPolicy`
+  carries `spec.conditions[]` with the same item shape.
+- **Every entry is ANDed**, and each states when the policy *should* apply. So
+  an appended entry can only ever remove resources from what the policy looks
+  at. It cannot weaken a validation, and it cannot reorder anything — there is
+  no positional meaning to break.
+- That makes `- op: add, path: /spec/matchConditions/-` a safe, composable
+  append that anyone in the chain can perform: this repo does it from
+  `<profile>/kustomization.yaml`, and a consumer can do exactly the same thing
+  from its own `Kustomization.spec.patches` with identical content and
+  semantics. Relocating an exemption estate-side is a file move, not a redesign.
+- Every PSS mirror declares `matchConditions: []` precisely so the append path
+  always exists, including on policies that have no exemptions today. The empty
+  list is accepted both by the CLI compiler and by the live CRD.
+
+What is *still* not patchable from outside is the thing the policy actually
+validates or mutates — `spec.validations[].expression` is a single CEL string,
+so "allow one more volume type" from outside means replacing the expression, not
+extending it. That half of the original claim stands, and it is why a mirror
+still has to be right for every consumer as authored. The exclusion half does
+not.
+
+## Testing
+
+Two tiers. Which tier a claim belongs in is a real design question, not a
+preference — see [DESIGN.md](./DESIGN.md#test-architecture-two-tiers) for the
+ownership table.
+
+- **`kyverno test` (`ci/policy-tests/kyverno/`, no cluster).** Owns validation
+  and mutation rule semantics, and owns exemption *expressions* — including the
+  `generateName`-only resource shape, which only exists offline. Asserts per
+  resource, with `pass`/`fail`/`skip` distinguished. Every policy has a suite
+  here. Known structural limit: this tier **cannot** assert "this resource was
+  not matched at all" — no selector variant expresses it.
+- **Chainsaw (`ci/policy-tests/chainsaw/`, live kind cluster).** Owns what only
+  a cluster can show: policies reaching Ready against the real webhook and real
+  RBAC, actual rejection under an in-test patch to `[Deny]`, mutations landing
+  on live objects with no Audit backstop, `DeletingPolicy` schedules firing
+  through the cleanup controller, and an exemption firing for a
+  controller-created Pod arriving through real admission. A Chainsaw test exists
+  only where the cluster adds information the CLI cannot produce — it is not a
+  re-run of the CLI suite. A policy with no directory here is covered by its
+  profile's `ready-smoke` plus the CLI tier, which is the intended steady state.
+
+Rules that apply to both tiers:
+
+- **Run against built output.** `ci/scripts/build-policies.sh` writes
+  `kustomize build` of each profile into `ci/policy-tests/.build/<profile>/<policy>.yaml`
+  (gitignored, named after `metadata.name`). Tests reference that, never a raw
+  policy file — a policy plus its exemption patch is what a consumer applies,
+  and a patch file alone is not valid YAML.
+- **Every exemption gets a firing fixture**: a resource the pure policy flags and
+  the built policy skips, paired with an assertion that the same resource *fails*
+  against the pure file. An exemption without one rots silently.
+- **Non-vacuous pairing**: a `-good` fixture is only meaningful next to a `-bad`
+  sibling proving the policy still rejects, and an exemption fixture must carry a
+  violation the policy would actually flag.
 
 ## Commit conventions
 
 Conventional Commits, enforced by commitlint. `commitlint.config.js` is the
-source of truth for allowed types/scopes — read it rather than assuming scopes
-from another repo apply here; the scope taxonomy is a placeholder pending a
-dedicated redesign once the Kyverno policy-kind migration settles the repo's
-shape.
+source of truth for allowed types and scopes — read it rather than assuming
+scopes from another repo apply here.
+
+The scope enum is still a placeholder. A dedicated pass to derive this repo's
+commit taxonomy from scratch has not run yet; don't over-specify scopes or build
+tooling around the current list. Most commits here need no scope at all.
+
+The Kyverno kind migration was authored as breaking changes — `feat!` with a
+`BREAKING CHANGE:` footer — because it changes the kind consumers patch against
+by name. The intent is that these cut **v1.0.0**. That release has not been cut
+yet (the repo is on `0.0.1`), and cutting it needs a config change first:
+release-please bumps MINOR rather than MAJOR on a breaking change below 1.0.0
+unless `release-please-config.json` sets `bump-minor-pre-major: false`, which it
+currently does not.
 
 ## CI
 
@@ -124,32 +215,34 @@ whether matching files changed. The `kubernetes-manifests` job runs
 `pod-security-standard/**/*.yaml`, configured by `ci/validation/.env` and
 `ci/validation/kustomization.yaml`.
 
-Each remaining CI concern gets its own workflow file rather than sharing one:
+Each remaining CI concern gets its own workflow file rather than sharing one
+(the former bundled `static-analysis.yaml` was split into the first two below):
 
 - `.github/workflows/policy-smoke-check.yaml` — probes every policy in the
   repo (both the shipped per-file YAML and the `kustomize build` output of
   each profile) against `ci/policy-tests/smoke-resource.yaml` with `kyverno
   apply`, asserting each one still parses, is accepted by Kyverno's CRD
   schema, and has no CEL compile or runtime error. Not that it behaves any
-  particular way.
-- `.github/workflows/policy-cli-tests.yaml` — the `kyverno test` tier:
-  `cli.kyverno.io/v1alpha1 Test` files under `ci/policy-tests/kyverno/`,
-  mirroring the policy tree by profile and policy name. This is where a
-  policy's rule semantics and its exemption expressions are asserted, per
-  resource, with pass/fail/skip distinguished. No cluster required.
-- `.github/workflows/e2e-tests.yaml` — the Chainsaw cluster tier: a real kind
-  cluster on the estate's pinned Kubernetes minor plus the estate's pinned
-  Kyverno chart, running `ci/policy-tests/chainsaw/`. Reserved for what a
-  cluster can prove and the CLI cannot (policy readiness against the real
-  webhook, rejection under `[Deny]`, an exemption firing for a
-  controller-created pod), not a re-run of the CLI tier.
+  particular way. It never trusts `kyverno apply`'s exit code — a malformed
+  policy is silently *dropped* and still exits 0; the job reads the reported
+  rule count and greps for `^Error:` instead.
+- `.github/workflows/policy-cli-tests.yaml` — the `kyverno test` tier.
+- `.github/workflows/e2e-tests.yaml` — the Chainsaw cluster tier.
 
 The Kyverno CLI version, the kind node image, and the Kyverno Helm chart
 version are kept in lockstep across those three files and with what the
 estate actually runs; each pin carries a comment saying so.
 
 `.github/workflows/release.yaml` runs release-please on pushes to `main`.
+`.github/workflows/renovate.yaml` runs Renovate on a schedule.
 `.pre-commit-config.yaml` mirrors the yamllint/markdownlint/shellcheck/
 commitlint checks locally via `pre-commit run --all-files`; it does not
 include the Kubernetes-manifest or Kyverno-CLI validation above, which are
 CI-only.
+
+One CI-fidelity gap worth knowing: the e2e kind cluster installs the Kyverno
+chart with default values, whose `resourceFilters` exclude ReplicaSets from
+every policy engine. Production overrides that in the apps repo's Kyverno
+`HelmRelease`; the Chainsaw suite works around it with a per-test script
+(`ci/policy-tests/chainsaw/scripts/allow-replicaset-cleanup.sh`). Aligning the
+harness with production would be a fidelity improvement, not a correctness fix.
