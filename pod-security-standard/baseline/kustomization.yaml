@@ -27,3 +27,9 @@ patches:
     version: v1
     kind: ValidatingPolicy
     name: disallow-capabilities
+- path: exemptions/disallow-host-ports.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-host-ports

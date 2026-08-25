@@ -1,0 +1,65 @@
+---
+# CLI tier for disallow-host-ports. Read
+# ../../restricted/restrict-volume-types/kyverno-test.yaml first -- it is the house-style
+# reference for the two-document (`-built`/`-pure`) shape and its rationale; this file follows it
+# without restating.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-ports-built
+policies:
+- ../../../.build/baseline/disallow-host-ports.yaml
+resources:
+- pod-no-hostport-pass.yaml
+- pod-hostport-fail.yaml
+- pod-metallb-speaker-hostport-skip.yaml
+- pod-node-exporter-hostport-skip.yaml
+results:
+- policy: disallow-host-ports
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload
+  result: pass
+- policy: disallow-host-ports
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/hostport-workload
+  result: fail
+- policy: disallow-host-ports
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - metallb-system/metallb-speaker-9k2vq
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-7g4hj
+  result: skip
+---
+# The exemption layer removed. Same fixtures; only `policies:` differs, and the two exemption
+# fixtures assert `fail` instead of `skip` -- the firing assertion (§2.5).
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-ports-pure
+policies:
+- ../../../../../pod-security-standard/baseline/disallow-host-ports.yaml
+resources:
+- pod-no-hostport-pass.yaml
+- pod-hostport-fail.yaml
+- pod-metallb-speaker-hostport-skip.yaml
+- pod-node-exporter-hostport-skip.yaml
+results:
+- policy: disallow-host-ports
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload
+  result: pass
+- policy: disallow-host-ports
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/hostport-workload
+  - metallb-system/metallb-speaker-9k2vq
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-7g4hj
+  result: fail

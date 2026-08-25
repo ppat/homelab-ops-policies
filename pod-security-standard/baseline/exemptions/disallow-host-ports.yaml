@@ -1,0 +1,26 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-host-ports.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml; this file is NOT a Kubernetes manifest and is not in `resources:`. House
+# style is set by ../../restricted/exemptions/restrict-volume-types.yaml -- read its header first
+# for the seven numbered conventions; they all apply here without restating.
+
+# metallb-speaker binds hostPorts for BGP/speaker traffic that must reach the node directly.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-metallb-speaker
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'metallb-system' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith('metallb-speaker'))
+
+# node-exporter binds a hostPort so Prometheus can scrape node-level metrics without going
+# through a Service ClusterIP that would obscure which node a metric came from.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-exporter
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith(
+      'kube-prometheus-stack-prometheus-node-exporter'))

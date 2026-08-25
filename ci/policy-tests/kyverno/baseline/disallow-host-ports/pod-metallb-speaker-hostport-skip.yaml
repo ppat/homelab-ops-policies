@@ -1,0 +1,19 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-metallb-speaker matchCondition (design doc
+# phase2.0-policy-migration-design-v3.md §2.5). metallb-speaker binds hostPorts for BGP/speaker
+# traffic that must reach the node directly.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: metallb-speaker-9k2vq
+  namespace: metallb-system
+spec:
+  restartPolicy: Always
+  containers:
+  - name: speaker
+    image: quay.io/metallb/speaker:v0.14.0
+    ports:
+    - containerPort: 7946
+      hostPort: 7946

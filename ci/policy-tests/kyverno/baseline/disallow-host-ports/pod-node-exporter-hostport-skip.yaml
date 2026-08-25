@@ -1,0 +1,20 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-node-exporter matchCondition (design doc
+# phase2.0-policy-migration-design-v3.md §2.5). node-exporter binds a hostPort so Prometheus can
+# scrape node-level metrics without going through a Service ClusterIP that would obscure which
+# node a metric came from.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-prometheus-stack-prometheus-node-exporter-7g4hj
+  namespace: monitoring
+spec:
+  restartPolicy: Always
+  containers:
+  - name: node-exporter
+    image: quay.io/prometheus/node-exporter:v1.8.0
+    ports:
+    - containerPort: 9100
+      hostPort: 9100
