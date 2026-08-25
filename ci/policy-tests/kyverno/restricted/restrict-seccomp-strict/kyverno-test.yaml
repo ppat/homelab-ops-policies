@@ -1,0 +1,135 @@
+---
+# CLI tier for restrict-seccomp-strict. House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the five conventions),
+# ../restrict-volume-types/kyverno-test.yaml (why an exemption-carrying policy needs a `built`
+# document AND a `pure` one) and ../../baseline/disallow-privileged-containers/kyverno-test.yaml
+# (the `<namespace>/<name>` fixture-collision rule). None of them is restated.
+#
+# WHAT THIS SUITE UNIQUELY OWNS: TWO exemptions with different shapes -- a single-namespace one
+# (virt-handler/`kubevirt`) and a two-namespace one (virt-launcher/`sandbox-docker` +
+# `sandbox-talos`) -- which is why there are four half-match `fail` controls rather than two. The
+# most useful of them is `kubevirt/virt-launcher-stray-vm-6m2wp`: it is the pod that would slip
+# through if the two exemptions' namespace predicates were ever merged, and it is the only fixture
+# here that a careless "tidy the two entries into one" edit would turn green.
+#
+# ALSO ASSERTED HERE: this policy is not its Baseline sibling. `default/ordinary-workload-...`
+# sets no seccompProfile at all -- ../../baseline/restrict-seccomp/ passes that pod and this one
+# must fail it.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-seccomp-strict-built
+policies:
+- ../../../.build/restricted/restrict-seccomp-strict.yaml
+resources:
+- pod-no-seccomp-fail.yaml
+- pod-podlevel-runtimedefault-pass.yaml
+- pod-containers-runtimedefault-pass.yaml
+- pod-podlevel-localhost-pass.yaml
+- pod-container-unconfined-fail.yaml
+- pod-podlevel-unconfined-containers-runtimedefault-fail.yaml
+- pod-init-container-unset-fail.yaml
+- pod-ephemeral-container-unconfined-fail.yaml
+- pod-windows-no-seccomp-pass.yaml
+- pod-virt-handler-no-seccomp-skip.yaml
+- pod-virt-handler-generatename-no-seccomp-skip.yaml
+- pod-not-virt-handler-in-kubevirt-no-seccomp-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-no-seccomp-fail.yaml
+- pod-virt-launcher-sandbox-docker-no-seccomp-skip.yaml
+- pod-virt-launcher-sandbox-talos-no-seccomp-skip.yaml
+- pod-virt-launcher-in-kubevirt-no-seccomp-fail.yaml
+- pod-not-virt-launcher-in-sandbox-docker-no-seccomp-fail.yaml
+results:
+- policy: restrict-seccomp-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/podlevel-rd-workload-6b9f4c8d5-x2kqp
+  - default/containers-rd-workload-844d7c96b-fq8vn
+  - default/localhost-workload-4f8b7c6d9-vn3ks
+  - default/windows-workload-2c8e6a1b4-wr7tk
+  result: pass
+- policy: restrict-seccomp-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/unconfined-container-workload-77955b8c45-52ls7
+  - default/podlevel-unconfined-workload-cbf5bd649-mzqns
+  - default/sidecar-workload-3a7d2e1f5-hq9xz
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - kubevirt/virt-api-6d9c8f5b7-9wq4x
+  - monitoring/virt-handler-zzz11
+  - kubevirt/virt-launcher-stray-vm-6m2wp
+  - sandbox-docker/cdi-importer-vm-disk-p4t9n
+  result: fail
+# Both estate exemptions firing, across all three exempted namespaces and both name shapes.
+# `skip`, NOT `pass`: none of these pods declares a seccompProfile, so `pass` would mean the rule
+# had stopped requiring one rather than the exemption applying.
+- policy: restrict-seccomp-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  - sandbox-docker/virt-launcher-docker-vm-zqrlj
+  - sandbox-talos/virt-launcher-talos-vm-8kx4c
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-seccomp-strict-pure
+policies:
+- ../../../../../pod-security-standard/restricted/restrict-seccomp-strict.yaml
+resources:
+- pod-no-seccomp-fail.yaml
+- pod-podlevel-runtimedefault-pass.yaml
+- pod-containers-runtimedefault-pass.yaml
+- pod-podlevel-localhost-pass.yaml
+- pod-container-unconfined-fail.yaml
+- pod-podlevel-unconfined-containers-runtimedefault-fail.yaml
+- pod-init-container-unset-fail.yaml
+- pod-ephemeral-container-unconfined-fail.yaml
+- pod-windows-no-seccomp-pass.yaml
+- pod-virt-handler-no-seccomp-skip.yaml
+- pod-virt-handler-generatename-no-seccomp-skip.yaml
+- pod-not-virt-handler-in-kubevirt-no-seccomp-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-no-seccomp-fail.yaml
+- pod-virt-launcher-sandbox-docker-no-seccomp-skip.yaml
+- pod-virt-launcher-sandbox-talos-no-seccomp-skip.yaml
+- pod-virt-launcher-in-kubevirt-no-seccomp-fail.yaml
+- pod-not-virt-launcher-in-sandbox-docker-no-seccomp-fail.yaml
+results:
+# Unchanged by the exemption layer. The Windows pod is listed here on purpose: §5.8's disjunct is
+# in the MIRROR, not in the exemption patch.
+- policy: restrict-seccomp-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/podlevel-rd-workload-6b9f4c8d5-x2kqp
+  - default/containers-rd-workload-844d7c96b-fq8vn
+  - default/localhost-workload-4f8b7c6d9-vn3ks
+  - default/windows-workload-2c8e6a1b4-wr7tk
+  result: pass
+# THE FIRING ASSERTION. All four pods the built policy skips are real violations of the pure
+# mirror, so each `skip` above is attributable to its exemption and to nothing else.
+- policy: restrict-seccomp-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/unconfined-container-workload-77955b8c45-52ls7
+  - default/podlevel-unconfined-workload-cbf5bd649-mzqns
+  - default/sidecar-workload-3a7d2e1f5-hq9xz
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - kubevirt/virt-api-6d9c8f5b7-9wq4x
+  - monitoring/virt-handler-zzz11
+  - kubevirt/virt-launcher-stray-vm-6m2wp
+  - sandbox-docker/cdi-importer-vm-disk-p4t9n
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  - sandbox-docker/virt-launcher-docker-vm-zqrlj
+  - sandbox-talos/virt-launcher-talos-vm-8kx4c
+  result: fail

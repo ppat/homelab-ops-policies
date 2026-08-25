@@ -1,0 +1,23 @@
+---
+# EXPECTED: `fail`.
+#
+# A CONTAINER OPTING BACK OUT of a compliant pod-level value -- PSS's "explicitly bad container"
+# case. Inverse of ./pod-podlevel-runtimedefault-pass.yaml: it proves the inheritance is a DEFAULT
+# for containers that say nothing, not an override of containers that do.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unconfined-container-workload-77955b8c45-52ls7
+  namespace: default
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  - name: unconfined
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      seccompProfile:
+        type: Unconfined

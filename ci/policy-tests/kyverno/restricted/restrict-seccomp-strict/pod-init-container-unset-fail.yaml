@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# THE THREE-LIST ASSERTION, first of two. Every ordinary container carries the value; the
+# initContainer -- also a NATIVE SIDECAR (`restartPolicy: Always`) -- does not, and there is no
+# pod-level value to cover it. `visitContainers()` iterates all three lists identically.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-workload-3a7d2e1f5-hq9xz
+  namespace: default
+spec:
+  initContainers:
+  - name: log-rotate
+    image: registry.k8s.io/pause:3.10
+    restartPolicy: Always
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault

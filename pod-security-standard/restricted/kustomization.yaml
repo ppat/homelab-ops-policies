@@ -62,6 +62,12 @@ patches:
     version: v1
     kind: ValidatingPolicy
     name: require-run-as-nonroot
+- path: exemptions/restrict-seccomp-strict.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: restrict-seccomp-strict
 - path: exemptions/restrict-volume-types.yaml
   target:
     group: policies.kyverno.io

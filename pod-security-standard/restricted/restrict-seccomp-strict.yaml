@@ -1,6 +1,23 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check
+# seccompProfile_restricted
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ./restrict-volume-types.yaml (the PSS-mirror family conventions: snapshot
+# marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# This is a LAYER 1 PURE MIRROR: the two estate exemptions this policy has in production live in
+# ./exemptions/restrict-seccomp-strict.yaml. Read the two together -- in particular, the
+# virt-launcher entry there carries the "declaration gap" argument, which is the least obvious
+# exemption rationale in this repo and the easiest to mistake for a shrug.
+#
+# THE RESTRICTED CHECK IS NOT THE BASELINE CHECK WITH A LONGER ALLOW-LIST. Baseline's
+# `seccompProfile_baseline` only forbids an explicit `Unconfined`; unset is fine there. The
+# Restricted check additionally requires the field to be SET, at the pod level or per container.
+# Both ship: ../baseline/restrict-seccomp.yaml and this file, and on the `restricted` profile both
+# apply to the same pod. That is PSS's own arrangement, not a duplication introduced here.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: restrict-seccomp-strict
   annotations:
@@ -8,81 +25,91 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    # Bumped from the legacy `kyverno.io/kyverno-version: 1.6.0`, which is dropped as redundant.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
+    # Two clauses of the legacy description are DROPPED, not reworded: "requiring Kubernetes v1.19
+    # or later" (this repo's floor is 1.36, and the annotation above states it) and "A known issue
+    # prevents a policy such as this using `anyPattern` from being persisted properly in
+    # Kubernetes 1.23.0-1.23.2" (there is no `anyPattern` in a `ValidatingPolicy`; see
+    # ./require-run-as-nonroot.yaml, which drops the same sentence for the same reason).
     policies.kyverno.io/description: >-
       The seccomp profile in the Restricted group must not be explicitly set to Unconfined
-      but additionally must also not allow an unset value. This policy,
-      requiring Kubernetes v1.19 or later, ensures that seccomp is
-      set to `RuntimeDefault` or `Localhost`. A known issue prevents a policy such as this
-      using `anyPattern` from being persisted properly in Kubernetes 1.23.0-1.23.2.
+      but additionally must also not allow an unset value. This policy ensures that seccomp is
+      set to `RuntimeDefault` or `Localhost`.
 spec:
-  background: true
-  validationFailureAction: Audit
-  rules:
-  - name: check-seccomp-strict
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Use of custom Seccomp profiles is disallowed. The fields
-        spec.securityContext.seccompProfile.type,
-        spec.containers[*].securityContext.seccompProfile.type,
-        spec.initContainers[*].securityContext.seccompProfile.type, and
-        spec.ephemeralContainers[*].securityContext.seccompProfile.type
-        must be set to `RuntimeDefault` or `Localhost`.
-      anyPattern:
-      - spec:
-          securityContext:
-            seccompProfile:
-              type: "RuntimeDefault | Localhost"
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(seccompProfile):
-                =(type): "RuntimeDefault | Localhost"
-          =(initContainers):
-          - =(securityContext):
-              =(seccompProfile):
-                =(type): "RuntimeDefault | Localhost"
-          containers:
-          - =(securityContext):
-              =(seccompProfile):
-                =(type): "RuntimeDefault | Localhost"
-      - spec:
-          =(ephemeralContainers):
-          - securityContext:
-              seccompProfile:
-                type: "RuntimeDefault | Localhost"
-          =(initContainers):
-          - securityContext:
-              seccompProfile:
-                type: "RuntimeDefault | Localhost"
-          containers:
-          - securityContext:
-              seccompProfile:
-                type: "RuntimeDefault | Localhost"
-    exclude:
-      any:
-      # virt-handler sets no seccompProfile at pod or container level -- a privileged
-      # DaemonSet gets no practical extra containment from a seccomp filter anyway. See
-      # ../baseline/disallow-privileged-containers.yaml for what bounds it instead.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
-      # virt-launcher (unprivileged -- see ../baseline/disallow-privileged-containers.yaml)
-      # only gets a declared seccompProfile when the KubeVirt CR's
-      # spec.configuration.seccompConfiguration is set, which this repo doesn't do yet; the
-      # container runtime still applies RuntimeDefault regardless, so this is a
-      # manifest-declaration gap, not an actually-unconfined process. Closing it for real
-      # means setting that CR field once KubeVirt is installed, not widening this exclusion.
-      - resources:
-          names:
-          - 'virt-launcher*'
-          namespaces:
-          - sandbox-docker
-          - sandbox-talos
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # THE LEADING WINDOWS DISJUNCT (design §5.8) -- see ./disallow-capabilities-strict.yaml's
+  # validation comment for the full reasoning, which is not repeated here. PSS's
+  # `seccompProfileRestricted_1_25()` returns `Allowed: true` for a pod with
+  # `spec.os.name == "windows"`; seccomp is a Linux kernel facility. Inert on this estate; carried
+  # for fidelity.
+  #
+  # THE TWO CONJUNCTS AFTER IT ARE THE SAME SHAPE AS ./require-run-as-nonroot.yaml's, because PSS
+  # implements the two checks with the same pod-level/container-level inheritance structure
+  # (`check_seccompProfile_restricted.go` and `check_runAsNonRoot.go` are near-identical in
+  # outline). Read that file's long validation comment once; what follows only names the
+  # differences.
+  #   * First conjunct = "an explicit pod-level value must itself be allowed". `.orValue(
+  #     'RuntimeDefault')` makes an ABSENT pod-level field pass this conjunct -- absence is not an
+  #     opt-out, it just means the containers have to carry the value themselves, which is what
+  #     the second conjunct then requires.
+  #   * Second conjunct = the effective per-container value. The inner `.orValue(...)` inherits
+  #     the pod-level setting; its own `.orValue('')` makes "nothing set anywhere" fall to the
+  #     empty string, which is in neither allowed value, so it FAILS. That is the half that
+  #     distinguishes this from the Baseline policy.
+  #
+  # SAME CONTENT DELTA AS ./require-run-as-nonroot.yaml, from the same cause: the legacy
+  # `anyPattern`'s second branch constrained only the containers, so a pod declaring
+  # `spec.securityContext.seccompProfile.type: Unconfined` with every container overriding it to
+  # RuntimeDefault passed. PSA forbids it (`badSetters` includes "pod"). This file follows PSA per
+  # §2.1. Asserted by
+  # ci/policy-tests/kyverno/restricted/restrict-seccomp-strict/pod-podlevel-unconfined-containers-runtimedefault-fail.yaml.
+  #
+  # `Localhost` is allowed WITHOUT this policy checking `localhostProfile`. That mirrors PSS,
+  # which validates only the type; core API validation is what requires the path to be present
+  # when the type is Localhost.
+  #
+  # All three container lists concatenated, mirroring `visitContainers()`. `spec.containers` needs
+  # no `.?`/`.orValue([])` because the API requires at least one container.
+  - expression: >-
+      object.spec.?os.?name.orValue('') == 'windows' ||
+      (object.spec.?securityContext.?seccompProfile.?type.orValue('RuntimeDefault')
+      in ['RuntimeDefault', 'Localhost'] &&
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?seccompProfile.?type.orValue(
+      object.spec.?securityContext.?seccompProfile.?type.orValue(''))
+      in ['RuntimeDefault', 'Localhost']))
+    # LEGACY WORDING, kept verbatim (restrict-node-port.yaml's DEVIATION 2 house rule). It names
+    # all four field paths, which an Audit reader wants.
+    message: >-
+      Use of custom Seccomp profiles is disallowed. The fields
+      spec.securityContext.seccompProfile.type,
+      spec.containers[*].securityContext.seccompProfile.type,
+      spec.initContainers[*].securityContext.seccompProfile.type, and
+      spec.ephemeralContainers[*].securityContext.seccompProfile.type
+      must be set to `RuntimeDefault` or `Localhost`.

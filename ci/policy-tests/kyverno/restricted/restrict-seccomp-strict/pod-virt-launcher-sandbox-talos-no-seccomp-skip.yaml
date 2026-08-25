@@ -1,0 +1,15 @@
+---
+# EXPECTED: `skip` against built output, `fail` against the pure mirror.
+#
+# ESTATE EXEMPTION 2 OF 2, SECOND NAMESPACE. Both `sandbox-docker` and `sandbox-talos` are
+# asserted because the exemption spells them as a two-element `in [...]` list, and a fixture in
+# only one of them would not notice the other being dropped.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-talos-vm-8kx4c
+  namespace: sandbox-talos
+spec:
+  containers:
+  - name: compute
+    image: registry.k8s.io/pause:3.10

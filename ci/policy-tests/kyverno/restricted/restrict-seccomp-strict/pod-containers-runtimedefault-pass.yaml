@@ -1,0 +1,23 @@
+---
+# EXPECTED: `pass`.
+#
+# The other compliant shape: no pod-level setting, every container carrying the value itself.
+# Second branch of the legacy `anyPattern`. Paired with ./pod-podlevel-runtimedefault-pass.yaml it
+# proves the expression accepts both.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: containers-rd-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault

@@ -1,0 +1,59 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../restrict-seccomp-strict.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml. This is a JSON6902 patch document, not a manifest. House-style
+# reference: ./restrict-volume-types.yaml -- its seven numbered conventions apply here unchanged.
+#
+# TWO EXEMPTIONS, TWO DIFFERENT ARGUMENTS, and they are not interchangeable. The virt-handler one
+# is the ordinary "a privileged node agent gains nothing from this control" case. The
+# virt-launcher one is a DECLARATION GAP -- the process is already confined, only the manifest
+# does not say so -- and it names the real fix. Do not let the second be summarised into the
+# first; the fix it names is the reason it can ever be removed.
+
+# virt-handler sets no seccompProfile at pod or container level -- a privileged
+# DaemonSet gets no practical extra containment from a seccomp filter anyway. See
+# ../baseline/disallow-privileged-containers.yaml for what bounds it instead.
+#
+# MIGRATION NOTE (Phase 2 kind migration). Ported VERBATIM from the legacy policy's `exclude:`
+# block; argument unchanged. The cross-reference now resolves to
+# ../../baseline/exemptions/disallow-privileged-containers.yaml (§2.1). That file's anchor block
+# points BACK here -- "virt-launcher ... its one, much narrower, exclusion is in
+# restrict-seccomp-strict.yaml" -- and after the migration it means this file, not the pure mirror
+# next door.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))
+
+# virt-launcher (unprivileged -- see ../baseline/disallow-privileged-containers.yaml)
+# only gets a declared seccompProfile when the KubeVirt CR's
+# spec.configuration.seccompConfiguration is set, which this repo doesn't do yet; the
+# container runtime still applies RuntimeDefault regardless, so this is a
+# manifest-declaration gap, not an actually-unconfined process. Closing it for real
+# means setting that CR field once KubeVirt is installed, not widening this exclusion.
+#
+# MIGRATION NOTE (Phase 2 kind migration). Ported VERBATIM; argument unchanged, and it is the one
+# exemption in this repo with a stated exit condition -- set
+# `KubeVirt.spec.configuration.seccompConfiguration` and this entry can be deleted rather than
+# merely re-justified. One premise has moved on since the block was written, stated here so a
+# reader does not trip over it: KubeVirt IS installed now, so "once KubeVirt is installed" is no
+# longer a precondition but an available action.
+#
+# Note the namespaces: `sandbox-docker` and `sandbox-talos`, NOT `kubevirt`. virt-launcher pods
+# are created per-VMI in whatever namespace the VMI lives in, and virt-launcher does not run in
+# the `kubevirt` namespace at all -- so a `kubevirt`-scoped copy of this entry would exempt
+# nothing while looking like it did. The same two namespaces, for the same reason, bound the
+# virt-launcher entries in ./restrict-volume-types.yaml and
+# ../../best-practices/add-emptydir-sizelimit.yaml; a new VM namespace needs all three updated.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-launcher
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['sandbox-docker', 'sandbox-talos'] &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-launcher'))
