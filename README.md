@@ -10,8 +10,11 @@ modules are referenced from the cluster-wiring repo.
 > **Two policy kinds are in the tree.** Kyverno's `ClusterPolicy` and
 > `ClusterCleanupPolicy` are deprecated, and policies are being ported one at
 > a time to the CEL-based `policies.kyverno.io/v1` kinds. Ported so far:
-> `best-practices/restrict-node-port.yaml` and
-> `pod-security-standard/restricted/restrict-volume-types.yaml`.
+> `best-practices/restrict-node-port.yaml`,
+> `pod-security-standard/restricted/restrict-volume-types.yaml`, and these
+> Baseline policies — `disallow-capabilities`, `disallow-host-ports`,
+> `disallow-host-process`, `disallow-selinux`, `restrict-seccomp`,
+> `restrict-sysctls`. The `kind:` line in a policy file is the authority.
 >
 > This matters to a consumer in one place: a `Kustomization` patch that
 > targets a policy by kind must target the kind that policy actually uses, so

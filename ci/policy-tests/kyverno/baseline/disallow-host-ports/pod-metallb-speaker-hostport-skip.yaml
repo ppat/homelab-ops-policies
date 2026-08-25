@@ -1,0 +1,18 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-metallb-speaker matchCondition. The `fail` half establishes that
+# the hostPort below is a genuine violation, so the `skip` is attributable to the exemption alone.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: metallb-speaker-9k2vq
+  namespace: metallb-system
+spec:
+  restartPolicy: Always
+  containers:
+  - name: speaker
+    image: quay.io/metallb/speaker:v0.14.0
+    ports:
+    - containerPort: 7946
+      hostPort: 7946

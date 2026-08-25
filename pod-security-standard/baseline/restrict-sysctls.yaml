@@ -1,6 +1,18 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check sysctls
+#
+# LAYER 1 PURE MIRROR. The conventions are stated once, in best-practices/restrict-node-port.yaml
+# and ../restricted/restrict-volume-types.yaml; this file follows them.
+#
+# THE ALLOW-LIST IS NOT A LOCAL JUDGEMENT CALL. "Safe" is a kernel-namespacing property SIG-Node
+# establishes per entry before adding it to check_sysctls.go, so entries arrive here by resync
+# against the PSS-SNAPSHOT above and never by deciding that some sysctl looks harmless. A shorter
+# list than the snapshot's is an out-of-date copy, not extra margin.
+#
+# Unlike the other mirrors in this profile the expression reads pod level only: `sysctls` exists
+# nowhere else in the Pod API.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: restrict-sysctls
   annotations:
@@ -8,8 +20,8 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       Sysctls can disable security mechanisms or affect all containers on a
       host, and should be disallowed except for an allowed "safe" subset. A
@@ -18,27 +30,41 @@ metadata:
       This policy ensures that only those "safe" subsets can be specified in
       a Pod.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: check-sysctls
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Setting additional sysctls above the allowed type is disallowed.
-        The field spec.securityContext.sysctls must be unset or not use any other names
-        than kernel.shm_rmid_forced, net.ipv4.ip_local_port_range,
-        net.ipv4.ip_unprivileged_port_start, net.ipv4.tcp_syncookies and
-        net.ipv4.ping_group_range.
-      pattern:
-        spec:
-          =(securityContext):
-            =(sysctls):
-            - =(name): >-
-                kernel.shm_rmid_forced | net.ipv4.ip_local_port_range |
-                net.ipv4.ip_unprivileged_port_start | net.ipv4.tcp_syncookies |
-                net.ipv4.ping_group_range
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  - expression: >-
+      object.spec.?securityContext.?sysctls.orValue([]).all(s, s.name in [
+      'kernel.shm_rmid_forced', 'net.ipv4.ip_local_port_range',
+      'net.ipv4.ip_unprivileged_port_start', 'net.ipv4.tcp_syncookies',
+      'net.ipv4.ping_group_range', 'net.ipv4.ip_local_reserved_ports',
+      'net.ipv4.tcp_keepalive_time', 'net.ipv4.tcp_fin_timeout',
+      'net.ipv4.tcp_keepalive_intvl', 'net.ipv4.tcp_keepalive_probes',
+      'net.ipv4.tcp_rmem', 'net.ipv4.tcp_wmem'])
+    message: >-
+      Setting additional sysctls above the allowed type is disallowed.
+      The field spec.securityContext.sysctls must be unset or not use any other names
+      than kernel.shm_rmid_forced, net.ipv4.ip_local_port_range,
+      net.ipv4.ip_unprivileged_port_start, net.ipv4.tcp_syncookies,
+      net.ipv4.ping_group_range, net.ipv4.ip_local_reserved_ports,
+      net.ipv4.tcp_keepalive_time, net.ipv4.tcp_fin_timeout,
+      net.ipv4.tcp_keepalive_intvl, net.ipv4.tcp_keepalive_probes,
+      net.ipv4.tcp_rmem, or net.ipv4.tcp_wmem.

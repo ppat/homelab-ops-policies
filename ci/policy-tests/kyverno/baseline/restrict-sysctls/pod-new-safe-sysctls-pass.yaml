@@ -1,0 +1,35 @@
+---
+# EXPECTED: `pass`.
+#
+# Covers the seven allow-list entries absent from a k8s 1.22-era copy of this policy:
+# net.ipv4.ip_local_reserved_ports, the four tcp_keepalive/tcp_fin_timeout entries, and
+# tcp_rmem/tcp_wmem. pod-legacy-allowed-pass.yaml covers the older entries, so this fixture is
+# what turns red if
+# ../../../../../pod-security-standard/baseline/restrict-sysctls.yaml's allow-list is ever
+# resynced from an older revision of the standard.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: new-safe-sysctls-workload
+  namespace: default
+spec:
+  restartPolicy: Always
+  securityContext:
+    sysctls:
+    - name: net.ipv4.ip_local_reserved_ports
+      value: "8080-8090"
+    - name: net.ipv4.tcp_keepalive_time
+      value: "600"
+    - name: net.ipv4.tcp_fin_timeout
+      value: "30"
+    - name: net.ipv4.tcp_keepalive_intvl
+      value: "60"
+    - name: net.ipv4.tcp_keepalive_probes
+      value: "5"
+    - name: net.ipv4.tcp_rmem
+      value: "4096 87380 6291456"
+    - name: net.ipv4.tcp_wmem
+      value: "4096 16384 4194304"
+  containers:
+  - name: app
+    image: ghcr.io/example/app:1.0.0

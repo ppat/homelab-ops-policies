@@ -1,0 +1,32 @@
+---
+# CLI tier for restrict-sysctls. Read
+# ../../best-practices/restrict-node-port/kyverno-test.yaml first -- it is the house-style
+# reference and its numbered conventions all apply here. One `Test` document rather than the
+# `-built`/`-pure` pair: this policy carries no estate exemptions, so built output and the pure
+# mirror are the same policy.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-sysctls
+policies:
+- ../../../.build/baseline/restrict-sysctls.yaml
+resources:
+- pod-unset-pass.yaml
+- pod-legacy-allowed-pass.yaml
+- pod-disallowed-sysctl-fail.yaml
+- pod-new-safe-sysctls-pass.yaml
+results:
+- policy: restrict-sysctls
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload
+  - default/legacy-allowed-workload
+  - default/new-safe-sysctls-workload
+  result: pass
+- policy: restrict-sysctls
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/disallowed-sysctl-workload
+  result: fail

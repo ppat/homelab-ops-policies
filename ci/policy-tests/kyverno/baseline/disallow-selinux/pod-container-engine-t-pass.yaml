@@ -1,0 +1,20 @@
+---
+# EXPECTED: `pass`.
+#
+# `container_engine_t` joined the allowed SELinux types at PSS policy version v1.31. This fixture
+# is what turns red if
+# ../../../../../pod-security-standard/baseline/disallow-selinux.yaml's allow-list is ever
+# resynced from a source still carrying the older three-type list.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: container-engine-workload
+  namespace: default
+spec:
+  restartPolicy: Always
+  containers:
+  - name: app
+    image: ghcr.io/example/app:1.0.0
+    securityContext:
+      seLinuxOptions:
+        type: container_engine_t

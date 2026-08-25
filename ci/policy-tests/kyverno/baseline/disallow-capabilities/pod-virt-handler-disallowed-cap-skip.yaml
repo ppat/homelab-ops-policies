@@ -1,0 +1,22 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-virt-handler matchCondition, which is inert against the real
+# workload -- virt-handler declares no `capabilities.add` at all. The SYS_ADMIN below is therefore
+# deliberately unlike the live pod: without it there is nothing for the exemption to act on, and a
+# working exemption would be indistinguishable from a deleted one.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  restartPolicy: Always
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0
+    securityContext:
+      privileged: true
+      capabilities:
+        add:
+        - SYS_ADMIN
