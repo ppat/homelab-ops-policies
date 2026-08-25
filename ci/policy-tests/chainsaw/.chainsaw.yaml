@@ -1,0 +1,36 @@
+---
+# Shared Chainsaw configuration for every test under ci/policy-tests/chainsaw/. Values start
+# from upstream kyverno/policies' own .chainsaw.yaml (read firsthand, not assumed) rather than
+# chainsaw's own defaults -- they're sane starting points, not gospel; tune a specific timeout
+# only once a real test proves it wrong for this repo's cluster.
+#
+# `chainsaw.kyverno.io/v1alpha1` (not v1alpha2) is deliberate here, matching what upstream
+# ships and what this repo's pinned chainsaw CLI still accepts (`chainsaw lint configuration`
+# verified locally) -- this is a distinct decision from the per-Test skeletons under this
+# directory, which target `policies.kyverno.io/v1` (not Kyverno's own deprecated `v1alpha1`
+# ClusterPolicy) for the Kyverno resources they install.
+#
+# Note for a reader coming from homelab-ops-kubernetes-apps: that repo's own `.chainsaw.yaml`
+# files use `v1alpha2` (a different Configuration shape -- `spec.execution.parallel` instead of
+# a bare `spec.parallel`, no `fullName`/`forceTerminationGracePeriod`/`delayBeforeCleanup`).
+# That's their convention for a heavier, Flux-module test harness, not a rule this repo
+# inherited or is expected to match: this repo's Chainsaw setup is modeled on upstream
+# kyverno/policies -- the project whose engine these tests exercise -- rather than on other
+# repos in this estate. Both API versions are valid input to the pinned chainsaw CLI; this
+# isn't a stale-version bug.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Configuration
+metadata:
+  name: policy-tests
+spec:
+  parallel: 1
+  timeouts:
+    apply: 1m30s
+    assert: 1m30s
+    cleanup: 1m30s
+    delete: 1m30s
+    error: 1m30s
+    exec: 1m30s
+  fullName: true
+  forceTerminationGracePeriod: 5s
+  delayBeforeCleanup: 3s
