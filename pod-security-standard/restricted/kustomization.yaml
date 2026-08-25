@@ -4,8 +4,17 @@ kind: Kustomization
 
 resources:
 - ../baseline
+# disallow-capabilities-strict.yaml is the ADD-CHECK half of PSS's `capabilities_restricted`;
+# require-drop-all.yaml below is the drop-ALL half. Two policies rather than one because
+# `spec.matchConditions` is policy-wide and only the drop-ALL half is exempted -- see
+# require-drop-all.yaml's header.
 - disallow-capabilities-strict.yaml
 - disallow-privilege-escalation.yaml
+# Matched pair with ../baseline/disallow-proc-mount.yaml: the Restricted procMount check
+# re-tightens what the Baseline one relaxes for user-namespaced pods. Read the two together;
+# disallow-proc-mount-strict.yaml's header carries the composition.
+- disallow-proc-mount-strict.yaml
+- require-drop-all.yaml
 - require-run-as-non-root-user.yaml
 - require-run-as-nonroot.yaml
 - restrict-seccomp-strict.yaml
@@ -24,7 +33,43 @@ resources:
 # build. The thing that actually catches a mistyped target is the CLI-tier test asserting `skip`
 # on each exemption's firing fixture (ci/policy-tests/kyverno/restricted/restrict-volume-types/)
 # -- without the exemption those fixtures report `fail`. Do not add an entry here without one.
+#
+# disallow-capabilities-strict and disallow-proc-mount-strict DELIBERATELY HAVE NO ENTRY, each
+# for a reason its own file states: attaching require-drop-all's virt-handler exemption to the
+# add-check is the specific mistake the capabilities split exists to prevent, and
+# disallow-proc-mount-strict waits for a userns workload to exist before excusing one. Both still
+# declare `matchConditions: []`, which is the seam a future exemption would append to.
 patches:
+- path: exemptions/disallow-privilege-escalation.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-privilege-escalation
+- path: exemptions/require-drop-all.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: require-drop-all
+- path: exemptions/require-run-as-non-root-user.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: require-run-as-non-root-user
+- path: exemptions/require-run-as-nonroot.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: require-run-as-nonroot
+- path: exemptions/restrict-seccomp-strict.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: restrict-seccomp-strict
 - path: exemptions/restrict-volume-types.yaml
   target:
     group: policies.kyverno.io

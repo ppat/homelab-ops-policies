@@ -1,0 +1,14 @@
+---
+# EXPECTED: `fail` against both documents. HALF-MATCH CONTROL, name half: right name, wrong
+# namespace. Catches an exemption that had lost its namespace predicate.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-zzz11
+  namespace: monitoring
+spec:
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 0

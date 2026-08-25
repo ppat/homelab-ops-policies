@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY: without it the `pass` rows could be produced by a
+# policy that had stopped objecting to anything. It is also the SHAPE OF ALMOST EVERY STOCK HELM
+# CHART -- a container with a `securityContext` that says nothing about capabilities -- which is
+# why this policy is the noisiest of the Restricted set in the audit stream and why it is worth
+# remembering that "no capabilities added" is not what it asks for.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

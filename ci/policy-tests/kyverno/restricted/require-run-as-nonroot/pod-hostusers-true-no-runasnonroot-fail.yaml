@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail`.
+#
+# `hostUsers: true` STATED EXPLICITLY -- the control that proves the matchCondition reads
+# `spec.hostUsers` rather than having degenerated to a constant. ./pod-no-runasnonroot-fail.yaml
+# omits the field and relies on `.orValue(true)`; this one states it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: explicit-hostusers-workload-7d4c9f8b6-lq2mn
+  namespace: default
+spec:
+  hostUsers: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

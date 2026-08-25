@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail`.
+#
+# THE POD-LEVEL TERM OF THE EXPRESSION, which no container-level fixture reaches. Every container
+# here leaves `runAsUser` unset, so the only thing that can flag this pod is
+# `object.spec.?securityContext.?runAsUser`. Drop that conjunct from the mirror and this is the
+# one row that goes red -- and dropping it would be an easy tidy-up to make while "simplifying"
+# the expression down to the container concatenation the other PSS mirrors use.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: podlevel-root-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  securityContext:
+    runAsUser: 0
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

@@ -1,0 +1,31 @@
+---
+# EXPECTED: `fail` -- THE SAME DISAGREEMENT WITH THE UPSTREAM KYVERNO POLICY-LIBRARY RULE AS
+# ../require-run-as-nonroot/pod-podlevel-false-containers-true-fail.yaml, on the same shape and for
+# the same reason. Read that fixture and
+# ../../../../../pod-security-standard/restricted/restrict-seccomp-strict.yaml's validation
+# comment; the argument is not repeated here.
+#
+# In short: the library rule constrains only the containers, so a pod declaring
+# `seccompProfile.type: Unconfined` at the pod level passes there as long as every container
+# overrides it. PSA puts that pod-level value into `badSetters` and forbids the pod outright,
+# before it looks at the containers. The mirror follows PSA.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: podlevel-unconfined-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  securityContext:
+    seccompProfile:
+      type: Unconfined
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault

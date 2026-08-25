@@ -42,7 +42,7 @@
 # KubeVirt's CR `spec.workloads.nodePlacement.nodeSelector`, which restricts virt-handler to the
 # nodes an operator prepares for it rather than the whole cluster; and by virt-launcher, where a
 # VM's guest actually runs, being deliberately NOT privileged (its one, much narrower, exemption
-# is the inline `exclude:` in ../../restricted/restrict-seccomp-strict.yaml). NOT bounded here:
+# is in ../../restricted/exemptions/restrict-seccomp-strict.yaml). NOT bounded here:
 # a QEMU/KVM guest escape into virt-launcher is one more bug away from the host, at exactly the
 # virt-handler<->virt-launcher boundary -- a boundary with a live CVE lineage (CVE-2025-64437,
 # CVE-2025-64433). Keep KubeVirt patched; this exemption doesn't defend against that class of

@@ -1,0 +1,16 @@
+---
+# EXPECTED: `pass`. Explicit non-zero UIDs at both levels -- the shape the message's "set to a
+# number greater than zero" describes.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-workload-6b9f4c8d5-x2kqp
+  namespace: default
+spec:
+  securityContext:
+    runAsUser: 1000
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 65534

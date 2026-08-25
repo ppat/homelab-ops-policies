@@ -1,0 +1,25 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../require-drop-all.yaml, applied by the `patches:` entry in
+# ../kustomization.yaml. A JSON6902 patch document, NOT a manifest. House-style reference:
+# ./restrict-volume-types.yaml, whose numbered conventions apply here unchanged.
+#
+# THIS EXEMPTION BELONGS TO THE DROP-ALL HALF AND NOWHERE ELSE. `spec.matchConditions` is
+# policy-wide, so a copy of this file pointed at ../disallow-capabilities-strict.yaml would excuse
+# the add-check too -- a check virt-handler already passes on its own merits. That is the mistake
+# the two policies exist separately to prevent, and it is asserted from both sides: the
+# virt-handler fixture in ci/policy-tests/kyverno/restricted/require-drop-all/ reports `skip`,
+# while its counterpart in .../disallow-capabilities-strict/ adds a capability and must report
+# `fail`.
+
+# virt-handler's containers do not set `capabilities.drop: [ALL]`, and declaring it would be
+# cosmetic: `privileged: true` (see ../../baseline/exemptions/disallow-privileged-containers.yaml)
+# already grants everything the drop-list would strip. Its manifest never ADDS a named capability
+# either, which is why ../disallow-capabilities-strict.yaml needs no equivalent entry.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

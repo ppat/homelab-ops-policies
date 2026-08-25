@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY, and the difference between this policy and its
+# Baseline sibling in one fixture: nothing sets `seccompProfile` anywhere. ../../baseline/
+# restrict-seccomp/ PASSES this pod -- Baseline only forbids an explicit `Unconfined` -- and the
+# Restricted check fails it, because it additionally requires the field to be SET. If this row
+# ever went green, this policy would have collapsed into the Baseline one.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

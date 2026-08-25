@@ -1,0 +1,45 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../restrict-seccomp-strict.yaml, applied by the `patches:`
+# entry in ../kustomization.yaml. A JSON6902 patch document, NOT a manifest. House-style
+# reference: ./restrict-volume-types.yaml, whose numbered conventions apply here unchanged.
+#
+# TWO EXEMPTIONS, TWO DIFFERENT ARGUMENTS, and they are not interchangeable. The virt-handler one
+# is the ordinary "a privileged node agent gains nothing from this control" case. The
+# virt-launcher one is a DECLARATION GAP -- the process is already confined, only the manifest
+# does not say so -- and it names the real fix. Do not let the second be summarised into the
+# first; the fix it names is the reason it can ever be removed.
+
+# virt-handler sets no seccompProfile at pod or container level, and a privileged DaemonSet gets
+# no practical extra containment from a seccomp filter anyway. See
+# ../../baseline/exemptions/disallow-privileged-containers.yaml for what bounds it instead.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))
+
+# virt-launcher is unprivileged (same reference) and only gets a DECLARED seccompProfile when the
+# KubeVirt CR's `spec.configuration.seccompConfiguration` is set, which it is not on this estate.
+# The container runtime applies RuntimeDefault to it regardless, so what is missing is the
+# manifest saying so, not the confinement itself. THE ONE EXEMPTION IN THIS REPO WITH A STATED
+# EXIT CONDITION: set that CR field and this entry can be deleted rather than merely
+# re-justified. Widening the exclusion is not the fix.
+#
+# NOTE THE NAMESPACES -- `sandbox-docker` and `sandbox-talos`, NOT `kubevirt`. virt-launcher pods
+# are created per-VMI in whatever namespace the VMI lives in and never run in `kubevirt`, so a
+# `kubevirt`-scoped copy of this entry would exempt nothing while looking like it did. Every other
+# virt-launcher exclusion in this repo is bounded by the same two namespaces for the same reason
+# (./restrict-volume-types.yaml, ../../../best-practices/add-emptydir-sizelimit.yaml,
+# ../../../best-practices/require-probes.yaml); a new VM namespace needs all of them updated
+# together.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-launcher
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['sandbox-docker', 'sandbox-talos'] &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-launcher'))

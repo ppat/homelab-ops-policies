@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# A CONTAINER OPTING BACK OUT of a pod-level `true`. PSS's "explicitly bad container" case. It is
+# the inverse of ./pod-podlevel-true-pass.yaml and proves the inheritance is a DEFAULT rather than
+# an override: a pod-level `true` covers containers that say nothing, and does not overrule a
+# container that says false.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: override-false-workload-77955b8c45-52ls7
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  - name: rootful
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: false

@@ -1,0 +1,112 @@
+---
+# CLI tier for require-drop-all, the drop-ALL half of PSS's `capabilities_restricted` check.
+# House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the conventions for this tier),
+# ../restrict-volume-types/kyverno-test.yaml (why an exemption-carrying policy needs a built
+# document and a pure one) and ../../baseline/disallow-privileged-containers/kyverno-test.yaml
+# (the `<namespace>/<name>` fixture-collision rule). None of them is restated.
+#
+# WHAT THIS SUITE UNIQUELY OWNS: half the assertion that the VIRT-HANDLER EXEMPTION REACHES THIS
+# HALF AND ONLY THIS HALF. This file proves it reaches require-drop-all; its twin
+# ../disallow-capabilities-strict/kyverno-test.yaml proves it does NOT reach the add-check, by
+# asserting `fail` on a virt-handler pod that adds SYS_ADMIN. Either document alone permits the
+# mistake the two separate policies exist to prevent.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-drop-all-built
+policies:
+- ../../../.build/restricted/require-drop-all.yaml
+resources:
+- pod-no-drop-all-fail.yaml
+- pod-drop-all-pass.yaml
+- pod-drop-all-add-net-bind-service-pass.yaml
+- pod-init-container-no-drop-all-fail.yaml
+- pod-ephemeral-container-no-drop-all-fail.yaml
+- pod-drop-lowercase-all-fail.yaml
+- pod-windows-no-drop-all-fail.yaml
+- pod-virt-handler-no-drop-all-skip.yaml
+- pod-virt-handler-generatename-no-drop-all-skip.yaml
+- pod-not-virt-handler-in-kubevirt-no-drop-all-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-no-drop-all-fail.yaml
+results:
+- policy: require-drop-all
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  - default/netbind-workload-844d7c96b-fq8vn
+  result: pass
+# The rule still objects. `default/windows-workload-...` is the KNOWN FIDELITY DELTA and its
+# fixture explains what would make this row correct as `pass`; do not "fix" it here.
+- policy: require-drop-all
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/sidecar-workload-77955b8c45-52ls7
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - default/lowercase-drop-workload-cbf5bd649-mzqns
+  - default/windows-workload-3a7d2e1f5-hq9xz
+  - kubevirt/virt-api-6d9c8f5b7-9wq4x
+  - monitoring/virt-handler-zzz11
+  result: fail
+# The estate exemption firing, in both name shapes. `skip`, NOT `pass`: these pods drop nothing,
+# so `pass` would mean the rule had stopped objecting rather than the exemption applying --
+# a genuinely different policy. Declaring `pass` on either row makes the suite fail with
+# "Want pass, got skip".
+- policy: require-drop-all
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-drop-all-pure
+policies:
+- ../../../../../pod-security-standard/restricted/require-drop-all.yaml
+resources:
+- pod-no-drop-all-fail.yaml
+- pod-drop-all-pass.yaml
+- pod-drop-all-add-net-bind-service-pass.yaml
+- pod-init-container-no-drop-all-fail.yaml
+- pod-ephemeral-container-no-drop-all-fail.yaml
+- pod-drop-lowercase-all-fail.yaml
+- pod-windows-no-drop-all-fail.yaml
+- pod-virt-handler-no-drop-all-skip.yaml
+- pod-virt-handler-generatename-no-drop-all-skip.yaml
+- pod-not-virt-handler-in-kubevirt-no-drop-all-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-no-drop-all-fail.yaml
+results:
+# Unchanged by the exemption layer -- these pods satisfy the MIRROR.
+- policy: require-drop-all
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  - default/netbind-workload-844d7c96b-fq8vn
+  result: pass
+# THE FIRING ASSERTION. The two pods the built policy skips are real violations of the pure
+# mirror, so each `skip` above is attributable to the exemption and to nothing else. The
+# always-failing pods are listed here too, so this document is not merely "the same rows with
+# skip rewritten to fail": under the pure mirror there is no `skip` result at all, and a
+# `matchConditions` entry leaking into the mirror file would turn one of these rows red.
+- policy: require-drop-all
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/sidecar-workload-77955b8c45-52ls7
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - default/lowercase-drop-workload-cbf5bd649-mzqns
+  - default/windows-workload-3a7d2e1f5-hq9xz
+  - kubevirt/virt-api-6d9c8f5b7-9wq4x
+  - monitoring/virt-handler-zzz11
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: fail

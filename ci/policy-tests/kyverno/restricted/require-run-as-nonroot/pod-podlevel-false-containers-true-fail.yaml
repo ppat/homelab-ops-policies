@@ -1,0 +1,32 @@
+---
+# EXPECTED: `fail` -- AND THIS IS THE POD ON WHICH THIS MIRROR AND THE UPSTREAM KYVERNO
+# POLICY-LIBRARY RULE OF THE SAME NAME DISAGREE. Read
+# ../../../../../pod-security-standard/restricted/require-run-as-nonroot.yaml's validation comment
+# before touching this fixture.
+#
+# The library rule requires every container to set `runAsNonRoot: true` and says nothing about the
+# pod level, so an explicit pod-level opt-out is invisible to it as long as the containers opt
+# back in. PSA forbids the pod: `check_runAsNonRoot.go` puts an explicit pod-level `false` into
+# `badSetters` and returns forbidden BEFORE it looks at whether the containers compensated. The
+# mirror follows PSA, because a pure file whose delta against its `check_*.go` is non-zero is not
+# a mirror.
+#
+# Nothing on this estate is shaped this way and the policy is Audit-mode, so the cost is at most
+# one report row.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: podlevel-false-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: false
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

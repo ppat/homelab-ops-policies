@@ -1,0 +1,17 @@
+---
+# EXPECTED: `fail` against both documents.
+#
+# HALF-MATCH CONTROL for exemption 2, name half -- and not a hypothetical one. `kubevirt` is where
+# the OTHER exemption in this file lives, so a virt-launcher pod there is exactly the shape that
+# would slip through if the two entries' namespace predicates were ever merged or copied across.
+# virt-launcher does not run in `kubevirt` on a real cluster; the pod is legitimate as a control
+# precisely because it is not.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-stray-vm-6m2wp
+  namespace: kubevirt
+spec:
+  containers:
+  - name: compute
+    image: registry.k8s.io/pause:3.10

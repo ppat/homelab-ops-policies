@@ -1,0 +1,20 @@
+---
+# EXPECTED: `skip` against built output, `fail` against the pure mirror.
+#
+# ESTATE EXEMPTION 2 OF 2 FIRING, first of its two namespaces. This is the DECLARATION GAP case:
+# virt-launcher is unprivileged and the container runtime applies RuntimeDefault to it anyway --
+# what is missing is the manifest saying so, and the real fix is
+# `KubeVirt.spec.configuration.seccompConfiguration`, not this entry. See
+# ../../../../../pod-security-standard/restricted/exemptions/restrict-seccomp-strict.yaml.
+#
+# NOTE THE ABSENCE OF `privileged: true`, unlike every virt-handler fixture here: that is the
+# whole distinction between the two workloads and it is deliberate.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-docker-vm-zqrlj
+  namespace: sandbox-docker
+spec:
+  containers:
+  - name: compute
+    image: registry.k8s.io/pause:3.10

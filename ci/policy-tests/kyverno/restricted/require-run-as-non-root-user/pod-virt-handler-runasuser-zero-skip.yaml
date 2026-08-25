@@ -1,0 +1,24 @@
+---
+# EXPECTED: `skip` against built output, `fail` against the pure mirror.
+#
+# THE ESTATE EXEMPTION FIRING, written as the workload actually is: a compliant main container
+# beside a node-labeller initContainer running as root. NOTE THAT IT DOES NOT SET `hostUsers` --
+# that is deliberate and load-bearing. This exemption and the userns relaxation are independent,
+# and a fixture that set both would not tell you which one produced the `skip`. The `-pure`
+# document asserts `fail` on this same file, which pins it to the exemption.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  initContainers:
+  - name: node-labeller
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 0
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail`.
+#
+# CASE SENSITIVITY, ASSERTED. `drop: [all]` does not satisfy this policy and must not: PSS
+# compares against the literal string "ALL" (`capabilityAll` in check_capabilities_restricted.go)
+# and the Kubernetes API does not canonicalise the value, so a lowercase entry drops nothing at
+# runtime either. This fixture is here because "surely it is case-insensitive" is a plausible
+# thing for a future editor to assume while making the expression tidier.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lowercase-drop-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      capabilities:
+        drop:
+        - all

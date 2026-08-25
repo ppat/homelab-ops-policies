@@ -1,0 +1,20 @@
+---
+# EXPECTED: `pass`.
+#
+# `Localhost` IS THE SECOND ALLOWED VALUE and needs its own fixture: an allow-list that had
+# shrunk to `RuntimeDefault` alone would pass every other row in this directory. Note that this
+# policy does NOT check `localhostProfile`, mirroring PSS, which validates only the type -- core
+# API validation is what requires the path when the type is Localhost.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: localhost-workload-4f8b7c6d9-vn3ks
+  namespace: default
+spec:
+  securityContext:
+    seccompProfile:
+      type: Localhost
+      localhostProfile: profiles/audit.json
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

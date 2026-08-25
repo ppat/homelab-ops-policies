@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY: without it the `pass` rows could be produced by a
+# policy that had stopped objecting to anything. SYS_ADMIN is the capability that most nearly
+# amounts to privileged mode on its own, which is why it stands in for "anything but
+# NET_BIND_SERVICE" here.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      capabilities:
+        drop:
+        - ALL
+        add:
+        - SYS_ADMIN
