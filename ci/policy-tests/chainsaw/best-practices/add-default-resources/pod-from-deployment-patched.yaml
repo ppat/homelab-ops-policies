@@ -1,0 +1,19 @@
+---
+# THE OTHER HALF, and the half that makes the loss of pod-controller coverage a bookkeeping
+# change rather than a functional one: the Pod the Deployment created DID get the defaults,
+# because it reached admission as a Pod and `matchConstraints` matches pods. QoS class and
+# eviction order -- the things this policy exists to influence -- are unchanged.
+#
+# Selected by label, because the Pod's name is generated. Chainsaw's resource-shaped assertions
+# are satisfied by ANY matching object of the kind, which is the right semantics here: there is
+# exactly one replica.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: resources-podcontroller-probe
+spec:
+  (containers[?name == 'pause'] | [0].resources.requests.memory): 32Mi
+  (containers[?name == 'pause'] | [0].resources.requests.cpu): 32m
+status:
+  phase: Running

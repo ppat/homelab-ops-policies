@@ -1,0 +1,72 @@
+---
+# CLI-tier test for add-default-resources. The house-style reference for a `kyverno test` file is
+# ../restrict-node-port/kyverno-test.yaml -- read its five numbered conventions first; they all
+# apply here. What a MUTATING policy adds on top of them:
+#
+#   6. `isMutatingPolicy: true`, not `isValidatingPolicy`. Same trap as convention 2: without the
+#      right flag the CLI does not recognise the kind and the row is not matched.
+#   7. `result: pass` MEANS ONLY "a mutation was produced WITHOUT ERROR". It says nothing about
+#      what the mutation did. `patchedResources:` is where the real assertion lives -- it points
+#      at a file of expected post-mutation documents, matched by kind/namespace/name. A `pass`
+#      row with no `patchedResources` on a mutate policy is very nearly a no-op, and on a policy
+#      that rewrites live objects with no Audit backstop that is not an acceptable test.
+#   8. `failOnMissingResources: true` on every such row. Without it, a `patchedResources` file
+#      that no longer contains a document for one of the row's resources degrades quietly
+#      instead of failing -- the same "matches nothing, so broadens" hazard as convention 4,
+#      one level down.
+#   9. NO POD-CONTROLLER FIXTURES, on any of the three mutate policies. All three set
+#      `spec.autogen.podControllers.controllers: []`, so a Deployment is not matched -- and this
+#      tier cannot assert the ABSENCE of a match: a `result: skip` row for an unmatched resource
+#      fails when autogen is off (there is no result) and also fails when it is on (the result is
+#      `pass`), so it is red in both states and asserts nothing. Measured. Pod-controller
+#      behaviour is asserted at the cluster tier instead --
+#      ../../../chainsaw/best-practices/add-default-resources/deployment-pod-controllers.yaml.
+#      Do not "restore coverage" by adding a Deployment row here.
+#  10. FIXTURE IDENTITIES MUST BE UNIQUE. `resources:` selects by `<namespace>/<name>`; two
+#      fixture files sharing a namespace+name collide silently and one of them stops being
+#      tested. Every fixture in this directory has a distinct name, and no name is reused by the
+#      sibling add-emptydir-sizelimit/ and add-ndots/ directories either.
+#
+# NON-VACUITY, restated for a mutate policy. There is no expected-`fail` row available here --
+# a mutate policy has no failing outcome -- so the pairing that keeps this suite honest is
+# `pass`+patched against `skip`: two exempted fixtures that are REAL targets of the rule (they
+# declare no requests) and must come back untouched, beside four that must come back changed in
+# a precisely specified way. Delete the exemptions and the `skip` rows go red; delete the
+# mutation and the `pass` rows go red. Neither half can carry the other.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-default-resources
+policies:
+- ../../../.build/best-practices/add-default-resources.yaml
+resources:
+- pod-no-requests-mutated.yaml
+- pod-declared-requests-preserved.yaml
+- pod-declared-memory-preserved.yaml
+- pod-native-sidecar-gap-mutated.yaml
+- pod-kube-system-skip.yaml
+- pod-longhorn-system-skip.yaml
+results:
+# Pods the policy must mutate, and exactly how. Grouped in one row because they share a kind and
+# a verdict; the discrimination between them is entirely in patched-resources.yaml.
+- policy: add-default-resources
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/besteffort-workload
+  - default/partially-sized-workload
+  - default/memory-sized-workload
+  - default/sidecar-workload
+  patchedResources: patched-resources.yaml
+  failOnMissingResources: true
+  result: pass
+# `skip`, NOT `pass`: filtered by `matchConditions` before the mutation ran. Both namespaces
+# appear so that either half of `!(namespace in ['kube-system', 'longhorn-system'])` can be
+# falsified on its own.
+- policy: add-default-resources
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/kube-proxy-ish
+  - longhorn-system/longhorn-manager-ish
+  result: skip

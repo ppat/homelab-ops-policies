@@ -1,0 +1,44 @@
+---
+# EXPECTED: admitted, mutated -- and mutated per-container, not uniformly.
+# Asserted by pod-mixed-resources-patched.yaml.
+#
+# Three claims in one Pod, each of which needs the LIVE schema rather than the offline engine's
+# model of it:
+#   * `app`    declares nothing              -> gains both 32Mi and 32m.
+#   * `sized`  declares `requests.cpu: 500m` -> keeps 500m, gains memory, and KEEPS ITS LIMIT.
+#     `spec.containers` is `listType: map` keyed on `name` and `resources.requests` is a map;
+#     both are properties of the live schema, and both are what make an apply configuration
+#     naming only `requests` merge rather than replace.
+#   * `logs`   is a NATIVE SIDECAR (an initContainer with `restartPolicy: Always`) -> gains
+#     nothing. See the patched file; this is a documented, deliberately-unfixed gap.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-resources-workload
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  initContainers:
+  # A PLAIN init container, and it must EXIT for the Pod to progress -- hence a command rather
+  # than the `pause` image every other container here uses. Learned the hard way: an init
+  # container running `pause` blocks the Pod in `Init:0/2` forever and the `status.phase: Running`
+  # assertion below then times out, which reads like a policy failure and is not one.
+  - name: setup
+    image: busybox:1.37
+    command: ['/bin/true']
+  # THE NATIVE SIDECAR: `restartPolicy: Always` on an initContainer. It is expected to keep
+  # running for the Pod's lifetime, so `pause` is right here, and the Pod reaches Running once
+  # the sidecar has started.
+  - name: logs
+    image: registry.k8s.io/pause:3.10
+    restartPolicy: Always
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  - name: sized
+    image: registry.k8s.io/pause:3.10
+    resources:
+      requests:
+        cpu: 500m
+      limits:
+        memory: 1Gi

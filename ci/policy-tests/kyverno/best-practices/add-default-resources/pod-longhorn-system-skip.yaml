@@ -1,0 +1,16 @@
+---
+# EXPECTED: `skip`.
+#
+# The second half of the namespace exemption, falsified independently. The expression is
+# `!(namespace in ['kube-system', 'longhorn-system'])`; a fixture for only one member would stay
+# green if the other were dropped from the list. Same non-vacuity shape as its
+# kube-system twin: no requests declared, so the policy would otherwise mutate it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: longhorn-manager-ish
+  namespace: longhorn-system
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29

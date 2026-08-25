@@ -1,0 +1,42 @@
+---
+# EXPECTED: the Deployment's own template is NOT mutated; the Pod it creates IS.
+# Asserted by deployment-pod-controllers-patched.yaml and pod-from-deployment-patched.yaml.
+#
+# WHAT THIS PINS, and why it is the most surprising thing this wave found. The legacy
+# ClusterPolicy this policy replaces had autogen ON, so pod controllers had their
+# `spec.template.spec.containers` mutated directly. Under the new kind they do not -- and NOT
+# because of the `spec.autogen.podControllers.controllers: []` the policy now sets. Measured on
+# the pinned stack (kind v1.36.1, Kyverno chart 3.8.2 / v1.18.2): a `MutatingPolicy` registers a
+# webhook covering `pods` and nothing else whether that field is absent or lists five controller
+# kinds; Kyverno computes the rewrite into `status.autogen.configs` but nothing wires it to a
+# webhook and no `MutatingAdmissionPolicy` is generated. A `ValidatingPolicy` on the same cluster
+# registers all seven pod-controller kinds, so this is specific to the mutate kind at this engine
+# version, not a cluster misconfiguration.
+#
+# CONSEQUENCE THIS TEST ENCODES: an engine upgrade that wires those configs up would change
+# behaviour here with no commit behind it. The two assertions below are what turn that into a
+# visible test failure instead of a silent estate-wide mutation.
+#
+# HONEST LIMITATION, stated so nobody mistakes this for more than it is: because the setting is
+# inert at this engine version, this test does NOT currently discriminate `controllers: []` from
+# the default -- it passes under both. It discriminates the OUTCOME, which is the thing that
+# matters, and it is the only place either is checked at all (the CLI tier cannot assert the
+# absence of a match; see ../../../kyverno/best-practices/add-default-resources/kyverno-test.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resources-podcontroller-probe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resources-podcontroller-probe
+  template:
+    metadata:
+      labels:
+        app: resources-podcontroller-probe
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.10

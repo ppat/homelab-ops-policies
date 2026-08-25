@@ -1,0 +1,71 @@
+---
+# Cluster-tier test for add-default-resources. See ../add-emptydir-sizelimit/chainsaw-test.yaml
+# for what a MutatingPolicy test does differently from the ValidatingPolicy house-style reference
+# at ../../restricted/restrict-volume-types/chainsaw-test.yaml (no `[Deny]` patch step, no
+# readiness-gate script, the `assert` steps are the gate).
+#
+# WHY THIS POLICY GETS CLUSTER TIME. Design §6.5 lists all three mutate policies -- "mutations
+# have no Audit backstop; the eviction-loop history is the standing warning" -- while the Wave F
+# execution plan's own table mentions a Chainsaw test only for add-emptydir-sizelimit and
+# add-ndots. The design is the authority the plan derives from, and the extra directory costs one
+# test, so it is here. The three things it adds over
+# ../../../kyverno/best-practices/add-default-resources/ (10 offline assertions, cheaper and more
+# thorough about which containers get what):
+#
+#   1. The policy reaches Ready against the real webhook -- policy-ready.yaml.
+#   2. The apply configuration merges by container name against the LIVE schema.
+#      `spec.containers` being `listType: map` keyed on `name`, and `resources.requests` being a
+#      map, are properties of that schema; they are what make a patch naming only `requests`
+#      preserve a declared cpu and a sibling `limits`. The offline engine models this. Only a
+#      cluster decides it.
+#   3. WHAT ACTUALLY HAPPENS TO A POD CONTROLLER, which is not what the offline tier says. A
+#      `MutatingPolicy` at chart 3.8.2 registers a webhook for `pods` only, regardless of
+#      `spec.autogen` -- while `kyverno apply`/`kyverno test` DO simulate the autogen rewrite and
+#      will happily report a Deployment mutated. Only the cluster settles it. See
+#      deployment-pod-controllers.yaml for the full measurement; it is the reason this policy
+#      switched autogen off despite its legacy ClusterPolicy having had it on.
+#
+# The native-sidecar gap (design §5.7) is asserted here too, in pod-mixed-resources-patched.yaml.
+# It is a documented, deliberately-unfixed gap, and having it fail loudly the day someone
+# "fixes" it in passing is the point.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-default-resources
+spec:
+  # Repo-wide: chainsaw templating reads `(...)` as JMESPath and CEL is made of parentheses. It
+  # is doubly load-bearing here -- the assertion files are themselves `(jmespath): value` pairs.
+  template: false
+  steps:
+  - name: install-policy
+    try:
+    - apply:
+        file: ../../../.build/best-practices/add-default-resources.yaml
+    - assert:
+        file: policy-ready.yaml
+
+  - name: default-what-is-missing-and-preserve-what-is-declared
+    try:
+    - apply:
+        file: pod-mixed-resources.yaml
+    - assert:
+        file: pod-mixed-resources-patched.yaml
+
+  - name: exemption-fires-in-the-real-kube-system-namespace
+    try:
+    # The control for this step is the previous one: the same "declares nothing" container shape
+    # is mutated in an ordinary namespace one step above, so an unmutated Pod here cannot be
+    # explained by the policy being absent or un-Ready.
+    - apply:
+        file: pod-kube-system-exempt.yaml
+    - assert:
+        file: pod-kube-system-exempt-patched.yaml
+
+  - name: pod-controllers-are-not-mutated-but-their-pods-are
+    try:
+    - apply:
+        file: deployment-pod-controllers.yaml
+    - assert:
+        file: deployment-pod-controllers-patched.yaml
+    - assert:
+        file: pod-from-deployment-patched.yaml

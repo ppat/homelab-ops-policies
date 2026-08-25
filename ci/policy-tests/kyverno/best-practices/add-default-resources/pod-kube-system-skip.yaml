@@ -1,0 +1,23 @@
+---
+# EXPECTED: `skip` -- filtered by `matchConditions` before the mutation ran, not `pass`.
+#
+# `skip` and `pass` are different assertions and the difference is the point of this tier for
+# any policy with an exemption (see ../restrict-node-port/kyverno-test.yaml, convention 5). This
+# Pod is a REAL target of the rule -- it declares no requests at all, exactly like
+# pod-no-requests-mutated.yaml -- so if the `kube-system` exemption were dropped it would be
+# mutated and this row would turn red. An exemption fixture asserted on an already-compliant
+# resource proves nothing; this one cannot pass vacuously.
+#
+# Why the namespace is exempt: kube-system runs node-level components whose resource shape is
+# set by the Kubernetes distribution. Adding a request changes their QoS class from BestEffort to
+# Burstable and therefore changes which pods the kubelet evicts first. These should be evicted
+# last.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-ish
+  namespace: kube-system
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
