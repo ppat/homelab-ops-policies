@@ -11,9 +11,12 @@
 # What runs here today: a profile ready-smoke per profile directory
 # (ci/policy-tests/chainsaw/{baseline,restricted,best-practices}/ready-smoke/), asserting every
 # policy the profile builds to reaches Ready on a real cluster; plus the per-policy tests of the
-# policies §6.5 selects for cluster time -- currently restrict-volume-types, with more landing
-# alongside each port (§6.7). A policy with no directory here is covered by its profile's
-# ready-smoke and by the CLI tier, which is the intended steady state, not a gap.
+# policies §6.5 selects for cluster time -- currently seven: disallow-host-pid,
+# disallow-host-probes-and-lifecycle, add-default-resources, add-emptydir-sizelimit, add-ndots,
+# cleanup-empty-replicasets, restrict-volume-types (ten `chainsaw-test.yaml` suites total, once
+# the three per-profile ready-smoke directories above are counted), with more landing alongside
+# each port (§6.7). A policy with no directory here is covered by its profile's ready-smoke and
+# by the CLI tier, which is the intended steady state, not a gap.
 name: e2e-tests
 
 on:

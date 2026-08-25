@@ -60,8 +60,8 @@
 #      `resourceFilters` (point 2 above) ALSO already excludes `kube-system` globally
 #      (`[*/*,kube-system,*]`), which makes this namespaceSelector belt-and-braces rather than
 #      load-bearing on its own -- kept anyway per design §2.5's regression tally, which counts
-#      this as one of the estate's 8 namespace-exclusion sets and requires it not be silently
-#      dropped.
+#      this as one of the estate's 9 namespace-exclusion occurrences (7 distinct values) and
+#      requires it not be silently dropped.
 apiVersion: policies.kyverno.io/v1
 kind: DeletingPolicy
 metadata:
