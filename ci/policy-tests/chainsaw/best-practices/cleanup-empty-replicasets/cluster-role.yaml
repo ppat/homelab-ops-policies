@@ -1,0 +1,34 @@
+---
+# TEST-LOCAL ONLY -- not part of what this repo ships. Mirrors
+# `kyverno:cleanup-controller:additional`, which lives in the consuming estate rather than here
+# (homelab-ops-kubernetes-apps, infrastructure/subsystems/security-core/kyverno/rbac.yaml). That
+# pointer is the durable part: if the estate's grant narrows, this test keeps passing while the
+# real cluster quietly stops cleaning anything up.
+#
+# The chart's own aggregated cleanup role covers neither pods nor replicasets; the
+# `rbac.kyverno.io/aggregate-to-cleanup-controller` label is what pulls these rules into it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno-cleanup-controller-empty-replicasets-test
+  labels:
+    rbac.kyverno.io/aggregate-to-cleanup-controller: "true"
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - watch
+  - list
+  - delete
+- apiGroups:
+  - apps
+  resources:
+  - replicasets
+  verbs:
+  - get
+  - watch
+  - list
+  - delete

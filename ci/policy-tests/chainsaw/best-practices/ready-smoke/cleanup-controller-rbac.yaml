@@ -1,20 +1,24 @@
 ---
 # TEST-LOCAL ONLY -- this ClusterRole is NOT part of what this repo ships. It mirrors
 # `kyverno:cleanup-controller:additional`, which lives in the ESTATE, not here:
-# homelab-ops-kubernetes-apps, infrastructure/subsystems/security-core/kyverno/rbac.yaml. That
-# cross-repo pointer is the whole reason this file carries a comment -- if the estate's grant
-# ever narrows, this test keeps passing while the real cluster stops cleaning up, and the only
-# way anyone finds that is by having been told where to look.
+# homelab-ops-kubernetes-apps, infrastructure/subsystems/security-core/kyverno/rbac.yaml. Keep
+# that pointer: if the estate's grant ever narrows, this test keeps passing while the real
+# cluster stops cleaning up, and the only way anyone finds that is by having been told where to
+# look.
 #
-# WHY THE TEST NEEDS IT AT ALL, measured against a stock `kyverno/kyverno` chart install:
-# creating a `ClusterCleanupPolicy` or `DeletingPolicy` that deletes a kind the cleanup
-# controller cannot delete is REJECTED AT ADMISSION, not merely left un-Ready --
-#   Error from server: admission webhook "kyverno-cleanup-controller.kyverno.svc" denied the
-#   request: cleanup controller has no permission to delete kind Pod
-# -- so without this ClusterRole the `apply:` step of the best-practices ready-smoke fails
-# outright and never reaches the readiness assertion. The chart's own aggregated cleanup role
-# does not cover pods or replicasets; the `rbac.kyverno.io/aggregate-to-cleanup-controller` label
-# is what pulls these rules into it.
+# THE GRANT IS NOT WHAT MAKES THIS TEST PASS, and it is worth knowing why not. A legacy
+# `ClusterCleanupPolicy` over a kind the cleanup controller cannot delete is REJECTED AT
+# ADMISSION -- `admission webhook "kyverno-cleanup-controller.kyverno.svc" denied the request:
+# cleanup controller has no permission to delete kind Pod`. A `DeletingPolicy` in the same
+# position is ADMITTED without complaint; the failure surfaces only in controller logs at
+# execution time. Now that this profile's cleanup policies are all `DeletingPolicy`, the profile
+# installs and this smoke passes with or without this ClusterRole.
+#
+# It stays so the profile is exercised under the RBAC the estate actually grants it, rather than
+# in a cluster where its cleanup policies could never delete anything. Whether a real deletion
+# happens is proven in ../cleanup-empty-replicasets/, not here. The chart's own aggregated
+# cleanup role covers neither pods nor replicasets; the
+# `rbac.kyverno.io/aggregate-to-cleanup-controller` label is what pulls these rules into it.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

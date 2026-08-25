@@ -1,0 +1,22 @@
+---
+# The object this test exists for: an empty ReplicaSet of the exact shape a Deployment leaves
+# behind mid-rollout or just after one completes, which the 24h age guard must leave alone so
+# `kubectl rollout undo` still has a revision to go back to.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: fresh-empty-replicaset
+  namespace: default
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: fresh-empty-replicaset
+  template:
+    metadata:
+      labels:
+        app: fresh-empty-replicaset
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10
