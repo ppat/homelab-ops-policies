@@ -1,0 +1,21 @@
+---
+# NOT A CANDIDATE: carries an ownerReference, the way any controller-created Pod does. Paired
+# with bare-orphan-pod.yaml so the suite cannot pass vacuously against a policy that flags
+# nothing -- see kyverno-test.yaml point 4 for why a pass-only suite can't detect a rotted
+# selector.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: replicaset-owned-pod
+  namespace: default
+  ownerReferences:
+  - apiVersion: apps/v1
+    kind: ReplicaSet
+    name: some-replicaset
+    uid: 11111111-1111-1111-1111-111111111111
+    controller: true
+    blockOwnerDeletion: true
+spec:
+  containers:
+  - name: c
+    image: registry.k8s.io/pause:3.10

@@ -1,0 +1,12 @@
+---
+# CANDIDATE: has no ownerReferences at all -- the exact shape the legacy JMESPath condition
+# targeted (`{{ target.metadata.ownerReferences[] || `[]` }}` Equals `[]`).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bare-orphan-pod
+  namespace: default
+spec:
+  containers:
+  - name: c
+    image: registry.k8s.io/pause:3.10

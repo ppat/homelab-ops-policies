@@ -62,9 +62,39 @@ echo "Asserting all ${#entries[@]} policies from ${built_dir} reach Ready (deadl
 #
 # Enumerated explicitly, never inferred from "no status found", so a policy kind that SHOULD be
 # reporting Ready and silently stops cannot quietly downgrade itself into the weaker assertion.
-# `DeletingPolicy`, the migration's replacement for `ClusterCleanupPolicy`, DOES carry
-# `status.conditionStatus` and must NOT be added to this list when Wave F ports these two files.
 readiness_exempt_kinds=" ClusterCleanupPolicy "
+
+# `DeletingPolicy` gets its OWN weaker check, deliberately NOT folded into readiness_exempt_kinds
+# above even though the resulting code path looks similar -- the two kinds fail this smoke test's
+# original design for genuinely different reasons, verified empirically (Wave F-delete, porting
+# cleanup-bare-pods/cleanup-empty-replicasets):
+#
+#   - `DeletingPolicy` does NOT carry `status: null` the way `ClusterCleanupPolicy` does -- its
+#     `status.conditionStatus` is non-nil and its `status.lastExecutionTime` populates after a
+#     real cycle. But `status.conditionStatus.ready` and `.conditions[]` -- the exact fields this
+#     script's "new shape" branch checks -- are declared in the CRD schema and NEVER populated by
+#     the Kyverno 1.18.2 / chart 3.8.2 deleting-controller (confirmed by reading
+#     pkg/controllers/deleting/controller.go directly: `updateDeletingPolicyStatus` only ever
+#     writes `LastExecutionTime`). So the existing new_shape/legacy_shape checks below would poll
+#     this kind for the full deadline and then report it not-ready even in the fully-correct,
+#     everything-works case.
+#   - Unlike `ClusterCleanupPolicy`, missing cleanup-controller RBAC does NOT block admission for
+#     `DeletingPolicy` -- verified directly: a `DeletingPolicy` targeting a kind the
+#     cleanup-controller cannot delete is created successfully regardless, and the RBAC failure
+#     only ever surfaces in the controller's own logs ("... is forbidden: User ... cannot list
+#     resource ...") at execution time, never in `status`. So existence no longer implies "RBAC
+#     was granted" for this kind the way it did for the legacy one -- it implies only "the
+#     object's CEL compiled and matchConstraints validated" (which IS still rejected at admission
+#     for a genuine CEL error, verified separately: a broken `spec.conditions[].expression`
+#     produces `admission webhook "validate-policy.kyverno.svc" denied the request`).
+#
+# Given that, this smoke test can only assert what a `DeletingPolicy` actually makes observable
+# within a short, bounded window: existence (CEL/schema validity). RBAC coverage for the
+# cleanup-controller is instead exercised by the dedicated cleanup-empty-replicasets Chainsaw
+# test (../best-practices/cleanup-empty-replicasets/), which patches the schedule down and
+# asserts a real deletion end-to-end -- the only tier that can still prove RBAC for this kind now
+# that admission no longer gates it.
+existence_only_kinds=" DeletingPolicy "
 
 deadline=$((SECONDS + deadline_seconds))
 declare -a not_ready=()
@@ -73,11 +103,11 @@ while :; do
   for entry in "${entries[@]}"; do
     kind="${entry%%/*}"
     name="${entry##*/}"
-    if [[ "${readiness_exempt_kinds}" == *" ${kind} "* ]]; then
+    if [[ "${readiness_exempt_kinds}" == *" ${kind} "* || "${existence_only_kinds}" == *" ${kind} "* ]]; then
       if kubectl get "${kind}" "${name}" >/dev/null 2>&1; then
         continue
       fi
-      not_ready+=("${entry} (kind publishes no readiness; the object itself is absent)")
+      not_ready+=("${entry} (kind publishes no reliable readiness signal within this test's budget; the object itself is absent)")
       continue
     fi
     # Both readiness shapes, queried separately. A jsonpath over an absent field yields the empty
