@@ -1,0 +1,72 @@
+---
+# CLI tier for disallow-cri-sock-mount. Read ../restrict-node-port/kyverno-test.yaml first -- it
+# is the house-style reference and its numbered conventions all apply here without restating.
+#
+# WHAT THIS SUITE IS FOR, beyond "the policy still objects to CRI sockets":
+#
+#   1. THE ANCHORING BUG. The policy uses exact comparison where upstream kyverno/policies uses
+#      unanchored `.matches()` regexes. ./pod-regex-metachar-near-miss-pass.yaml and
+#      ./pod-substring-near-miss-pass.yaml are the two `pass` rows that only exist under the
+#      corrected form; both go red the moment anyone resyncs this policy from upstream. They are
+#      the point of the suite, not decoration.
+#   2. CONTROLLER-OWNED PODS. ./daemonset-owned-pod-docker-sock-fail.yaml pins that a
+#      DaemonSet-owned Pod is caught same as any other.
+#   3. NULL SAFETY IN BOTH PLACES. ./pod-no-volumes-pass.yaml (no `spec.volumes` at all) and
+#      ./pod-non-hostpath-volume-pass.yaml (volumes present, none a hostPath) fail as ERRORS, not
+#      as `fail`, if either `.?` guard in the policy's projection is dropped.
+#
+# THIS POLICY HAS NO EXEMPTIONS, and must not acquire any -- see the keep-rationale in
+# ../../../../../best-practices/disallow-cri-sock-mount.yaml. So there is no `skip` row here and
+# there should never be one: a `skip` appearing in this suite means an exemption was added, which
+# would leave a socket mount in one of `disallow-host-path`'s exempted namespaces objected to by
+# nothing at all. That is a design regression to investigate, not a test to update.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-cri-sock-mount
+policies:
+- ../../../.build/best-practices/disallow-cri-sock-mount.yaml
+resources:
+- pod-docker-sock-fail.yaml
+- pod-containerd-sock-fail.yaml
+- pod-crio-sock-fail.yaml
+- pod-cri-dockerd-sock-fail.yaml
+- daemonset-owned-pod-docker-sock-fail.yaml
+- pod-regex-metachar-near-miss-pass.yaml
+- pod-substring-near-miss-pass.yaml
+- pod-ordinary-hostpath-pass.yaml
+- pod-no-volumes-pass.yaml
+- pod-non-hostpath-volume-pass.yaml
+results:
+# All four sockets, one fixture each, so the suite notices if one of the four `validations[]`
+# entries is deleted or has its path typo'd. They are listed as separate `resources:` entries
+# under one row rather than four rows because the assertion is identical; which MESSAGE each
+# produced is visible in the `--detailed-results` table the CI job prints.
+- policy: disallow-cri-sock-mount
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/docker-sock-consumer
+  - longhorn-system/containerd-sock-consumer
+  - default/crio-sock-consumer
+  - default/cri-dockerd-sock-consumer
+  result: fail
+# Point 2 above.
+- policy: disallow-cri-sock-mount
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/node-agent-x7z2p
+  result: fail
+# The first two are the anchoring fixtures (point 1); the last three establish that the policy
+# objects to four paths rather than to hostPath, to volumes, or to the absence of volumes.
+- policy: disallow-cri-sock-mount
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/regex-metachar-near-miss
+  - default/substring-near-miss
+  - logging/log-shipper
+  - default/stateless-api
+  - default/config-consumer
+  result: pass

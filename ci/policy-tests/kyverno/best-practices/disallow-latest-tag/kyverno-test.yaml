@@ -1,0 +1,73 @@
+---
+# CLI tier for disallow-latest-tag. Read ../restrict-node-port/kyverno-test.yaml first -- it is
+# the house-style reference and its numbered conventions all apply here without restating.
+#
+# WHAT THIS SUITE IS FOR:
+#
+#   1. ALL THREE CONTAINER LISTS. Upstream kyverno/policies' `ValidatingPolicy` checks
+#      `object.spec.containers` only, so a resync from it silently drops `initContainers` and
+#      `ephemeralContainers` coverage. Fixtures pin the difference: `:latest` on an
+#      initContainer, `:latest` on an ephemeralContainer, and -- so BOTH `validations[]` entries
+#      are covered, not just the `:latest` one -- an untagged initContainer. Each is compliant in
+#      every list except the one under test, so a fixture goes green the moment its term is
+#      dropped from `allContainers`.
+#   2. CONTROLLER-OWNED PODS. ./deployment-owned-pod-container-latest-fail.yaml pins that a
+#      Deployment-owned Pod is caught same as any other.
+#   3. THE TWO EDGES THAT MUST NOT BE FLAGGED. ./pod-digest-pinned-pass.yaml (a digest-pinned
+#      reference that also carries the literal `:latest`) and ./pod-registry-port-known-gap-pass.yaml
+#      (an untagged image whose registry port supplies the colon). The first is correct behaviour
+#      and would break under a `.contains(':latest')` "hardening"; the second is a KNOWN GAP,
+#      documented in its own fixture so it stays visible and attributable.
+#
+# NO `skip` ROWS: this policy has no `matchConditions`. A `skip` here would mean an exemption was
+# added to a policy that has never had one, which is a design change to discuss, not a test to
+# update.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-latest-tag
+policies:
+- ../../../.build/best-practices/disallow-latest-tag.yaml
+resources:
+- pod-container-latest-fail.yaml
+- pod-init-container-latest-fail.yaml
+- pod-ephemeral-container-latest-fail.yaml
+- pod-container-untagged-fail.yaml
+- pod-init-container-untagged-fail.yaml
+- deployment-owned-pod-container-latest-fail.yaml
+- pod-all-lists-tagged-pass.yaml
+- pod-digest-pinned-pass.yaml
+- pod-registry-port-known-gap-pass.yaml
+results:
+# The five Pod violations. `kyverno test` rows cannot assert WHICH message a `fail` carried, so
+# the untagged/`:latest` split -- the reason the policy keeps two `validations[]` entries -- is
+# read off the `--detailed-results` table the CI job prints, not from here. What this row does
+# assert is that all five are flagged at all, and three of the five are only reachable if the
+# initContainers and ephemeralContainers terms are present.
+- policy: disallow-latest-tag
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/mutable-app
+  - default/mutable-init
+  - default/mutable-debugger
+  - default/untagged-app
+  - default/untagged-init
+  result: fail
+# Point 2 above.
+- policy: disallow-latest-tag
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/mutable-web-7d9f8c6b5-abcde
+  result: fail
+# The first is the fully compliant shape with all three lists populated, which is what stops the
+# `fail` rows above being vacuous; the other two are the edges from point 3.
+- policy: disallow-latest-tag
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/pinned-app
+  - default/digest-pinned-app
+  - default/registry-port-untagged
+  result: pass

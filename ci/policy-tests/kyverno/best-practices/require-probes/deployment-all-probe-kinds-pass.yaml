@@ -1,0 +1,42 @@
+---
+# EXPECTED: `pass`.
+#
+# The compliant shape, and the row that keeps every `fail` above from being vacuous -- without it
+# a policy that flagged EVERY controller would look identical in this suite.
+#
+# One container per probe kind, so dropping any one disjunct from the policy turns exactly one of
+# these containers into a violation and this row red.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: well-probed
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: well-probed
+  template:
+    metadata:
+      labels:
+        app: well-probed
+    spec:
+      containers:
+      - name: liveness-only
+        image: registry.internal/app:v2.3.0
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+      - name: readiness-only
+        image: registry.internal/app:v2.3.0
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+      - name: startup-only
+        image: registry.internal/app:v2.3.0
+        startupProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - test -f /tmp/ready

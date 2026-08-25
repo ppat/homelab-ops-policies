@@ -1,0 +1,24 @@
+---
+# EXPECTED: `skip`.
+#
+# The `cert-manager-cainjector*` exemption, in `cert-manager`. Its non-vacuous twin
+# is ./deployment-cert-manager-webhook-fail.yaml -- same namespace, same unprobed container, a
+# name the glob does not cover -- which fails. Without that pair, a `matchCondition` that
+# accidentally exempted the whole `cert-manager` namespace would look identical here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-manager-cainjector
+  namespace: cert-manager
+spec:
+  selector:
+    matchLabels:
+      app: cert-manager-cainjector
+  template:
+    metadata:
+      labels:
+        app: cert-manager-cainjector
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

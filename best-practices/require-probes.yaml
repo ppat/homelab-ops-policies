@@ -1,14 +1,35 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: hand-authored. Upstream kyverno/policies has a `ValidatingPolicy` for this rule
+# (read at commit ef9843f0) from which exactly one thing is adopted -- the container-naming
+# `messageExpression` on `validations` below. The rest of that file is rejected: it keeps autogen
+# ON *and* lists pods, all seven pod controllers, jobs and cronjobs in `matchConstraints`, and
+# ships `validationActions: [Deny]`.
+#
+# LAYER 1: this file is exemption-free. Every exemption this policy has in production lives in
+# ./exemptions/require-probes.yaml, appended to `spec.matchConditions` by the `patches:` entry in
+# ./kustomization.yaml. Read the two together before concluding this policy has no exemptions.
+#
+# House style for a `best-practices`-group `ValidatingPolicy` is set by ./restrict-node-port.yaml;
+# read that file first. Its numbered conventions apply here unrestated, including
+# `spec.autogen.podControllers.controllers: []`.
+#
+# ACCEPTED SCOPE: matching the three controller kinds and not `pods` leaves an unprobed BARE Pod
+# unflagged. That is deliberate -- bare pods here are troubleshooting artefacts rather than
+# workloads (./cleanup-bare-pods.yaml deletes them daily), and probes on one would be noise.
+#
+# NATIVE-SIDECAR GAP: this policy checks `containers` only, so a native sidecar (an
+# `initContainer` with `restartPolicy: Always`) goes unchecked even though a probe suits it just
+# as well. That is a CHOICE, not an oversight; extending it would change which workloads appear in
+# the audit stream, which is its own change to argue for and measure.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
-  name: require-pod-probes
+  name: require-probes
   annotations:
-    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
     policies.kyverno.io/title: Require Pod Probes
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
-    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/subject: Deployment, DaemonSet, StatefulSet
     policies.kyverno.io/description: >-
       Liveness and readiness probes need to be configured to correctly manage a Pod's
       lifecycle during deployments, restarts, and upgrades. For each Pod, a periodic
@@ -18,94 +39,49 @@ metadata:
       This policy validates that all containers have one of livenessProbe, readinessProbe,
       or startupProbe defined.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: validate-probes
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    preconditions:
-      all:
-      - key: "{{request.operation || 'BACKGROUND'}}"
-        operator: AnyIn
-        value:
-        - CREATE
-        - UPDATE
-        - BACKGROUND
-      - key: "{{ request.object.metadata.ownerReferences[?kind == 'Job'] | length(@) }}"
-        operator: Equals
-        value: 0
-    validate:
-      message: "Liveness, readiness, or startup probes are required for all containers."
-      foreach:
-      - list: request.object.spec.containers[]
-        deny:
-          conditions:
-            all:
-            - key: livenessProbe
-              operator: AllNotIn
-              value: "{{ element.keys(@)[] }}"
-            - key: startupProbe
-              operator: AllNotIn
-              value: "{{ element.keys(@)[] }}"
-            - key: readinessProbe
-              operator: AllNotIn
-              value: "{{ element.keys(@)[] }}"
-    exclude:
-      any:
-      - resources:
-          namespaces:
-          - csi-driver-nfs
-          - kube-system
-          - longhorn-system
-          - system-upgrade
-      - resources:
-          names:
-          - 'cert-manager-cainjector*'
-          namespaces:
-          - cert-manager
-      - resources:
-          names:
-          - 'intel-gpu-plugin-gpu-device*'
-          namespaces:
-          - intel-device-plugins
-      - resources:
-          names:
-          - 'metallb-speaker*'
-          namespaces:
-          - metallb-system
-      # virt-launcher's `compute` container (the one this policy checks -- it only iterates
-      # spec.containers[], not initContainers) carries no liveness/readiness/startupProbe.
-      # Verified against both VMs' live pod specs: neither defines any of the three fields.
-      # KubeVirt doesn't track VM health through kubelet probes at all -- it tracks it through
-      # the VirtualMachineInstance's own status, surfaced onto the pod via the
-      # `kubevirt.io/virtual-machine-unpaused` readiness gate (visible in both pods'
-      # spec.readinessGates, with status.conditions showing "the virtual machine is not paused"
-      # driving the pod's Ready condition). A kubelet probe would be the wrong signal here even
-      # if one were added: the guest OS runs nested inside qemu, invisible to an exec/http/tcp
-      # check against the virt-launcher container, so the only thing a probe could observe is
-      # whether virt-launcher itself is alive, which the VMI status already captures more
-      # accurately.
-      #
-      # This isn't a case of the pod being unmonitored, just monitored through a different
-      # mechanism than this policy checks for -- the readiness gate is the same contract object
-      # consumers of pod readiness (Services, Deployments, kubectl wait) rely on. What bounds
-      # the risk is exactly that substitution: if it ever failed to hold -- KubeVirt stops
-      # populating the readiness gate, a version changes the contract, a bug leaves it stale --
-      # this pod would have zero health signal of any kind, kubelet or KubeVirt's, and this
-      # exclusion means the audit stream would not say so. That silent failure mode is the
-      # residual risk this exclusion accepts; it isn't mitigated by anything else here.
-      #
-      # Name-scoped, not namespace-scoped, and limited to the same two namespaces as the other
-      # virt-launcher exclusions in this repo (./add-emptydir-sizelimit.yaml, and
-      # ../pod-security-standard/restricted/exemptions/{restrict-volume-types,restrict-seccomp-strict}.yaml)
-      # rather than left open to any future VM namespace.
-      - resources:
-          names:
-          - 'virt-launcher*'
-          namespaces:
-          - sandbox-docker
-          - sandbox-talos
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  # The append seam for ./exemptions/require-probes.yaml. Declared even though empty: a JSON6902
+  # `op: add` onto `/spec/matchConditions/-` fails the kustomize build when the parent is absent.
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - apps
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - daemonsets
+      - deployments
+      - statefulsets
+  validationActions:
+  - Audit
+  validations:
+  - expression: >-
+      variables.containers.all(container,
+      has(container.livenessProbe) ||
+      has(container.readinessProbe) ||
+      has(container.startupProbe))
+    # Under Audit every finding is a PolicyReport row read later with no access to the object that
+    # produced it, so naming the offending containers is the difference between a row that can be
+    # acted on and one that starts an investigation.
+    messageExpression: >-
+      'Liveness, readiness, or startup probes are required for all containers. Containers with no probe: ' +
+      variables.containers.filter(container,
+      !(has(container.livenessProbe) ||
+      has(container.readinessProbe) ||
+      has(container.startupProbe))).map(container, container.name).join(', ')
+  variables:
+  # NO NULL GUARD, deliberately. Both `spec.template` and `spec.template.spec.containers` are
+  # required by the schema of all three matched kinds, and an `.orValue()` here would silently
+  # swallow a future `matchConstraints` entry for a kind shaped differently instead of failing
+  # loudly. See the header for why `containers` and not all three container lists.
+  - name: containers
+    expression: object.spec.template.spec.containers

@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail` ("Using a mutable image tag e.g. 'latest' is not allowed.").
+#
+# THE UPSTREAM-DIVERGENCE FIXTURE, half one of two. The pod's `containers` entry is correctly
+# pinned; only the `initContainers` entry is mutable. Upstream kyverno/policies checks
+# `object.spec.containers` alone, so under its expression this pod PASSES. It fails here because
+# ../../../../../best-practices/disallow-latest-tag.yaml keeps all three container lists.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mutable-init
+  namespace: default
+spec:
+  initContainers:
+  - name: migrate
+    image: registry.internal/migrator:latest
+  containers:
+  - name: app
+    image: registry.internal/app:v2.3.0

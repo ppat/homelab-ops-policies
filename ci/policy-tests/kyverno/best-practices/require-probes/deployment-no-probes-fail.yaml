@@ -1,0 +1,27 @@
+---
+# EXPECTED: `fail`.
+#
+# A Deployment, matched directly.
+#
+# Two containers, both unprobed, so the adopted `messageExpression` has something to enumerate:
+# the reported message must name BOTH `api` and `metrics-exporter`. Read it off the
+# `--detailed-results` table -- `kyverno test` rows cannot assert on message text.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      containers:
+      - name: api
+        image: registry.internal/api:v3.0.1
+      - name: metrics-exporter
+        image: registry.internal/exporter:v0.9.4

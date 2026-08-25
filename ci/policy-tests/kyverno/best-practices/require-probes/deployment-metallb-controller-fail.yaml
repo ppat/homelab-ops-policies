@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# Non-vacuity twin A for the metallb-speaker exemption: right namespace, wrong name. Proves the
+# exemption did not widen to all of `metallb-system`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metallb-controller
+  namespace: metallb-system
+spec:
+  selector:
+    matchLabels:
+      app: metallb-controller
+  template:
+    metadata:
+      labels:
+        app: metallb-controller
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

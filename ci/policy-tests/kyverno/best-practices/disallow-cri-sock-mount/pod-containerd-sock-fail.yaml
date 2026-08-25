@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail` -- "Use of the Containerd Unix socket is not allowed."
+#
+# In `longhorn-system`, deliberately: that namespace is one of `disallow-host-path`'s exemptions,
+# so this fixture is also the concrete case the keep-rationale in
+# ../../../../../best-practices/disallow-cri-sock-mount.yaml describes -- a socket mount that no
+# PSS policy in this repo would object to, caught only here.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: containerd-sock-consumer
+  namespace: longhorn-system
+spec:
+  containers:
+  - name: agent
+    image: registry.internal/agent:v1.4.0
+  volumes:
+  - name: cri
+    hostPath:
+      path: /var/run/containerd/containerd.sock
+      type: Socket

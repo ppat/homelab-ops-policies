@@ -1,0 +1,17 @@
+---
+# EXPECTED: `pass`.
+#
+# `spec.volumes` is optional and this is the ordinary shape of a pod that declares none. It is
+# here because the null-safety of the policy's `object.spec.?volumes.orValue([])` projection is
+# otherwise untested: without the `.?`/`.orValue([])`, this fixture produces an EVALUATION ERROR
+# ("no such key: volumes"), not a fail -- upstream needs a separate `hasVolumes` variable and a
+# leading `variables.hasVolumes ||` on all four expressions for the same reason.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stateless-api
+  namespace: default
+spec:
+  containers:
+  - name: api
+    image: registry.internal/api:v3.0.1

@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail` -- "Using a mutable image tag e.g. 'latest' is not allowed."
+#
+# A Deployment-owned Pod (owned via its ReplicaSet, not directly -- kept accurate so this fixture
+# isn't "corrected" to a Deployment ownerReference), caught same as any other Pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mutable-web-7d9f8c6b5-abcde
+  namespace: default
+  ownerReferences:
+  - apiVersion: apps/v1
+    kind: ReplicaSet
+    name: mutable-web-7d9f8c6b5
+    uid: 8a2c5e91-4f3d-4a7b-9c1e-2d6f8b3a5e17
+    controller: true
+    blockOwnerDeletion: true
+spec:
+  containers:
+  - name: web
+    image: registry.internal/web:latest

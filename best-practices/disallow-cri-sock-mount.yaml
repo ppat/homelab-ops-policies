@@ -1,15 +1,34 @@
 ---
-# yamllint disable rule:indentation
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: hand-authored. Upstream kyverno/policies ships a
+# best-practices-vpol/disallow-cri-sock-mount/ (read at commit ef9843f0) that is deliberately NOT
+# the source for this file: its expressions use `.matches(<path>)`, which is a correctness bug
+# rather than a style difference. Read the DEVIATION note on `validations` below before resyncing
+# anything from it.
+#
+# House style for a `best-practices`-group `ValidatingPolicy` is set by ./restrict-node-port.yaml;
+# read that file first. Its numbered conventions apply here unrestated, including
+# `spec.autogen.podControllers.controllers: []`.
+#
+# WHY THIS EXISTS SEPARATELY FROM `disallow-host-path`, for the reader who notices the overlap and
+# reaches for the delete key: PSS `disallow-host-path` subsumes it EXCEPT in every namespace where
+# that policy carries an exemption -- `csi-driver-nfs`, `kube-system`, `longhorn-system` and
+# `system-upgrade` wholesale, plus name globs in `monitoring`, `logging`, `intel-device-plugins`
+# and `kubevirt` (see ../pod-security-standard/baseline/exemptions/disallow-host-path.yaml). This
+# policy has no exemptions of its own, so precisely there -- the namespaces where a socket mount
+# is most plausible -- it is the only objection left.
+#
+# THE COROLLARY IS A MAINTENANCE RULE: this policy must stay exemption-free. A `matchConditions`
+# entry here for one of those namespaces would leave the socket mount objected to by nothing at
+# all, which is the exact hole the paragraph above says this file plugs.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
-  name: disallow-container-sock-mounts
+  name: disallow-cri-sock-mount
   annotations:
     policies.kyverno.io/title: Disallow CRI socket mounts
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    policies.kyverno.io/minversion: 1.6.0
     policies.kyverno.io/description: >-
       Container daemon socket bind mounts allows access to the container engine on the
       node. This access can be used for privilege escalation and to manage containers
@@ -18,58 +37,62 @@ metadata:
       to or replacement of this policy, preventing users from mounting the parent directories
       (/var/run and /var) may be necessary to completely prevent socket bind mounts.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: validate-docker-sock-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Use of the Docker Unix socket is not allowed."
-      pattern:
-        spec:
-          =(volumes):
-            - =(hostPath):
-                path: "!/var/run/docker.sock"
-  - name: validate-containerd-sock-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Use of the Containerd Unix socket is not allowed."
-      pattern:
-        spec:
-          =(volumes):
-            - =(hostPath):
-                path: "!/var/run/containerd/containerd.sock"
-  - name: validate-crio-sock-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Use of the CRI-O Unix socket is not allowed."
-      pattern:
-        spec:
-          =(volumes):
-            - =(hostPath):
-                path: "!/var/run/crio/crio.sock"
-  - name: validate-dockerd-sock-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Use of the Docker CRI socket is not allowed."
-      pattern:
-        spec:
-          =(volumes):
-            - =(hostPath):
-                path: "!/var/run/cri-dockerd.sock"
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # DEVIATION from upstream kyverno/policies, whose vpol writes each of these four as
+  # `!volume.hostPath.path.matches('/var/run/docker.sock')`. `.matches()` is an RE2 SEARCH and its
+  # argument is a regular expression, not a literal, so upstream's form over-matches two
+  # independent ways -- both of them false positives:
+  #
+  #   * UNANCHORED, so any path merely CONTAINING a socket path is flagged. Pinned by
+  #     ci/policy-tests/kyverno/best-practices/disallow-cri-sock-mount/pod-substring-near-miss-pass.yaml.
+  #   * `.` IS A METACLASS, so a path differing from the socket in exactly that position is
+  #     flagged as if it were the socket. Pinned by the sibling
+  #     pod-regex-metachar-near-miss-pass.yaml.
+  #
+  # Every finding here is an Audit row a human triages, so a false positive is not free; exact
+  # comparison has neither failure mode.
+  #
+  # Kept as FOUR separate `validations[]` entries rather than one `in [...]` check because each
+  # carries its own `message`, so a PolicyReport row still names WHICH runtime's socket was
+  # mounted. Collapsing them would trade that for nothing.
+  - expression: >-
+      !variables.hostPathVolumePaths.exists(path, path == '/var/run/docker.sock')
+    message: Use of the Docker Unix socket is not allowed.
+  - expression: >-
+      !variables.hostPathVolumePaths.exists(path, path == '/var/run/containerd/containerd.sock')
+    message: Use of the Containerd Unix socket is not allowed.
+  - expression: >-
+      !variables.hostPathVolumePaths.exists(path, path == '/var/run/crio/crio.sock')
+    message: Use of the CRI-O Unix socket is not allowed.
+  - expression: >-
+      !variables.hostPathVolumePaths.exists(path, path == '/var/run/cri-dockerd.sock')
+    message: Use of the Docker CRI socket is not allowed.
+  variables:
+  # The two `.?` guards do two different jobs. `.?volumes.orValue([])` tolerates a Pod that
+  # declares no volumes at all; `.?hostPath.?path.orValue('')` maps every NON-hostPath volume (a
+  # volume entry carries any one of ~30 source types) to the empty string, which no socket path
+  # above can equal. Upstream instead carries three variables -- one of them, `hasVolumes`,
+  # holding the inverse of its own name -- plus a guard on every expression; one null-safe
+  # projection replaces all of that.
+  - name: hostPathVolumePaths
+    expression: >-
+      object.spec.?volumes.orValue([]).map(volume, volume.?hostPath.?path.orValue(''))

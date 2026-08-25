@@ -1,0 +1,29 @@
+---
+# EXPECTED: `skip`.
+#
+# The `generateName` half of every exemption expression. Each entry in
+# ../../../../../best-practices/exemptions/require-probes.yaml tests
+# `?name.orValue('') + ?generateName.orValue('')` rather than `?name` alone, and with only
+# name-bearing fixtures the `+ ?generateName` term could be deleted without anything noticing.
+# This controller carries `generateName` and NO `name`, so it is reachable only through that term.
+#
+# The selector that addresses it in kyverno-test.yaml is `metallb-system/` -- namespace, slash,
+# EMPTY name -- which is the only form that reaches a resource with no `metadata.name`. Same trick
+# as ../../restricted/restrict-volume-types/pod-virt-handler-generatename-hostpath-skip.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  generateName: metallb-speaker-
+  namespace: metallb-system
+spec:
+  selector:
+    matchLabels:
+      app: metallb-speaker
+  template:
+    metadata:
+      labels:
+        app: metallb-speaker
+    spec:
+      containers:
+      - name: speaker
+        image: registry.internal/metallb-speaker:v0.14.8

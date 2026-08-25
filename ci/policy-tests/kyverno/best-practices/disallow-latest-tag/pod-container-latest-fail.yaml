@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail` ("Using a mutable image tag e.g. 'latest' is not allowed.").
+#
+# The base case: an explicit `:latest` on `spec.containers`. This is the only one of the three
+# container lists upstream kyverno/policies' vpol still checks -- see the sibling
+# ./pod-init-container-latest-fail.yaml and ./pod-ephemeral-container-latest-fail.yaml, which are
+# the two rows that go "Not found" under upstream's expression.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mutable-app
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.internal/app:latest

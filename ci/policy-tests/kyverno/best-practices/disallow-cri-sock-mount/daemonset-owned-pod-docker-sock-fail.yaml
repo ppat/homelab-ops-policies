@@ -1,0 +1,25 @@
+---
+# EXPECTED: `fail` -- "Use of the Docker Unix socket is not allowed."
+#
+# A DaemonSet-owned Pod, caught same as any other Pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-agent-x7z2p
+  namespace: kube-system
+  ownerReferences:
+  - apiVersion: apps/v1
+    kind: DaemonSet
+    name: node-agent
+    uid: 3f1e6c2a-9b1d-4b8e-8f3a-6b2e9d7c4a10
+    controller: true
+    blockOwnerDeletion: true
+spec:
+  containers:
+  - name: agent
+    image: registry.internal/agent:v1.4.0
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+      type: Socket

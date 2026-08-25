@@ -1,0 +1,25 @@
+---
+# EXPECTED: `skip`.
+#
+# The `csi-driver-nfs` namespace exemption.
+#
+# Non-vacuity of the namespace rows comes from ./deployment-no-probes-fail.yaml and its siblings:
+# identically-shaped unprobed controllers in `default`, which fail. Same shape, same containers,
+# different namespace, opposite result.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-node-driver
+  namespace: csi-driver-nfs
+spec:
+  selector:
+    matchLabels:
+      app: nfs-node-driver
+  template:
+    metadata:
+      labels:
+        app: nfs-node-driver
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

@@ -28,15 +28,15 @@ go).
 
 `ValidatingPolicy.spec.matchConditions` is a flat top-level list whose
 entries are ANDed, so appending to it can only ever narrow a policy. That is
-the seam the exemption layer uses: Pod Security Standards policy files are
-exemption-free mirrors of the upstream standard, and each estate exemption is
-a JSON6902 patch under
-`pod-security-standard/<profile>/exemptions/<policy>.yaml`, wired up by a
-`patches:` entry in that profile's `kustomization.yaml`. See
+the seam the exemption layer uses: any policy with exemptions is an
+exemption-free mirror of the rule it enforces, and each estate exemption is a
+JSON6902 patch under `exemptions/<policy>.yaml` beside it, wired up by a
+`patches:` entry in that directory's `kustomization.yaml`. See
 `pod-security-standard/restricted/exemptions/restrict-volume-types.yaml`, the
-house-style reference for an exemption patch. `best-practices/` policies keep
-their exemptions inline — the split buys diffability against an external
-standard, which those policies don't have.
+house-style reference for an exemption patch. A policy stays exemption-free
+only when it genuinely has none, as
+`best-practices/disallow-cri-sock-mount.yaml` and
+`best-practices/disallow-latest-tag.yaml` currently do.
 
 A consumer therefore applies the `kustomize build` output of a profile
 directory, never a single file. Both test tiers run against that built output

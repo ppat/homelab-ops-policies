@@ -1,0 +1,22 @@
+---
+# EXPECTED: `skip`.
+#
+# The `kube-system` namespace exemption. Written as a DaemonSet rather than a Deployment so the
+# namespace exemptions are exercised across kinds too.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-proxy-shim
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: kube-proxy-shim
+  template:
+    metadata:
+      labels:
+        app: kube-proxy-shim
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0
