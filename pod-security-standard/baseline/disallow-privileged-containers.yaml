@@ -1,6 +1,18 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check privileged
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ../restricted/restrict-volume-types.yaml (the PSS-mirror family conventions:
+# snapshot marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# THE REPO'S ANCHOR RATIONALE FOR EVERY virt-handler EXEMPTION USED TO LIVE IN THIS FILE and no
+# longer does. It moved, unchanged, to exemptions/disallow-privileged-containers.yaml, because a
+# Layer-1 pure mirror carries the PSS rule and nothing about this estate (design doc
+# phase2.0-policy-migration-design-v3.md §2.1). Other files across this repo say "see
+# disallow-privileged-containers.yaml"; that pointer now resolves to the patch file next door,
+# and this note exists so the pointer does not dead-end here. Read the two files together.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-privileged-containers
   annotations:
@@ -8,71 +20,58 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    # Bumped from the legacy `kyverno.io/kyverno-version: 1.6.0`, which is dropped as redundant.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       Privileged mode disables most security mechanisms and must not be allowed. This policy
       ensures Pods do not call for privileged mode.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: privileged-containers
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Privileged mode is disallowed. The fields
-        spec.containers[*].securityContext.privileged,
-        spec.initContainers[*].securityContext.privileged, and
-        spec.ephemeralContainers[*].securityContext.privileged must be unset or
-        set to `false`.
-      pattern:
-        spec:
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(privileged): "false"
-          =(initContainers):
-          - =(securityContext):
-              =(privileged): "false"
-          containers:
-          - =(securityContext):
-              =(privileged): "false"
-    exclude:
-      any:
-      - resources:
-          namespaces:
-          - csi-driver-nfs
-          - kube-system
-          - longhorn-system
-          - system-upgrade
-          - tailscale
-      - resources:
-          names:
-          - 'node-problem-detector*'
-          namespaces:
-          - monitoring
-      # Grants virt-handler root plus every Linux capability on whichever node it lands on --
-      # it's the node agent that opens /dev/kvm and other host devices, drives libvirt/qemu
-      # process lifecycle, and edits cgroups directly, none of which an unprivileged container
-      # can do. Bounded by: once KubeVirt is installed, its CR's
-      # `spec.workloads.nodePlacement.nodeSelector` restricts virt-handler to the two nodes
-      # OPERATIONS.md's KubeVirt runbook prepares, not all four; and virt-launcher, where a VM's
-      # guest actually runs, is deliberately NOT privileged (its one, much narrower, exclusion
-      # is in restrict-seccomp-strict.yaml). Not bounded by anything here: a QEMU/KVM guest
-      # escape into virt-launcher is one more bug away from the host, at exactly the
-      # virt-handler<->virt-launcher boundary -- a boundary with a live CVE lineage
-      # (CVE-2025-64437, CVE-2025-64433; both fixed in 1.5.3/1.6.1). Keep KubeVirt patched;
-      # this exclusion doesn't defend against that class of bug, only the DaemonSet's own
-      # shape. `virt-operator`/`virt-api`/`virt-controller` aren't excluded anywhere in this
-      # repo: verified against upstream KubeVirt's generated manifests, none of them run
-      # privileged. See disallow-host-path.yaml for why every virt-handler exclusion here is
-      # name-scoped, not namespace-scoped, and why only the `kubevirt` namespace is listed.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # ALL THREE CONTAINER LISTS, concatenated and checked with one `.all()`. This mirrors
+  # pod-security-admission's own `visitContainers()`, which iterates `containers`,
+  # `initContainers` and `ephemeralContainers` identically -- including native sidecars, which
+  # PSA does not special-case (there are zero `RestartPolicy` references in its policy directory).
+  # A sidecar must therefore carry a compliant securityContext itself, and this expression sees
+  # it because a sidecar IS an initContainer.
+  #
+  # `.orValue([])` on the two optional lists and `.orValue(false)` on the optional field are the
+  # null-safe forms; `.all()` makes the whole expression statically bool. Translated from the
+  # legacy conditional-anchor pattern `=(privileged): "false"` on each of the three lists, which
+  # had identical semantics: absent passes, false passes, true fails.
+  #
+  # `spec.containers` is NOT written `.?containers.orValue([])`: the API requires at least one
+  # container, so unlike the other two lists it is never absent.
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      !c.?securityContext.?privileged.orValue(false))
+    message: >-
+      Privileged mode is disallowed. The fields
+      spec.containers[*].securityContext.privileged,
+      spec.initContainers[*].securityContext.privileged, and
+      spec.ephemeralContainers[*].securityContext.privileged must be unset or
+      set to `false`.

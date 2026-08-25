@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires `exempt-node-level-namespaces`. All FIVE members of that one `in [...]` list get their own fixture: a
+# single fixture would prove the entry fires, not that it still lists all five, and dropping one is exactly
+# the regression the design calls a bug rather than a simplification.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-9k2vq
+  namespace: kube-system
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

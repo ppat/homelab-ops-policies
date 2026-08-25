@@ -1,0 +1,16 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires `exempt-virt-handler` -- the entry carrying the repo anchor rationale that eight other files
+# cross-reference. If this row ever goes red, read the anchor before editing the expression.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

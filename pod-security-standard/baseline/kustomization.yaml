@@ -48,3 +48,9 @@ patches:
     version: v1
     kind: ValidatingPolicy
     name: disallow-host-pid
+- path: exemptions/disallow-privileged-containers.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-privileged-containers

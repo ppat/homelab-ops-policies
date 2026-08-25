@@ -1,0 +1,82 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-privileged-containers.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml. This is a JSON6902 patch document, not a manifest. House-style
+# reference: ../../restricted/exemptions/restrict-volume-types.yaml -- its seven numbered
+# conventions apply here unchanged.
+#
+# THIS FILE HOLDS THE REPO'S ANCHOR RATIONALE FOR virt-handler. Eight other files across this
+# repository point at it rather than restating the argument -- ./disallow-host-path.yaml and
+# ./disallow-host-pid.yaml among them. It is ported VERBATIM from the legacy
+# `disallow-privileged-containers` ClusterPolicy's `exclude:` block; do not paraphrase it, and if
+# a new exemption ever needs the same argument, cite this file rather than copying an edited
+# version of it. Anything that would change the argument (KubeVirt's node placement, the
+# virt-handler/virt-launcher boundary, the CVE lineage) is a change to make HERE, once.
+#
+# WHAT MOVED IN THE KIND MIGRATION: the rationale used to live beside the rule it excused, in
+# ../disallow-privileged-containers.yaml. A Layer-1 pure mirror carries no estate content at all
+# (§2.1), so it lives here now. Nothing about the argument changed.
+
+# The five-namespace exclusion set, carried from the legacy `exclude.any[0]`. `csi-driver-nfs`,
+# `kube-system`, `longhorn-system` and `system-upgrade` are the same node-level namespaces
+# ./disallow-host-path.yaml excuses, for the same reason -- each is a dedicated single-purpose
+# namespace whose contents legitimately act on the node. `tailscale` is the fifth and appears
+# here but NOT in ./disallow-host-path.yaml: the Tailscale operator's subnet-router and
+# exit-node pods need privileged mode for /dev/net/tun and kernel routing, without needing a
+# host path mount. The two lists are deliberately different lengths; do not "align" them.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-level-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in
+      ['csi-driver-nfs', 'kube-system', 'longhorn-system', 'system-upgrade', 'tailscale'])
+
+# node-problem-detector runs privileged to read the node's kernel ring buffer and journal.
+# Name- AND namespace-scoped: `monitoring` holds many workloads with no such need. Note the
+# node-exporter glob that accompanies this one in ./disallow-host-path.yaml is absent here --
+# node-exporter mounts host paths but does not run privileged.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-problem-detector
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('node-problem-detector'))
+
+# Grants virt-handler root plus every Linux capability on whichever node it lands on --
+# it's the node agent that opens /dev/kvm and other host devices, drives libvirt/qemu
+# process lifecycle, and edits cgroups directly, none of which an unprivileged container
+# can do. Bounded by: once KubeVirt is installed, its CR's
+# `spec.workloads.nodePlacement.nodeSelector` restricts virt-handler to the two nodes
+# OPERATIONS.md's KubeVirt runbook prepares, not all four; and virt-launcher, where a VM's
+# guest actually runs, is deliberately NOT privileged (its one, much narrower, exclusion
+# is in restrict-seccomp-strict.yaml). Not bounded by anything here: a QEMU/KVM guest
+# escape into virt-launcher is one more bug away from the host, at exactly the
+# virt-handler<->virt-launcher boundary -- a boundary with a live CVE lineage
+# (CVE-2025-64437, CVE-2025-64433; both fixed in 1.5.3/1.6.1). Keep KubeVirt patched;
+# this exclusion doesn't defend against that class of bug, only the DaemonSet's own
+# shape. `virt-operator`/`virt-api`/`virt-controller` aren't excluded anywhere in this
+# repo: verified against upstream KubeVirt's generated manifests, none of them run
+# privileged. See disallow-host-path.yaml for why every virt-handler exclusion here is
+# name-scoped, not namespace-scoped, and why only the `kubevirt` namespace is listed.
+#
+# MIGRATION NOTE (Phase 2 kind migration). The block above is the anchor and is ported verbatim.
+# Two of its cross-references now resolve one directory down, to the patch files rather than the
+# pure mirrors, because that is where estate content lives after §2.1:
+#   * "its one, much narrower, exclusion is in restrict-seccomp-strict.yaml" ->
+#     ../../restricted/exemptions/restrict-seccomp-strict.yaml.
+#   * "See disallow-host-path.yaml for why every virt-handler exclusion here is name-scoped" ->
+#     ./disallow-host-path.yaml.
+# Neither claim changed. One premise has moved on since the block was written and is worth
+# stating so a reader does not trip over it: KubeVirt IS installed now (virt-handler runs on the
+# homelab cluster), so this exclusion is live rather than pre-emptive.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

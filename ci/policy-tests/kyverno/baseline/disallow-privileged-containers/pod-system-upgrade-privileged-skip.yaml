@@ -1,0 +1,15 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires `exempt-node-level-namespaces`, fourth member.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: apply-k3s-server-on-node-abc12
+  namespace: system-upgrade
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

@@ -1,0 +1,17 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# The NAME conjunct of `exempt-virt-handler`, falsified. The anchor rationale states outright that
+# virt-operator, virt-api and virt-controller are not excluded anywhere in this repo because none of them
+# runs privileged; this fixture is that sentence made falsifiable.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-api-6794fd7fd6-9429f
+  namespace: kubevirt
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true
