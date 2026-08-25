@@ -50,6 +50,12 @@ patches:
     version: v1
     kind: ValidatingPolicy
     name: require-drop-all
+- path: exemptions/require-run-as-non-root-user.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: require-run-as-non-root-user
 - path: exemptions/restrict-volume-types.yaml
   target:
     group: policies.kyverno.io

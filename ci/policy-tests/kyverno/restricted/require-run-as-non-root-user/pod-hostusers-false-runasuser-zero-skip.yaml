@@ -1,0 +1,25 @@
+---
+# EXPECTED: `skip` against BOTH documents -- built and pure.
+#
+# THE §5.5a hostUsers RELAXATION, and the reason it is asserted in the `pure` document too: this
+# `skip` comes from the MIRROR's own `matchConditions` entry, not from the estate exemption layer.
+# PSS v1.35 skips `runAsUser` entirely for a pod in a user namespace, because root inside the
+# userns is unprivileged on the host -- which is the property the check exists to guarantee. If
+# this row ever reported `skip` in the built document and `fail` in the pure one, the condition
+# would have been misfiled into exemptions/ as though it were an estate decision.
+#
+# Non-vacuous by construction: `runAsUser: 0` is a real violation of the rule, so `skip` cannot be
+# "the pod happened to comply". Declaring `result: pass` here makes the suite fail with
+# "Want pass, got skip" (measured, Wave A1 spike §4).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: userns-workload-9b966fd69-bsmhz
+  namespace: default
+spec:
+  hostUsers: false
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 0

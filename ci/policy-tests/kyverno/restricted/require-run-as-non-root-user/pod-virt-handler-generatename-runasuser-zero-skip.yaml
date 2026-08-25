@@ -1,0 +1,22 @@
+---
+# EXPECTED: `skip` against built output, `fail` against the pure mirror.
+#
+# THE `generateName`-ONLY SHAPE -- no `metadata.name` at all, addressed by the selector
+# `kubevirt/`. See ../require-drop-all/pod-virt-handler-generatename-no-drop-all-skip.yaml for the
+# full note.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: virt-handler-
+  namespace: kubevirt
+spec:
+  initContainers:
+  - name: node-labeller
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 0
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

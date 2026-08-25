@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY: without it the `pass` rows could be produced by a
+# policy that had stopped objecting to anything.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 0
