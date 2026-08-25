@@ -1,0 +1,22 @@
+---
+# EXPECTED: ADMITTED.
+#
+# The non-vacuous partner of pod-prestop-httpget-host-rejected.yaml: the same preStop hook with
+# the `host:` line removed. Without it, "the lifecycle expression rejects" would be
+# indistinguishable from "the lifecycle expression rejects any preStop hook at all" -- and the
+# commonest real shape in this estate is an `exec` preStop, which must keep working.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-without-host
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    lifecycle:
+      preStop:
+        httpGet:
+          path: /drain
+          port: 8080

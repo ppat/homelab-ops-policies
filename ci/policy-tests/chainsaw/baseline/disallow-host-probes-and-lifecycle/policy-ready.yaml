@@ -1,0 +1,20 @@
+---
+# Readiness assertion for disallow-host-probes-and-lifecycle. Same shape and same reasoning as
+# ../../restricted/restrict-volume-types/policy-ready.yaml, which is the house-style reference
+# and records the condition names verified firsthand against the pinned engine (Kyverno chart
+# 3.8.2). The `(conditions[?type == 'X'])` filter form is what makes each arm non-vacuous:
+# chainsaw matches arrays index-wise by equal length, so a filter selecting zero elements fails
+# against a one-element expectation rather than passing quietly.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-host-probes-and-lifecycle
+status:
+  conditionStatus:
+    ready: true
+    (conditions[?type == 'WebhookConfigured']):
+    - status: "True"
+      reason: Succeeded
+    (conditions[?type == 'RBACPermissionsGranted']):
+    - status: "True"
+      reason: Succeeded

@@ -1,0 +1,44 @@
+---
+# EXPECTED: the DaemonSet is admitted (controllers are not matched -- autogen is off), and its
+# PODS are REJECTED, so it never becomes ready.
+#
+# THE ESTATE'S OWN SHAPE, ARRIVING THROUGH A REAL CONTROLLER. Modelled on csi-driver-nfs's
+# `csi-nfs-node` and metallb's `speaker`, which were measured on both live clusters and pin a
+# liveness probe to loopback because they are hostNetwork DaemonSets. This is the one fixture in
+# this directory that could not be built at the CLI tier: it establishes that the finding those
+# four workloads will produce is a real admission-time verdict on a controller-created pod, not
+# an artefact of hand-written fixture YAML.
+#
+# It also pins `spec.autogen.podControllers.controllers: []` end-to-end. With autogen ON, Kyverno
+# would synthesise a DaemonSet-shaped variant of this policy and the DAEMONSET ITSELF would be
+# rejected at apply time -- which the test asserts does not happen.
+#
+# No `hostNetwork: true` here: it is what motivates the loopback probe in the real charts but is
+# irrelevant to this policy, and it would drag in ../disallow-host-network's exemptions and make
+# the verdict ambiguous.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: loopback-probe-host
+spec:
+  selector:
+    matchLabels:
+      app: loopback-probe-host
+  template:
+    metadata:
+      labels:
+        app: loopback-probe-host
+    spec:
+      tolerations:
+      - operator: Exists
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 29653
+            host: localhost
+          periodSeconds: 300
+          failureThreshold: 30

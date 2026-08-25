@@ -1,0 +1,28 @@
+---
+# EXPECTED: `fail` (lifecycle message).
+#
+# The `postStart` hook, the `tcpSocket` handler and the `ephemeralContainers` term of the
+# concatenation, all three otherwise uncovered.
+#
+# ON THE tcpSocket HANDLER SPECIFICALLY: a TCPSocket has never actually been supported as a
+# LifecycleHandler -- the PSS check's own doc comment marks these paths "Deprecated. TCPSocket is
+# NOT supported as a LifecycleHandler and kept for backward compatibility". The field is still in
+# the API and still in the check, so the mirror carries it and so does this fixture. Do not
+# delete either on the grounds that the handler does nothing; a mirror follows the check.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-poststart-host-workload-6878c58dfc-vzscf
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10
+    lifecycle:
+      postStart:
+        tcpSocket:
+          port: 22
+          host: 192.168.8.1

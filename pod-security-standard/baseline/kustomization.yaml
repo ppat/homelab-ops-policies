@@ -14,6 +14,10 @@ resources:
 - disallow-host-pid.yaml
 - disallow-host-ports.yaml
 - disallow-host-process.yaml
+# NEW in the Phase 2 migration: PSS Baseline gained the `hostProbesAndHostLifecycle` check at
+# policy version 1.34 and this repo had no equivalent (design §5.2). It has no upstream
+# kyverno/policies ancestor in any variant.
+- disallow-host-probes-and-lifecycle.yaml
 - disallow-privileged-containers.yaml
 - disallow-proc-mount.yaml
 - disallow-selinux.yaml

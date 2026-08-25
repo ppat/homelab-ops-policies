@@ -1,0 +1,19 @@
+---
+# `numberReady: 0` AND `desiredNumberScheduled: 1`, both literal.
+#
+# The pair is the point. `numberReady: 0` alone would be satisfied by a DaemonSet that scheduled
+# nothing -- which is also what an untolerated DaemonSet looks like on this single-node,
+# control-plane-tainted cluster (../../kind-config.yaml), and would make the assertion vacuous.
+# `desiredNumberScheduled: 1` says the DaemonSet DID want a pod on the node; `numberReady: 0`
+# says admission refused to let one exist. Delete the policy and this assertion goes red because
+# the pod is admitted and becomes ready.
+#
+# The literal 1 is coupled to kind-config.yaml being a single-node cluster; if that grows nodes,
+# this number moves with it.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: loopback-probe-host
+status:
+  desiredNumberScheduled: 1
+  numberReady: 0

@@ -1,0 +1,30 @@
+---
+# EXPECTED: REJECTED by the admission webhook.
+#
+# THE FLAGSHIP CLAIM, live: the API server itself refuses a pod whose liveness probe names a
+# host. Identical to pod-probes-without-host-admitted.yaml except for the one `host:` line, so
+# the pair is non-vacuous in both directions.
+#
+# THIS IS WHAT THE CLUSTER TIER ADDS FOR THIS POLICY, and it is not a formality: `host` on a
+# probe is a perfectly legal field that a 1.36 API server accepts, unlike (say) `procMount:
+# Unmasked`, which core validation refuses outright and which therefore CANNOT be exercised at
+# this tier. So for this control -- and unlike disallow-proc-mount's -- a live rejection is
+# genuinely attributable to Kyverno rather than to the API server's own validation, which is
+# exactly the distinction a CLI-tier exit code cannot draw.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-httpget-host
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    livenessProbe:
+      httpGet:
+        path: /latest/meta-data/
+        port: 80
+        host: 169.254.169.254
+      periodSeconds: 300
+      failureThreshold: 30
