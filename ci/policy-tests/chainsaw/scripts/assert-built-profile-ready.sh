@@ -60,9 +60,28 @@ echo "Asserting all ${#entries[@]} policies from ${built_dir} reach Ready (deadl
 #
 # Enumerated explicitly, never inferred from "no status found", so a policy kind that SHOULD be
 # reporting Ready and silently stops cannot quietly downgrade itself into the weaker assertion.
-# `DeletingPolicy`, the `policies.kyverno.io` counterpart to `ClusterCleanupPolicy`, DOES carry
-# `status.conditionStatus` and must NOT be added to this list.
 readiness_exempt_kinds=" ClusterCleanupPolicy "
+
+# `DeletingPolicy` gets its own weaker check, kept separate from readiness_exempt_kinds above:
+# the code path is the same, the reasoning is not, and the two will diverge again the moment
+# either kind's status behaviour changes. Both points below are measured, not inferred:
+#
+#   - `status.conditionStatus.ready` and `.conditions[]` -- the exact fields this script's "new
+#     shape" branch checks -- are declared in the DeletingPolicy CRD and never populated by the
+#     cleanup controller, which only ever writes `status.lastExecutionTime`. Left to the checks
+#     below, this kind would burn the full deadline and then report not-ready in the case where
+#     everything is working.
+#   - Existence proves LESS here than it does for ClusterCleanupPolicy. Missing cleanup-controller
+#     RBAC does not block admission for a DeletingPolicy the way it does for a
+#     ClusterCleanupPolicy: one targeting a kind the controller cannot delete is admitted without
+#     complaint, and the failure surfaces only in controller logs at execution time. What
+#     existence still proves is that the CEL compiled -- a bad `spec.conditions[].expression` IS
+#     refused by `validate-policy.kyverno.svc`.
+#
+# RBAC coverage for this kind is therefore proven only by the dedicated cleanup-empty-replicasets
+# Chainsaw test (../best-practices/cleanup-empty-replicasets/), which patches the schedule down
+# and asserts a real deletion end to end.
+existence_only_kinds=" DeletingPolicy "
 
 deadline=$((SECONDS + deadline_seconds))
 declare -a not_ready=()
@@ -71,11 +90,11 @@ while :; do
   for entry in "${entries[@]}"; do
     kind="${entry%%/*}"
     name="${entry##*/}"
-    if [[ "${readiness_exempt_kinds}" == *" ${kind} "* ]]; then
+    if [[ "${readiness_exempt_kinds}" == *" ${kind} "* || "${existence_only_kinds}" == *" ${kind} "* ]]; then
       if kubectl get "${kind}" "${name}" >/dev/null 2>&1; then
         continue
       fi
-      not_ready+=("${entry} (kind publishes no readiness; the object itself is absent)")
+      not_ready+=("${entry} (kind publishes no reliable readiness signal within this test's budget; the object itself is absent)")
       continue
     fi
     # Both readiness shapes, queried separately. A jsonpath over an absent field yields the empty

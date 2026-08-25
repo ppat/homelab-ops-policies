@@ -1,0 +1,13 @@
+---
+# The "a cleanup cycle genuinely ran" anchor -- chainsaw-test.yaml's header carries the reasoning.
+# Owner-less, so `cleanup-bare-pods` collects it on the first cycle; its disappearance is what
+# makes the ReplicaSet beside it a survivor rather than something nobody checked.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bare-pod-witness
+  namespace: default
+spec:
+  containers:
+  - name: c
+    image: registry.k8s.io/pause:3.10

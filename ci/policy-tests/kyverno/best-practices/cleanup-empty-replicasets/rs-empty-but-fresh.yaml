@@ -1,0 +1,27 @@
+---
+# NOT A CANDIDATE: empty, but too fresh to collect -- a rollout that just completed or is still
+# running. Falsifies is-old-enough.
+#
+# `creationTimestamp` IS IN THE FUTURE DELIBERATELY, not merely recent. `time.now()` in the policy
+# is real wall-clock time, so a fixture pinned to a "recent" PAST timestamp crosses the 24h
+# threshold as the calendar advances and silently flips from `fail` to `pass` with no code change
+# -- rot nothing in this repo would catch, since nothing revisits fixture content on a schedule.
+# A future timestamp keeps the fixture on the correct side of the comparison indefinitely. No
+# live cluster would ever produce this value; it is fine because `kyverno test` evaluates fixture
+# YAML offline, with no apiserver to default or validate it.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: empty-fresh-replicaset
+  namespace: default
+  creationTimestamp: "2099-01-01T00:00:00Z"
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app: empty-fresh-replicaset}
+  template:
+    metadata: {labels: {app: empty-fresh-replicaset}}
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10

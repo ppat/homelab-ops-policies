@@ -1,0 +1,97 @@
+---
+# Cluster-tier test for `cleanup-empty-replicasets`. House style is set by
+# ../../restricted/restrict-volume-types/chainsaw-test.yaml; read its header first, in particular
+# the bar for adding a test here at all.
+#
+# THE ONE CLAIM THIS TIER CAN MAKE AND THE CLI TIER CANNOT: a genuinely fresh, empty ReplicaSet
+# survives a real cleanup cycle. `creationTimestamp` is server-set, so only a live fixture can
+# produce an object the 24h age guard has to leave alone. The converse -- that an old enough one
+# IS collected -- is unreachable here for the same reason and stays CLI-tier only
+# (../../../kyverno/best-practices/cleanup-empty-replicasets/). Neither tier repeats the other.
+#
+# WHY THIS TEST ALSO INSTALLS `cleanup-bare-pods`: "the fresh ReplicaSet still exists" is vacuous
+# on its own -- it holds identically whether the cleanup controller ran a dozen cycles or never
+# started. `cleanup-bare-pods` has no age guard, so a bare Pod created alongside the ReplicaSet
+# is collected on the first cycle. Both policies are patched to the SAME fast schedule, so the
+# Pod's disappearance is proof that a cycle for that schedule has already run by the time the
+# ReplicaSet is checked -- which is what turns "still exists" into "survived".
+#
+# WITHOUT allow-replicaset-cleanup.sh THIS TEST WOULD BE VACUOUS THE OTHER WAY TOO: the Kyverno
+# chart's default `resourceFilters` hides ReplicaSets from the engine entirely, so the policy
+# would never see the fixture and "it survived" would again be true for the wrong reason. That
+# script's header carries the measurement and the cross-repo pointer.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cleanup-empty-replicasets
+spec:
+  # `template: false` repo-wide -- see ../../restricted/restrict-volume-types/chainsaw-test.yaml.
+  template: false
+  steps:
+  - name: grant-permissions-and-allow-replicaset-processing
+    try:
+    - apply:
+        file: cluster-role.yaml
+    - script:
+        content: ../../scripts/allow-replicaset-cleanup.sh
+        check:
+          ($error == null): true
+    finally:
+    # The ConfigMap this reverts is chart-installed, not created by the test, so Chainsaw's own
+    # cleanup -- which only reverses what a test applied -- will not undo it. Un-reverted it
+    # leaks a cluster-wide config change into whatever test runs next.
+    - script:
+        content: ../../scripts/restore-replicaset-cleanup-filter.sh
+        check:
+          ($error == null): true
+
+  - name: install-policies-and-speed-up-their-schedules
+    try:
+    - apply:
+        file: ../../../.build/best-practices/cleanup-bare-pods.yaml
+    - apply:
+        file: ../../../.build/best-practices/cleanup-empty-replicasets.yaml
+    # In-test only; the shipped schedules stay as both policy files author them. There is no
+    # readiness gate before this the way ../../restricted/restrict-volume-types/ has one:
+    # `DeletingPolicy` publishes no Ready signal to poll (see
+    # ../../scripts/assert-built-profile-ready.sh), so the first successful cycle below is this
+    # test's only readiness evidence, and it doubles as the behavioural assertion.
+    - patch:
+        resource:
+          apiVersion: policies.kyverno.io/v1
+          kind: DeletingPolicy
+          metadata:
+            name: cleanup-bare-pods
+          spec:
+            schedule: "*/1 * * * *"
+    - patch:
+        resource:
+          apiVersion: policies.kyverno.io/v1
+          kind: DeletingPolicy
+          metadata:
+            name: cleanup-empty-replicasets
+          spec:
+            schedule: "*/1 * * * *"
+
+  - name: create-witness-and-survivor
+    try:
+    - apply:
+        file: bare-pod-witness.yaml
+    - apply:
+        file: fresh-empty-replicaset.yaml
+    - assert:
+        file: fresh-empty-replicaset.yaml
+
+  - name: a-cycle-runs-the-witness-is-cleaned-up-the-survivor-is-not
+    try:
+    # `*/1 * * * *` fires at the top of the next minute, which can be most of a minute after this
+    # step starts, so the timeout has to comfortably clear one whole cycle rather than one
+    # interval.
+    - error:
+        file: bare-pod-witness.yaml
+        timeout: 2m30s
+    # Ordering is the assertion: the step above has already established that a cycle ran on this
+    # schedule, and cleanup-empty-replicasets shares it, so by now it has had its chance to
+    # collect the ReplicaSet and declined.
+    - assert:
+        file: fresh-empty-replicaset.yaml

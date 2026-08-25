@@ -1,0 +1,19 @@
+---
+# NOT A CANDIDATE: satisfies both conditions but sits in the excluded namespace. This is the only
+# thing keeping the namespaceSelector honest -- removing the selector flips this row to `pass`.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: empty-old-replicaset-kube-system
+  namespace: kube-system
+  creationTimestamp: "2020-01-01T00:00:00Z"
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app: empty-old-replicaset-ks}
+  template:
+    metadata: {labels: {app: empty-old-replicaset-ks}}
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10

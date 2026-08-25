@@ -1,0 +1,49 @@
+---
+# CLI-tier test for `cleanup-empty-replicasets`. House style is set by
+# ../restrict-node-port/kyverno-test.yaml; the `isDeletingPolicy` / inverted pass-fail vocabulary
+# is written up in ../cleanup-bare-pods/kyverno-test.yaml.
+#
+# THIS TIER OWNS THE 24H AGE DISCRIMINATION OUTRIGHT. `creationTimestamp` is server-set, so only
+# an offline fixture can declare an arbitrary one and exercise BOTH sides of the boundary. The
+# Chainsaw test (ci/policy-tests/chainsaw/best-practices/cleanup-empty-replicasets/) proves the
+# complementary claim this tier cannot reach -- a genuinely fresh ReplicaSet survives a real
+# cleanup cycle. Neither tier repeats the other.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cleanup-empty-replicasets
+policies:
+- ../../../.build/best-practices/cleanup-empty-replicasets.yaml
+resources:
+- rs-empty-and-old.yaml
+- rs-empty-but-fresh.yaml
+- rs-nonempty-and-old.yaml
+- rs-empty-and-old-in-kube-system.yaml
+results:
+# The only fixture where everything holds. Without it the three `fail` rows below would look
+# identical against a policy that had rotted into matching nothing.
+- policy: cleanup-empty-replicasets
+  isDeletingPolicy: true
+  kind: ReplicaSet
+  resources:
+  - default/empty-old-replicaset
+  result: pass
+# One row per conjunct, each falsifying exactly one: age, emptiness, namespace.
+- policy: cleanup-empty-replicasets
+  isDeletingPolicy: true
+  kind: ReplicaSet
+  resources:
+  - default/empty-fresh-replicaset
+  result: fail
+- policy: cleanup-empty-replicasets
+  isDeletingPolicy: true
+  kind: ReplicaSet
+  resources:
+  - default/nonempty-old-replicaset
+  result: fail
+- policy: cleanup-empty-replicasets
+  isDeletingPolicy: true
+  kind: ReplicaSet
+  resources:
+  - kube-system/empty-old-replicaset-kube-system
+  result: fail

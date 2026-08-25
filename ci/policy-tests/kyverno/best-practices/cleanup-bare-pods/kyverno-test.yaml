@@ -1,0 +1,38 @@
+---
+# CLI-tier test for `cleanup-bare-pods`. House style is set by ../restrict-node-port/, whose
+# header carries the conventions this file follows -- `isDeletingPolicy: true` in place of that
+# file's `isValidatingPolicy: true`, and the rule that a suite of nothing but `pass` rows cannot
+# detect its own selectors rotting.
+#
+# `result:` READS BACKWARDS FOR A DELETING POLICY, and this is the whole trap of the tier:
+#   pass -- the resource matched, so a real cleanup cycle WOULD DELETE it.
+#   fail -- the resource did not match, so it SURVIVES.
+# There is no third `skip` outcome here the way there is for a `ValidatingPolicy` with
+# `matchConditions`: everything this policy tests lives in `conditions[]`, which participates in
+# the single match decision rather than filtering ahead of one.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cleanup-bare-pods
+policies:
+- ../../../.build/best-practices/cleanup-bare-pods.yaml
+resources:
+- bare-pod-no-owner.yaml
+- pod-owned-by-replicaset.yaml
+results:
+# The row that proves the policy still matches anything at all.
+- policy: cleanup-bare-pods
+  isDeletingPolicy: true
+  kind: Pod
+  resources:
+  - default/bare-orphan-pod
+  result: pass
+# Falsifies the condition rather than merely the policy's existence: an otherwise identical Pod
+# carrying a controller ownerReference must survive, or this policy is indistinguishable from one
+# that deletes every Pod in the cluster.
+- policy: cleanup-bare-pods
+  isDeletingPolicy: true
+  kind: Pod
+  resources:
+  - default/replicaset-owned-pod
+  result: fail
