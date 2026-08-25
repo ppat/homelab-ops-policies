@@ -27,6 +27,8 @@ metadata:
     policies.kyverno.io/title: Restrict AppArmor
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
+    # `Pod, Annotation` was accurate for the legacy annotation-only rule. The field channel added
+    # below is a pod/container `securityContext` field, so the subject is now both.
     policies.kyverno.io/subject: Pod, Annotation
     # Bumped from 1.3.0, and the legacy `kyverno.io/kyverno-version: 1.6.0` is dropped as
     # redundant with it: `policies.kyverno.io/v1 ValidatingPolicy` is first served by Kyverno 1.17.
@@ -34,11 +36,17 @@ metadata:
     # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
     # named at the top.
     kyverno.io/kubernetes-version: "1.36"
+    # Extended from the legacy wording, which named only the annotation. This is one of the two
+    # places the repo deliberately does churn a human-facing string during the migration (the
+    # other being the message below), because the previous text asserted a scope the policy no
+    # longer has -- leaving it would misdescribe the rule rather than merely age.
     policies.kyverno.io/description: >-
       On supported hosts, the 'runtime/default' AppArmor profile is applied by default.
       The default policy should prevent overriding or disabling the policy, or restrict
-      overrides to an allowed set of profiles. This policy ensures Pods do not
-      specify any other AppArmor profiles than `runtime/default` or `localhost/*`.
+      overrides to an allowed set of profiles. This policy ensures Pods do not specify any
+      AppArmor profile other than `RuntimeDefault` or `Localhost`, through either the
+      `securityContext.appArmorProfile` field or the deprecated
+      `container.apparmor.security.beta.kubernetes.io/*` annotation.
 spec:
   autogen:
     podControllers:
@@ -61,28 +69,64 @@ spec:
   validationActions:
   - Audit
   validations:
-  # MECHANICAL TRANSLATION OF THE LEGACY RULE, WHICH CHECKS ONLY THE DEPRECATED ANNOTATION. That
-  # is a known and deliberate under-check at this commit, not an oversight: it is closed by the
-  # very next commit (§5.4's field+annotation rewrite), kept separate so the kind migration and
-  # the behaviour change are independently revertible. A pod setting
-  # `securityContext.appArmorProfile.type: Unconfined` -- the way anyone has written it since
-  # Kubernetes 1.30 -- passes this expression and fails real PSA.
+  # TWO CHANNELS, BOTH ENFORCED, because `check_appArmorProfile.go` on release-1.36 checks both
+  # and a pod can opt out of confinement through either (read firsthand; design §5.4, expressions
+  # validated against 14 fixtures in the Wave A1 spike §3 and copied from it verbatim).
   #
-  # The legacy form was a JMESPath WILDCARD-KEY conditional anchor,
-  # `=(container.apparmor.security.beta.kubernetes.io/*): "runtime/default | localhost/*"`.
-  # CEL has no key wildcard, so the map is iterated and the prefix tested per key; `!prefix || ...`
-  # is the "only constrain keys in this family" half that `=(...)` expressed positionally.
-  # `.orValue({})` handles a pod with no annotations (`.all()` over an empty map is true) and
-  # `.all()` makes the expression statically bool.
+  # THE GAP THIS CLOSED, and why it is the exemplar for what the whole Layer-1-pure-mirror
+  # architecture exists to catch: until this commit the policy checked ONLY the deprecated beta
+  # annotation. A pod setting `spec.securityContext.appArmorProfile.type: Unconfined` -- the way
+  # anyone has written it since the field landed in Kubernetes 1.30 -- PASSED this policy and
+  # FAILED real PSA. That is a silent mirror-fidelity bug: the policy went on reporting green
+  # against a channel nobody uses any more while the channel everybody uses went unwatched, and
+  # nothing in the old structure could have surfaced it. A pure mirror is diffable against
+  # `check_appArmorProfile.go` line by line, which is how it was found.
   #
-  # `object.metadata.annotations[k]` inside the body is safe without a `.?`: `k` came from the
-  # same map, and `.all()` only enters the body when the map exists.
+  # The two `message:` strings are deliberately distinguishable: `kyverno apply` emits one row
+  # per POLICY, not per validation, so the message is the only thing that says which channel
+  # fired.
+
+  # FIELD PATH -- pod-level `spec.securityContext.appArmorProfile.type` plus every container in
+  # all three lists, mirroring the check's `visitContainers()`. Absent is allowed: the Go check
+  # only fires when `SecurityContext != nil && AppArmorProfile != nil`, which `.orValue(
+  # 'RuntimeDefault')` reproduces by defaulting an absent field to an allowed value. `Localhost`
+  # is allowed on the TYPE alone -- the check does not inspect `localhostProfile`.
+  - expression: >-
+      object.spec.?securityContext.?appArmorProfile.?type.orValue('RuntimeDefault')
+      in ['RuntimeDefault', 'Localhost'] &&
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?appArmorProfile.?type.orValue('RuntimeDefault')
+      in ['RuntimeDefault', 'Localhost'])
+    message: >-
+      AppArmor profile type must be RuntimeDefault or Localhost. The fields
+      spec.securityContext.appArmorProfile.type,
+      spec.containers[*].securityContext.appArmorProfile.type,
+      spec.initContainers[*].securityContext.appArmorProfile.type, and
+      spec.ephemeralContainers[*].securityContext.appArmorProfile.type must be unset or
+      set to `RuntimeDefault` or `Localhost`.
+
+  # ANNOTATION PATH -- unchanged from the previous commit except for ONE added disjunct,
+  # `== ''`. PSS allows an EMPTY annotation value (`len(profile) == 0 || profile ==
+  # "runtime/default" || strings.HasPrefix(profile, "localhost/")`); the legacy JMESPath pattern
+  # `"runtime/default | localhost/*"` did not, so it was marginally stricter than the standard it
+  # claimed to mirror. Matching the standard is the point of a mirror, in both directions.
+  #
+  # The channel is deprecated in NAME ONLY -- PSA still rejects `unconfined` set this way, so
+  # dropping this expression in favour of the field one would reopen the gap from the other end.
+  #
+  # CEL has no wildcard-key form, so the map is iterated and the prefix tested per key;
+  # `!k.startsWith(...) ||` is the "only constrain keys in this family" half that the legacy
+  # `=(...)` anchor expressed positionally. `.orValue({})` handles a pod with no annotations, and
+  # `object.metadata.annotations[k]` in the body needs no `.?` because `k` came from that map.
   - expression: >-
       object.metadata.?annotations.orValue({}).all(k,
       !k.startsWith('container.apparmor.security.beta.kubernetes.io/') ||
+      object.metadata.annotations[k] == '' ||
       object.metadata.annotations[k] == 'runtime/default' ||
       object.metadata.annotations[k].startsWith('localhost/'))
     message: >-
       Specifying other AppArmor profiles is disallowed. The annotation
       `container.apparmor.security.beta.kubernetes.io` if defined
-      must not be set to anything other than `runtime/default` or `localhost/*`.
+      must not be set to anything other than empty, `runtime/default` or `localhost/*`.

@@ -1,0 +1,22 @@
+---
+# EXPECTED: `pass`.
+#
+# THE ONE BEHAVIOUR CHANGE ON THE ANNOTATION CHANNEL in the §5.4 rewrite. PSS allows an EMPTY
+# annotation value (`len(profile) == 0 || ...` in check_appArmorProfile.go); the legacy JMESPath
+# pattern `"runtime/default | localhost/*"` did not, so the old policy was marginally STRICTER
+# than the standard it claimed to mirror. Against the previous commit this pod reported `fail`.
+#
+# Matching the standard in both directions is the point of a pure mirror -- a mirror that is
+# stricter than its source drifts just as surely as one that is laxer, and is harder to notice
+# because it never lets anything through.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: empty-annotation-workload-6cf66bb57f-dhwpk
+  namespace: default
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/app: ''
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

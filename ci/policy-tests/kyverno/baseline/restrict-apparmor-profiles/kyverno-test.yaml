@@ -7,9 +7,21 @@
 # ONE `Test` DOCUMENT, not two: this policy has no exemption patch, so `kustomize build` output
 # and the pure mirror are the same policy. `policies:` still points at built output.
 #
-# AT THIS COMMIT THE SUITE COVERS THE ANNOTATION CHANNEL ONLY, matching the policy. The field
-# channel (`securityContext.appArmorProfile`) arrives in the next commit together with its
-# fixtures -- including the one that demonstrates the gap this policy has been carrying.
+# FOURTEEN FIXTURES, TWO CHANNELS. This suite is the executable form of the §5.4 rewrite and of
+# the Wave A1 spike's §3 fixture table, which validated the same two expressions against the same
+# fourteen shapes before either was written into a policy file. It is deliberately larger than
+# the exemption-driven suites elsewhere in this directory tree, because what is under test here
+# is a RULE, not an exemption -- and the rule was silently wrong for years.
+#
+# The one fixture to read first is pod-field-unconfined-fail.yaml: it PASSED against every
+# version of this policy before the rewrite, and has always failed real PSA.
+#
+# THE THREE NON-VACUITY CONTROLS are pod-unrelated-annotation-unconfined-pass.yaml (an
+# `unconfined` VALUE under a key outside the AppArmor family),
+# pod-securitycontext-without-apparmor-pass.yaml (a populated securityContext with no
+# appArmorProfile) and pod-ephemeral-container-field-runtime-default-pass.yaml (a compliant
+# ephemeralContainer). Each one exists because without it a `fail` elsewhere could be attributed
+# to the wrong cause.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -17,24 +29,51 @@ metadata:
 policies:
 - ../../../.build/baseline/restrict-apparmor-profiles.yaml
 resources:
+# Annotation channel.
 - pod-annotation-unconfined-fail.yaml
 - pod-annotation-runtime-default-pass.yaml
 - pod-annotation-localhost-pass.yaml
+- pod-annotation-empty-pass.yaml
 - pod-unrelated-annotation-unconfined-pass.yaml
 - pod-no-annotations-pass.yaml
+# Field channel.
+- pod-field-unconfined-fail.yaml
+- pod-container-field-unconfined-fail.yaml
+- pod-init-container-field-unconfined-fail.yaml
+- pod-ephemeral-container-field-unconfined-fail.yaml
+- pod-field-runtime-default-pass.yaml
+- pod-field-localhost-pass.yaml
+- pod-securitycontext-without-apparmor-pass.yaml
+- pod-ephemeral-container-field-runtime-default-pass.yaml
 results:
 - policy: restrict-apparmor-profiles
   isValidatingPolicy: true
   kind: Pod
   resources:
+  # Annotation channel: the two allowed values, the empty value the rewrite newly allows (the old
+  # policy was stricter than PSS here), an unrelated key, and no annotations at all.
   - default/runtime-default-annotation-workload-6b9f4c8d5-x2kqp
   - default/localhost-annotation-workload-844d7c96b-fq8vn
+  - default/empty-annotation-workload-6cf66bb57f-dhwpk
   - default/unrelated-annotation-workload-77955b8c45-52ls7
   - default/annotationless-workload-5687cbcbf5-bkswh
+  # Field channel: the two allowed types, a populated securityContext with no appArmorProfile,
+  # and a compliant ephemeralContainer.
+  - default/pod-field-runtime-default-workload-767bdf6d7-pwccr
+  - default/pod-field-localhost-workload-5675694b95-k2kwj
+  - default/securitycontext-no-apparmor-workload-54cdf66896-bcqr5
+  - default/ephemeral-field-compliant-workload-79dbb95cdb-t2t8j
   result: pass
 - policy: restrict-apparmor-profiles
   isValidatingPolicy: true
   kind: Pod
   resources:
+  # Annotation channel.
   - default/unconfined-annotation-workload-5f7d9b46c-tn4wq
+  # Field channel, all four levels the check visits. Every one of these was a `pass` before the
+  # §5.4 rewrite and a PSA rejection all along.
+  - default/pod-field-unconfined-workload-9b966fd69-bsmhz
+  - default/container-field-unconfined-workload-cbf5bd649-mzqns
+  - default/init-field-unconfined-workload-fd4b5c598-pv8pn
+  - default/ephemeral-field-unconfined-workload-6878c58dfc-vzscf
   result: fail

@@ -1,0 +1,19 @@
+---
+# EXPECTED: `pass`.
+#
+# `Localhost` plus a `localhostProfile`. The check allows the TYPE alone -- it does not inspect
+# which profile is named -- so this fixture pins that the expression tests `.type` and nothing
+# else. An implementer who "helpfully" added a `localhostProfile` constraint would turn this red.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-field-localhost-workload-5675694b95-k2kwj
+  namespace: default
+spec:
+  securityContext:
+    appArmorProfile:
+      type: Localhost
+      localhostProfile: k8s-apparmor-example-deny-write
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

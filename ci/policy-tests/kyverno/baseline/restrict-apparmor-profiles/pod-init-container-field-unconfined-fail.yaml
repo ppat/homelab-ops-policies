@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# The `initContainers` term of the field expression's concatenation, exercised through a NATIVE
+# SIDECAR (`restartPolicy: Always`). pod-security-admission's `visitContainers()` iterates all
+# three lists identically with no sidecar special-casing, so the mirror must too.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-field-unconfined-workload-fd4b5c598-pv8pn
+  namespace: default
+spec:
+  initContainers:
+  - name: log-rotate
+    image: registry.k8s.io/pause:3.10
+    restartPolicy: Always
+    securityContext:
+      appArmorProfile:
+        type: Unconfined
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

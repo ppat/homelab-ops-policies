@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# THE REGRESSION FIXTURE FOR THE GAP THIS POLICY CARRIED FOR YEARS, and the single most important
+# fixture in this directory. Before the §5.4 rewrite this pod PASSED: the policy checked only the
+# deprecated beta annotation, and this pod does not set one. It has always FAILED real PSA, which
+# checks `spec.securityContext.appArmorProfile.type` as well.
+#
+# This is the pod-level half of the field channel. Its container/init/ephemeral siblings are the
+# other three `...-field-unconfined-fail.yaml` fixtures here.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-field-unconfined-workload-9b966fd69-bsmhz
+  namespace: default
+spec:
+  securityContext:
+    appArmorProfile:
+      type: Unconfined
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
