@@ -1,0 +1,148 @@
+---
+# CLI tier for disallow-host-path. House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the five conventions) and
+# ../../restricted/restrict-volume-types/kyverno-test.yaml (why an exemption-carrying policy
+# needs a built document and a pure document). Neither is restated.
+#
+# THE BIGGEST EXEMPTION SUITE IN THE REPO, and deliberately so: this is the policy §3.1 and the
+# execution plan both single out as "the easiest file in the whole migration to accidentally drop
+# an exemption from". The discipline that makes a drop impossible to miss is one `skip` row per
+# EXEMPTION MEMBER, not per exemption entry -- so all four namespaces of the single
+# `exempt-node-level-namespaces` `in [...]` list have their own fixture. A suite that exercised
+# one member would go green with the other three deleted.
+#
+# Coverage map (7 entries in
+# ../../../../../pod-security-standard/baseline/exemptions/disallow-host-path.yaml):
+#   exempt-node-level-namespaces      -> 4 skip fixtures, one per namespace
+#   exempt-node-problem-detector      -> 1 skip + 1 generateName skip
+#   exempt-node-exporter              -> 1 skip
+#   exempt-alloy                      -> 1 skip, plus both conjuncts falsified
+#   exempt-intel-gpu-plugin           -> 1 skip, plus the namespace conjunct falsified
+#   exempt-virt-handler               -> 1 skip, plus the name conjunct falsified
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-path-built
+policies:
+- ../../../.build/baseline/disallow-host-path.yaml
+resources:
+- pod-hostpath-fail.yaml
+- pod-no-hostpath-pass.yaml
+- pod-no-volumes-pass.yaml
+- pod-kube-system-hostpath-skip.yaml
+- pod-longhorn-hostpath-skip.yaml
+- pod-csi-driver-nfs-hostpath-skip.yaml
+- pod-system-upgrade-hostpath-skip.yaml
+- pod-node-problem-detector-hostpath-skip.yaml
+- pod-node-problem-detector-generatename-hostpath-skip.yaml
+- pod-node-exporter-hostpath-skip.yaml
+- pod-alloy-hostpath-skip.yaml
+- pod-intel-gpu-plugin-hostpath-skip.yaml
+- pod-virt-handler-hostpath-skip.yaml
+- pod-not-glob-in-monitoring-hostpath-fail.yaml
+- pod-not-alloy-in-logging-hostpath-fail.yaml
+- pod-alloy-name-outside-logging-hostpath-fail.yaml
+- pod-not-virt-handler-in-kubevirt-hostpath-fail.yaml
+- pod-intel-gpu-plugin-name-outside-namespace-hostpath-fail.yaml
+results:
+# Two shapes of compliance: volumes present but of allowed types, and no `volumes` key at all
+# (the `.orValue([])` edge).
+- policy: disallow-host-path
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  - default/volumeless-workload-7c8d6f9b4-mk2rl
+  result: pass
+# The rule still objects: an ordinary pod, and each glob's two conjuncts falsified one at a time.
+- policy: disallow-host-path
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - monitoring/grafana-786bb9ffd6-dqkl2
+  - logging/loki-0
+  - default/alloy-impostor
+  - kubevirt/virt-api-6794fd7fd6-9429f
+  - default/intel-gpu-plugin-gpu-device-impostor
+  result: fail
+# All seven exemptions firing, one row per member. `skip`, not `pass`: every one of these pods
+# mounts hostPath, so `pass` would mean the RULE had been weakened rather than the pod exempted.
+# `monitoring/` -- namespace, slash, EMPTY name -- addresses the generateName-only fixture.
+- policy: disallow-host-path
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/kube-proxy-9k2vq
+  - longhorn-system/longhorn-manager-rg2fl
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  - system-upgrade/apply-k3s-server-on-node-abc12
+  - monitoring/node-problem-detector-fxjb6
+  - monitoring/
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - logging/alloy-bxg4j
+  - intel-device-plugins/intel-gpu-plugin-gpu-device-bj2z4
+  - kubevirt/virt-handler-54dpv
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-path-pure
+policies:
+- ../../../../../pod-security-standard/baseline/disallow-host-path.yaml
+resources:
+- pod-hostpath-fail.yaml
+- pod-no-hostpath-pass.yaml
+- pod-no-volumes-pass.yaml
+- pod-kube-system-hostpath-skip.yaml
+- pod-longhorn-hostpath-skip.yaml
+- pod-csi-driver-nfs-hostpath-skip.yaml
+- pod-system-upgrade-hostpath-skip.yaml
+- pod-node-problem-detector-hostpath-skip.yaml
+- pod-node-problem-detector-generatename-hostpath-skip.yaml
+- pod-node-exporter-hostpath-skip.yaml
+- pod-alloy-hostpath-skip.yaml
+- pod-intel-gpu-plugin-hostpath-skip.yaml
+- pod-virt-handler-hostpath-skip.yaml
+- pod-not-glob-in-monitoring-hostpath-fail.yaml
+- pod-not-alloy-in-logging-hostpath-fail.yaml
+- pod-alloy-name-outside-logging-hostpath-fail.yaml
+- pod-not-virt-handler-in-kubevirt-hostpath-fail.yaml
+- pod-intel-gpu-plugin-name-outside-namespace-hostpath-fail.yaml
+results:
+# Unchanged by the exemption layer: neither of these pods mounts hostPath.
+- policy: disallow-host-path
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  - default/volumeless-workload-7c8d6f9b4-mk2rl
+  result: pass
+# THE FIRING ASSERTION. Every pod the built policy skips is a real violation of the pure mirror,
+# so each of the ten `skip` rows above is attributable to its exemption member and to nothing
+# else -- including, in particular, to the pod being a violation in the first place. Under the
+# pure mirror there is no `skip` result at all, so a `matchConditions` entry leaking into the
+# mirror file turns one of these rows red.
+- policy: disallow-host-path
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - monitoring/grafana-786bb9ffd6-dqkl2
+  - logging/loki-0
+  - default/alloy-impostor
+  - kubevirt/virt-api-6794fd7fd6-9429f
+  - default/intel-gpu-plugin-gpu-device-impostor
+  - kube-system/kube-proxy-9k2vq
+  - longhorn-system/longhorn-manager-rg2fl
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  - system-upgrade/apply-k3s-server-on-node-abc12
+  - monitoring/node-problem-detector-fxjb6
+  - monitoring/
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - logging/alloy-bxg4j
+  - intel-device-plugins/intel-gpu-plugin-gpu-device-bj2z4
+  - kubevirt/virt-handler-54dpv
+  result: fail

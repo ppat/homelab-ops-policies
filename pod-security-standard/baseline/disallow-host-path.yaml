@@ -1,6 +1,29 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check hostPathVolumes
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ../restricted/restrict-volume-types.yaml (the PSS-mirror family conventions:
+# snapshot marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# THIS IS THE MOST EXEMPTION-DENSE POLICY IN THE BASELINE PROFILE -- seven `matchConditions`
+# entries covering four namespaces and five name globs -- and NONE of them is visible in this
+# file. They live in exemptions/disallow-host-path.yaml and are applied as a kustomize JSON6902
+# patch (design doc phase2.0-policy-migration-design-v3.md §2.2). Read the two together before
+# concluding anything about what this policy does in production; §3.1's inventory table is the
+# specification for that patch file and nothing in it may be silently dropped.
+#
+# RELATIONSHIP TO ../restricted/restrict-volume-types.yaml, which a reader will meet next:
+# Restricted's `restrictedVolumes` check OVERRIDES this one (pod-security-admission resolves the
+# pair through `OverrideCheckIDs`), and its allow-list has no `hostPath` entry, so on the
+# `restricted` profile hostPath is refused by that policy instead. Both ship, both are in
+# `restricted`'s built stream (its kustomization.yaml includes ../baseline), and their exemption
+# sets are deliberately NOT the same: `kube-system`, `longhorn-system`, `csi-driver-nfs`,
+# `system-upgrade`, node-problem-detector, node-exporter and intel-gpu-plugin are exempt HERE
+# only. That is not redundancy to be cleaned up -- the `nas` cluster consumes `baseline` alone
+# (README.md), so for that cluster this file is the only thing standing between a workload and a
+# host mount.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-host-path
   annotations:
@@ -8,75 +31,48 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod,Volume
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    # Bumped from the legacy `kyverno.io/kyverno-version: 1.6.0`, which is dropped as redundant.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       HostPath volumes let Pods use host directories and volumes in containers.
       Using host resources can be used to access shared data or escalate privileges
       and should not be allowed. This policy ensures no hostPath volumes are in use.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: host-path
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        HostPath volumes are forbidden. The field spec.volumes[*].hostPath must be unset.
-      pattern:
-        spec:
-          =(volumes):
-          - X(hostPath): "null"
-    exclude:
-      any:
-      - resources:
-          namespaces:
-          - csi-driver-nfs
-          - kube-system
-          - longhorn-system
-          - system-upgrade
-      - resources:
-          names:
-          - 'node-problem-detector*'
-          - 'kube-prometheus-stack-prometheus-node-exporter*'
-          namespaces:
-          - monitoring
-      # Grafana Alloy is the node-level log collector. Necessary because node log files
-      # (/var/log/pods, /var/log/journal, /run/log/journal), /etc/machine-id, and Alloy's
-      # own read-offset state (/var/lib/alloy) are only reachable via the node
-      # filesystem, which is inherent to any node-level log collector, not a shortcut
-      # specific to Alloy. Bounded by namespace (logging) AND name prefix (alloy*)
-      # together -- the prefix match is a coarse control, so anything else deployed into
-      # `logging` named alloy* inherits it too. Wrong if Alloy ever stops needing
-      # node-level file access, or if `logging` becomes a namespace where arbitrary
-      # workloads can be created.
-      - resources:
-          names:
-          - 'alloy*'
-          namespaces:
-          - logging
-      - resources:
-          names:
-          - 'intel-gpu-plugin-gpu-device*'
-          namespaces:
-          - intel-device-plugins
-      # virt-handler hostPath-mounts libvirt/qemu runtime dirs, kubelet's pod and device
-      # dirs, and node-labeller state (see disallow-privileged-containers.yaml for what
-      # bounds it). Verified against upstream KubeVirt's generated manifests: virt-launcher
-      # gets /dev/kvm and friends through Kubernetes device-plugin resource requests, not a
-      # hostPath volume, and virt-operator/virt-api/virt-controller mount none at all --
-      # neither is excluded here. Name-scoped, not namespace-scoped, on purpose: a
-      # namespace-wide exclusion would silently admit hostPath for anything else later
-      # deployed into `kubevirt`, not just this one DaemonSet. `kubevirt` is the conventional
-      # install namespace for virt-handler; KubeVirt is not installed yet, so this exclusion
-      # grants nothing until it is, and no other namespace is listed since virt-handler never
-      # runs outside it.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # `!has(volume.hostPath)` per volume entry, over `spec.volumes`. `.orValue([])` handles a Pod
+  # with no volumes at all (`.all()` over an empty list is true) and `.all()` makes the
+  # expression statically bool.
+  #
+  # This replaces the legacy JMESPath EXISTENCE anchor `X(hostPath): "null"`, whose semantics
+  # ("the key must not be present") `has()` reproduces exactly. Note the deliberate asymmetry
+  # with ../restricted/restrict-volume-types.yaml: that policy is an ALLOW-list (`has(configMap)
+  # || has(csi) || ...`), this one is a single-source DENY. Both are per-volume rather than over
+  # a flattened key list, which is what makes them impossible to misread as "if ANY key is
+  # allowed, pass".
+  - expression: >-
+      object.spec.?volumes.orValue([]).all(volume, !has(volume.hostPath))
+    message: >-
+      HostPath volumes are forbidden. The field spec.volumes[*].hostPath must be unset.

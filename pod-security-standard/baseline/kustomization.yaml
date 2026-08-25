@@ -36,6 +36,12 @@ patches:
     version: v1
     kind: ValidatingPolicy
     name: disallow-host-network
+- path: exemptions/disallow-host-path.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-host-path
 - path: exemptions/disallow-host-pid.yaml
   target:
     group: policies.kyverno.io
