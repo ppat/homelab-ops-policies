@@ -7,6 +7,18 @@
 # ONE `Test` DOCUMENT, not two, because this policy has no exemption patch: `kustomize build`
 # output and the pure mirror are the same policy. `policies:` still points at built output, so a
 # future exemption is covered here automatically.
+#
+# THE THREE `skip` ROWS ARE NOT EXEMPTIONS. This policy's `matchConditions` entry is PSS
+# semantics -- v1.35 skips the Baseline procMount check for pods in a user namespace (§5.5b) --
+# so `skip` here means "the standard says this check does not apply", not "this estate excused a
+# workload". The distinction matters for anyone reading a PolicyReport, and it is why the entry
+# lives in the mirror rather than in exemptions/.
+#
+# The Skip/Pass distinction is the whole point of these rows and IS falsifiable in this tier:
+# declaring `pass` on a `hostUsers: false` row makes the suite fail with "Want pass, got skip"
+# (Wave A1 spike §4). Wave E6's ../../restricted/disallow-proc-mount-strict/ asserts `pass` and
+# `fail` on the same fixtures, and that pairing is how PSS's `OverrideCheckIDs` resolution
+# between the two checks becomes an executable claim rather than a design-doc assertion.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -19,6 +31,9 @@ resources:
 - pod-no-procmount-pass.yaml
 - pod-init-container-procmount-unmasked-fail.yaml
 - pod-ephemeral-container-procmount-unmasked-fail.yaml
+- pod-hostusers-false-procmount-unmasked-skip.yaml
+- pod-hostusers-true-procmount-unmasked-fail.yaml
+- pod-hostusers-false-procmount-default-skip.yaml
 results:
 - policy: disallow-proc-mount
   isValidatingPolicy: true
@@ -27,6 +42,10 @@ results:
   - default/explicit-default-workload-6b9f4c8d5-x2kqp
   - default/unset-procmount-workload-844d7c96b-fq8vn
   result: pass
+# The rule still objects. `default/explicit-hostusers-workload-...` is the control that proves
+# the matchCondition READS `spec.hostUsers` rather than having degenerated to a constant: it
+# states `hostUsers: true` explicitly, where `default/ordinary-workload-...` omits the field and
+# relies on `.orValue(true)`.
 - policy: disallow-proc-mount
   isValidatingPolicy: true
   kind: Pod
@@ -34,4 +53,15 @@ results:
   - default/ordinary-workload-5f7d9b46c-tn4wq
   - default/sidecar-workload-77955b8c45-52ls7
   - default/debugged-workload-5687cbcbf5-bkswh
+  - default/explicit-hostusers-workload-cbf5bd649-mzqns
   result: fail
+# The PSS v1.35 userns relaxation. Both a violating and a compliant user-namespaced pod are
+# listed: the first proves the skip is not "the pod happened to pass", the second proves the skip
+# is caused by `hostUsers` and not by the pod's procMount value.
+- policy: disallow-proc-mount
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/userns-workload-9b966fd69-bsmhz
+  - default/compliant-userns-workload-fd4b5c598-pv8pn
+  result: skip

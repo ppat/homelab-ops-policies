@@ -11,9 +11,16 @@
 # (`check_procMount_restricted.go`, PR #132157). The snapshot marker above names the baseline
 # half deliberately. The Restricted half lands as ../restricted/disallow-proc-mount-strict.yaml.
 #
+# THIS IS THE ONE PSS MIRROR IN THE BASELINE PROFILE WHOSE `matchConditions` IS NOT EMPTY, and
+# the entry in it is NOT an estate exemption. It is a rule-semantic condition that belongs to the
+# standard itself -- PSS v1.35 skips the Baseline procMount check for pods in a user namespace --
+# so it lives in the pure mirror. See the block above `matchConditions:` below for the full
+# reasoning; it is the reference instance of a pattern E3/E4/E6 copy.
+#
 # This policy has NO estate exemptions: there is no exemptions/disallow-proc-mount.yaml and no
-# `patches:` entry for it in ../kustomization.yaml. `matchConditions: []` is present and empty
-# regardless, as the seam a future exemption would append to.
+# `patches:` entry for it in ../kustomization.yaml. The append seam is unaffected by the list
+# being non-empty -- `op: add` onto `/spec/matchConditions/-` appends to a populated list exactly
+# as it does to an empty one, and every entry is ANDed either way.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -43,7 +50,59 @@ spec:
   evaluation:
     background:
       enabled: true
-  matchConditions: []
+  # THE FIRST INSTANCE OF THE hostUsers SKIP PATTERN IN THIS REPO. E3
+  # (`require-run-as-non-root-user`), E4 (`require-run-as-nonroot`) and any later userns-aware
+  # policy copy this block; keep the spelling identical so it stays greppable.
+  #
+  # (1) WHY THIS IS IN THE PURE MIRROR AND NOT IN exemptions/. It is PSS semantics, not an estate
+  #     exemption. At policy version v1.35 the Baseline procMount check is RELAXED for pods in a
+  #     user namespace (`check_procMount_baseline.go`); the corresponding Restricted check,
+  #     `procMount_restricted`, re-tightens it unconditionally and ships as
+  #     ../restricted/disallow-proc-mount-strict.yaml. Putting this in the exemption layer would
+  #     misfile a property of the standard as a property of this cluster.
+  #
+  # (2) WHY A matchCondition AND NOT A DISJUNCT IN THE VALIDATION. PSS's own semantics is "the
+  #     check is skipped entirely", and a `matchCondition` reproduces that: the resource reports
+  #     `skip`, not `pass`. The distinction is real and observable, not cosmetic -- measured in
+  #     the Wave A1 spike (§4), declaring `result: pass` on a `hostUsers: false` fixture makes
+  #     `kyverno test` fail with "Want pass, got skip". `pass` would claim the pod satisfied the
+  #     rule; it did not, the rule did not run.
+  #
+  #     ONE THING NOT TO PROMISE ON THE BACK OF THAT: whether a live cluster's PolicyReport writes
+  #     a `result: skip` ROW for a matchConditions-filtered resource, or simply omits it, was
+  #     explicitly left unsettled by A1 (it could only observe the CLI's model of a report). Say
+  #     "the check is skipped"; do not say "you will see a Skip row".
+  #
+  # (3) WHY `== true` IS NOT REDUNDANT. The design doc's original text
+  #     (`object.spec.?hostUsers.orValue(true)`) DOES NOT COMPILE: `object.spec` is unstructured,
+  #     so `object.spec.?hostUsers` is `optional(dyn)` and `.orValue(true)` yields `dyn`, while
+  #     Kyverno's compiler requires the expression's STATIC type to be bool. Measured, with the
+  #     error `output is expected to be of type bool` (A1 §4, which also confirms the same trap
+  #     applies to `validations[].expression`). `== true` is the minimal edit that fixes it and
+  #     was chosen over `bool(...)` / `!= false` / a ternary, all of which also work.
+  #
+  # (4) WHAT THIS COSTS ON A 1.36 APISERVER: nothing at admission, and the reason is worth more
+  #     than it first looks. `ValidateSecurityContext()` refuses `procMount: Unmasked` on any pod
+  #     with `hostUsers` true or unset -- plain core API validation, no feature gate on the branch
+  #     (A1 §7). So every pod this policy does NOT skip is a pod the apiserver already refused,
+  #     and every pod that could carry `Unmasked` is one this policy skips. Baseline
+  #     `disallow-proc-mount` is therefore inert at admission by construction on 1.36; it still
+  #     earns its place as a faithful mirror and still fires in background scans over pods created
+  #     under an older apiserver. The consequence for the pair: ../restricted/
+  #     disallow-proc-mount-strict.yaml is not belt-and-braces, it is the only one of the two that
+  #     can flag a live `Unmasked`. State it that way rather than as "the apiserver may already
+  #     reject this".
+  #
+  # (5) ADJACENT FACT, so nobody proposes the same relaxation next door: `hostUsers: false` also
+  #     makes the apiserver forbid `hostNetwork`, `hostPID`, `hostIPC` and `volumeDevices` on the
+  #     same pod. A userns pod cannot also be a host-namespace pod, so a hostUsers skip on
+  #     disallow-host-network/pid/ipc would be unreachable.
+  matchConditions:
+  - name: skip-user-namespaced-pods
+    # PSS v1.35 (k8s 1.36): the Baseline procMount check is relaxed for pods in a user
+    # namespace -- root inside the userns is unprivileged on the host, which is the property
+    # these checks exist to guarantee.
+    expression: "object.spec.?hostUsers.orValue(true) == true"
   matchConstraints:
     resourceRules:
     - apiGroups:
