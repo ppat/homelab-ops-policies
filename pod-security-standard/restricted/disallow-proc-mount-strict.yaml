@@ -1,0 +1,134 @@
+---
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check
+# procMount_restricted
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ./restrict-volume-types.yaml (the PSS-mirror family conventions: snapshot
+# marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# NEW IN THE PHASE 2 MIGRATION -- there is no legacy ClusterPolicy behind this file and no
+# upstream kyverno/policies ancestor in any variant. It is hand-authored from
+# `check_procMount_restricted.go`, which SIG-Auth added at PSS policy version v1.35 (PR #132157)
+# alongside renaming the old `check_procMount.go` to `check_procMount_baseline.go`. Design doc
+# phase2.0-policy-migration-design-v3.md §5.5c. It follows the existing `-strict` naming
+# convention (./disallow-capabilities-strict.yaml, ./restrict-seccomp-strict.yaml): a Restricted
+# policy whose Baseline sibling is the same rule with a relaxation.
+#
+# READ ../baseline/disallow-proc-mount.yaml TOGETHER WITH THIS FILE. The two are a MATCHED PAIR
+# and neither is complete on its own:
+#
+#   * The Baseline half SKIPS pods with `spec.hostUsers: false` -- PSS v1.35 relaxes the Baseline
+#     procMount check for pods in a user namespace, and that skip lives in its pure mirror as
+#     rule semantics.
+#   * This file does NOT. `procMount_restricted` re-tightens the check unconditionally, including
+#     for user-namespaced pods. Hence `matchConditions: []` below -- an EMPTY list, deliberately,
+#     where its sibling's is populated. That difference is the entire content of this policy.
+#
+#   * The composition is PSS's own `OverrideCheckIDs` resolution, reproduced exactly: on the
+#     `restricted` profile (homelab) a `hostUsers: false` + `procMount: Unmasked` pod reads
+#     Baseline `skip` / Restricted `fail`; on `baseline` only (nas), 1.35 Baseline semantics apply
+#     unmodified. Both clusters get precisely their profile's PSS-1.35 behaviour with no
+#     divergence to document. That four-outcome claim is asserted, not assumed:
+#     ci/policy-tests/kyverno/restricted/disallow-proc-mount-strict/kyverno-test.yaml's second
+#     `Test` document runs BOTH built policies over the SAME two fixture files (the Baseline
+#     suite's own, referenced across directories on purpose) and requires
+#     skip / fail / fail / fail.
+#
+# WHY THIS IS NOT BELT-AND-BRACES, and why the argument is the opposite of the intuitive one. Core
+# API validation in `ValidateSecurityContext()` refuses `procMount: Unmasked` on any pod whose
+# `hostUsers` is true or unset -- plain object validation, no feature gate on the release-1.36
+# branch (Wave A1 spike §7). So the only pods that CAN carry `Unmasked` are exactly the pods the
+# Baseline policy skips: on a 1.36 apiserver the Baseline half is inert at admission by
+# construction, and THIS file is the only one of the pair that can flag a live `Unmasked`. State
+# it that way rather than as "the apiserver may already reject this".
+#
+# WHY THIS SHIPS BEFORE ANY WORKLOAD NEEDS EXEMPTING FROM IT. There are planned `hostUsers: false`
+# workloads on the roadmap and this policy will flag them if they also set a non-Default
+# procMount. That is the intended shape: exempt a workload when it exists, with its own scoped
+# entry through the §2.2 seam and its own rationale, rather than pre-weakening the tier for a
+# workload that has no name, namespace or spec yet. The spirit argument such an exemption would
+# cite -- the kernel's own permission checks refuse dangerous /proc writes by a container root
+# who is unprivileged on the host, which is SIG-Node's KEP-127 rationale for relaxing BASELINE --
+# justifies excusing a workload; it does not justify declining the Restricted check. In Audit mode
+# the cost of being faithful is at most a report row that accurately says a pod deviates from PSS
+# Restricted.
+#
+# NO CHAINSAW TEST, AND THE FIXTURE BELOW MUST NOT BE PROMOTED TO ONE (design §6.2/§6.5). The
+# cluster tier earns a test only where it can see something the CLI cannot, and here it can see
+# LESS: the load-bearing fixture -- `procMount: Unmasked` without `hostUsers: false` -- is a pod a
+# 1.36 apiserver rejects outright, so Chainsaw cannot construct it. The CLI tier runs the policy
+# engine rather than apiserver validation, which is exactly why it can.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-proc-mount-strict
+  annotations:
+    policies.kyverno.io/title: Disallow procMount (Strict)
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    # `policies.kyverno.io/v1 ValidatingPolicy` is first served by Kyverno 1.17. There is no
+    # legacy `kyverno.io/kyverno-version` to reconcile with -- this policy has no legacy form.
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
+    # Deliberately parallel to ../baseline/disallow-proc-mount.yaml's description, with the one
+    # clause that distinguishes the two appended -- the same treatment the `message` below gets,
+    # and for the same reason: both policies can appear against the same pod, so the pair has to
+    # be tellable apart from the report alone.
+    policies.kyverno.io/description: >-
+      The default /proc masks are set up to reduce attack surface and should be required. This
+      policy ensures nothing but the default procMount can be specified, including for pods in a
+      user namespace, which the Baseline profile's equivalent policy exempts.
+spec:
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  # EMPTY ON PURPOSE, and this is the one line of this file that carries its meaning. Its Baseline
+  # sibling ../baseline/disallow-proc-mount.yaml has a `skip-user-namespaced-pods` entry here;
+  # `procMount_restricted` has no such relaxation, so this list holds only the ordinary empty
+  # append seam every PSS mirror declares. Adding a hostUsers condition here would not "align the
+  # pair" -- it would delete the policy's reason to exist.
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # IDENTICAL, CHARACTER FOR CHARACTER, to ../baseline/disallow-proc-mount.yaml's expression --
+  # `procMount_restricted` and `procMount_baseline` differ only in the relaxation, not in the test
+  # they apply. Keep them identical: if one is ever corrected, the other is wrong. All three
+  # container lists concatenated, mirroring `visitContainers()`; `.orValue('Default')` reproduces
+  # "absent is allowed"; `spec.containers` needs no `.?`/`.orValue([])` because the API requires at
+  # least one container.
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?procMount.orValue('Default') == 'Default')
+    # THE BASELINE SIBLING'S LEGACY MESSAGE WITH ONE CLAUSE APPENDED, which is what that file's own
+    # comment asks for. The Wave A1 spike note (§5) illustrates this policy with a different,
+    # shorter sentence; the CEL from that note is copied verbatim -- that is what the spike
+    # validated -- but the message is not. This repo's rule
+    # (../../best-practices/restrict-node-port.yaml's DEVIATION 2) is that a policy with an
+    # existing PolicyReport message keeps it through a kind migration, and the Baseline half has
+    # one. A brand-new policy has no legacy wording of its own, so the next-best thing is to stay
+    # parallel to the sibling it will appear beside, adding only what distinguishes it -- which is
+    # also what makes the pair readable when both fire on one pod.
+    message: >-
+      Changing the proc mount from the default is not allowed. The fields
+      spec.containers[*].securityContext.procMount,
+      spec.initContainers[*].securityContext.procMount,
+      and spec.ephemeralContainers[*].securityContext.procMount must be unset or
+      set to `Default`, including for pods in a user namespace.

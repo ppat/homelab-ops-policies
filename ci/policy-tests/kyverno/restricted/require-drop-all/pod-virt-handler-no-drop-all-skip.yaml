@@ -1,0 +1,18 @@
+---
+# EXPECTED: `skip` against built output, `fail` against the pure mirror.
+#
+# THE ESTATE EXEMPTION FIRING (../../../../../pod-security-standard/restricted/exemptions/require-drop-all.yaml).
+# Non-vacuous by construction: this pod carries a real violation -- no `drop: [ALL]` anywhere --
+# so `skip` is attributable to the exemption and nothing else, which the `-pure` document proves
+# by asserting `fail` on the identical file.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

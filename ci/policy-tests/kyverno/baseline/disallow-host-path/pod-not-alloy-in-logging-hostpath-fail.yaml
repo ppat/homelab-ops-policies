@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# NAME conjunct of `exempt-alloy`, falsified. Right namespace, wrong name.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: loki-0
+  namespace: logging
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

@@ -1,0 +1,13 @@
+---
+# EXPECTED: `fail` against both documents. HALF-MATCH CONTROL for exemption 2, namespace half:
+# right namespace, wrong name. Catches an exemption that had lost its name predicate and was
+# excusing all of `sandbox-docker`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cdi-importer-vm-disk-p4t9n
+  namespace: sandbox-docker
+spec:
+  containers:
+  - name: importer
+    image: registry.k8s.io/pause:3.10

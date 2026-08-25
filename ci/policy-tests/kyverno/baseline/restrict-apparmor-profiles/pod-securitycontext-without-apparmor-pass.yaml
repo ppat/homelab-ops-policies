@@ -1,0 +1,21 @@
+---
+# EXPECTED: `pass`.
+#
+# NON-VACUITY CONTROL, from the Wave A1 spike's own additions beyond the design's fixture list. A
+# pod- AND container-level `securityContext` that is populated but carries no `appArmorProfile`.
+# It proves the `fail` results elsewhere in this directory come from the AppArmor VALUE and not
+# from the mere presence of a securityContext block -- and it exercises the `.?appArmorProfile`
+# link of the optional chain, which the no-securityContext fixture does not reach.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: securitycontext-no-apparmor-workload-54cdf66896-bcqr5
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      allowPrivilegeEscalation: false

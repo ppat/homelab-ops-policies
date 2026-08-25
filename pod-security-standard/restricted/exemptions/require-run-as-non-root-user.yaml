@@ -1,0 +1,38 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../require-run-as-non-root-user.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml. This is a JSON6902 patch document, not a manifest. House-style
+# reference: ./restrict-volume-types.yaml -- its seven numbered conventions apply here unchanged.
+#
+# THIS EXEMPTION IS INDEPENDENT OF THE hostUsers SKIP in the pure mirror, and the two must not be
+# conflated. virt-handler does not set `spec.hostUsers: false`; it is exempted because of what its
+# init container does, and it would still need this entry on a cluster where user namespaces were
+# in universal use. The two conditions are ANDed like any other pair: a pod is checked only if it
+# is neither user-namespaced nor virt-handler.
+
+# virt-handler's node-labeller init container explicitly sets runAsUser: 0 (it needs
+# root to read/write host device and label state before the main container starts); the
+# main container leaves runAsUser unset, which this policy already treats as compliant
+# on its own. See ../baseline/disallow-privileged-containers.yaml for what bounds
+# virt-handler generally.
+#
+# MIGRATION NOTE (Phase 2 kind migration). The block above is ported VERBATIM from the legacy
+# policy's `exclude:` block; its argument is unchanged. Its cross-reference now resolves to
+# ../../baseline/exemptions/disallow-privileged-containers.yaml, where this repo's anchor
+# rationale for virt-handler moved under §2.1.
+#
+# One clause of it is worth reading as a live constraint rather than as history: "the main
+# container leaves runAsUser unset, which this policy already treats as compliant on its own"
+# means this exemption is doing work for exactly ONE container in the DaemonSet. Because
+# `matchConditions` are policy-wide -- there is no per-container seam and cannot be one -- the
+# whole pod is excused to excuse that init container. That is a genuine cost of the mechanism,
+# not of the judgement, and it is the reason the exemption is scoped as tightly as it can be in
+# the dimensions that ARE available: namespace AND name prefix together.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

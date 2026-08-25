@@ -1,0 +1,31 @@
+---
+# EXPECTED: `fail` (probe message).
+#
+# THE ESTATE'S OWN SHAPE, and the reason this policy does not land silently. Modelled on
+# csi-driver-nfs's `csi-nfs-node` and metallb's `speaker`/`frr-k8s`, which were measured on BOTH
+# live clusters at the time this policy was written, each pinning a liveness (and sometimes
+# readiness) probe to `localhost` or `127.0.0.1` because the pod is `hostNetwork: true` and the
+# chart author does not want the kubelet dialling the node's routable address. Four workloads per
+# cluster; see ../../../../../pod-security-standard/baseline/disallow-host-probes-and-lifecycle.yaml's
+# header for the full measurement.
+#
+# It is a benign use, and it FAILS ANYWAY. `getForbiddenHostProbes()` tests `Host != ""` and
+# nothing more -- there is no loopback carve-out in the standard, and a mirror must not invent
+# one. This fixture is here so that the Audit rows those four workloads produce are a documented,
+# tested consequence rather than a mystery someone debugs later; and so that if anyone ever adds
+# a loopback exception to the expression, it turns red.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-nfs-node-bz2xx
+  namespace: csi-driver-nfs
+spec:
+  hostNetwork: true
+  containers:
+  - name: node-driver-registrar
+    image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.16.0
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 29653
+        host: localhost

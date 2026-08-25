@@ -1,0 +1,26 @@
+---
+# EXPECTED: `pass` against both the built policy and the pure mirror.
+#
+# All three lists populated and all three compliant, in the three distinguishable shapes the
+# rule tolerates: `privileged: false` explicitly, a `securityContext` with no `privileged` key,
+# and no `securityContext` at all. `pass`, not `skip`: this pod is evaluated and satisfies the
+# rule.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-workload-6b9f4c8d5-x2kqp
+  namespace: default
+spec:
+  initContainers:
+  - name: setup
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: false
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10

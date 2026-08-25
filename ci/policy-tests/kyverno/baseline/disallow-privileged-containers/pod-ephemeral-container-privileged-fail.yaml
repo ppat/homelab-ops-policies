@@ -1,0 +1,20 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# THE THREE-LIST ASSERTION, second of two: the violation is in an ephemeralContainer -- a
+# `kubectl debug` shell, which is exactly the shape someone reaches for when they want privileged
+# access on a running pod and the one an implementer is most likely to forget to concatenate.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debugged-workload-77955b8c45-52ls7
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

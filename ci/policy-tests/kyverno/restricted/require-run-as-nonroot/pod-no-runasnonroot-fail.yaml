@@ -1,0 +1,17 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY, and the shape of most stock Helm charts: nothing
+# sets `runAsNonRoot` anywhere. PSS calls these containers "implicitly bad" -- unset at both
+# levels is a violation, because the effective value is then whatever the image says.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 1000

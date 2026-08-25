@@ -1,0 +1,17 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# The NAME conjunct of `exempt-virt-handler`, falsified. The exemption is name-scoped, not
+# namespace-scoped, deliberately: a namespace-wide `kubevirt` exemption would silently admit
+# hostPID for anything else later deployed there. virt-api is a real KubeVirt component that does
+# not need it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-api-6794fd7fd6-9429f
+  namespace: kubevirt
+spec:
+  hostPID: true
+  containers:
+  - name: virt-api
+    image: quay.io/kubevirt/virt-api:v1.9.0

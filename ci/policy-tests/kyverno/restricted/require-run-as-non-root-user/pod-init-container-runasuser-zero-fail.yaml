@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# THE THREE-LIST ASSERTION, first of two, and it is the exact shape the estate exemption exists
+# for: a compliant main container beside an initContainer that needs root. virt-handler's
+# node-labeller is this pod. Here it is unexempted and must be flagged.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-workload-77955b8c45-52ls7
+  namespace: default
+spec:
+  initContainers:
+  - name: node-labeller
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 0
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 1000

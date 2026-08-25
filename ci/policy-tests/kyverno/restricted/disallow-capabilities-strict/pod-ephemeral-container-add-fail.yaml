@@ -1,0 +1,26 @@
+---
+# EXPECTED: `fail`.
+#
+# THE THREE-LIST ASSERTION, second of two: the violation is in an ephemeralContainer -- a
+# `kubectl debug` shell asking for the capability the pod itself dropped, which is precisely the
+# shape this check exists to notice.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debugged-workload-5687cbcbf5-bkswh
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      capabilities:
+        drop:
+        - ALL
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      capabilities:
+        add:
+        - SYS_PTRACE

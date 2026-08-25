@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# The generateName-only shape, pinning the `(name + generateName)` concatenation. See
+# ../disallow-host-network/pod-node-exporter-generatename-hostnetwork-skip.yaml and the fixture
+# it points at for why this is a CLI-tier shape rather than the live-admission shape the design
+# doc claims. Selector in kyverno-test.yaml: `kubevirt/` -- namespace, slash, empty name.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: virt-handler-
+  namespace: kubevirt
+spec:
+  hostPID: true
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0

@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# The NAMESPACE conjunct of `exempt-node-problem-detector`, falsified. Right name, wrong namespace -- what a
+# port that dropped the legacy `namespaces:` half would wrongly skip.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-problem-detector-impostor
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

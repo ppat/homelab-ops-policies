@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail`.
+#
+# `hostUsers: true` STATED EXPLICITLY, which the field-absent fixtures cannot cover:
+# `.orValue(true)` supplies the default there, so the two shapes together prove the matchCondition
+# READS `spec.hostUsers` rather than having degenerated to a constant. Without this one, an
+# expression stuck at `true` would still look correct.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: explicit-hostusers-workload-7d4c9f8b6-lq2mn
+  namespace: default
+spec:
+  hostUsers: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsUser: 0

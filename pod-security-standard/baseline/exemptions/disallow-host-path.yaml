@@ -1,0 +1,129 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-host-path.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml. This is a JSON6902 patch document, not a manifest. House-style
+# reference: ../../restricted/exemptions/restrict-volume-types.yaml -- its seven numbered
+# conventions apply here unchanged and are not restated.
+#
+# THE DENSEST EXEMPTION SET IN THE REPO: four namespaces and five name globs, five of the six
+# legacy `exclude:` entries reproduced below. §3.1's inventory table is the specification. The
+# regression tally in §2.5 counts, from this file alone: `node-problem-detector*`,
+# `kube-prometheus-stack-prometheus-node-exporter*`, `alloy*`, `intel-gpu-plugin-gpu-device*`,
+# `virt-handler*`, and one four-namespace exclusion set. A lower count is a bug, not a
+# simplification.
+#
+# ONE SHAPE CHANGE FROM THE LEGACY FILE, which is why the entry count (7) exceeds the legacy
+# `exclude.any[]` count (6): the legacy monitoring entry listed TWO names against ONE namespace
+# in a single block. It is written here as two separate `matchConditions` entries, one per glob.
+# The semantics are identical -- every entry is ANDed, and `!(ns && a) && !(ns && b)` is
+# `!(ns && (a || b))` -- and splitting them means each glob gets its own name and its own firing
+# fixture, so `node-problem-detector*` rotting cannot hide behind node-exporter's fixture.
+
+# The four-namespace exclusion set, carried verbatim from the legacy `exclude.any[0]`. These are
+# whole namespaces rather than name globs because each is a dedicated
+# single-purpose namespace whose entire contents legitimately touch the node filesystem:
+# `csi-driver-nfs` (mount propagation for NFS PVs), `kube-system` (the distribution's own node
+# components), `longhorn-system` (block-device and replica paths on each node), `system-upgrade`
+# (the upgrade controller's plans chroot into the host to replace the kubelet).
+#
+# NOTE FOR ANYONE COMPARING WITH ../../restricted/exemptions/restrict-volume-types.yaml: that
+# file has NO namespace exemptions at all. hostPath is refused there by an allow-list that these
+# four namespaces are not excused from -- but the `nas` cluster consumes `baseline` alone, so
+# for that cluster this entry is the whole of the decision.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-level-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in
+      ['csi-driver-nfs', 'kube-system', 'longhorn-system', 'system-upgrade'])
+
+# node-problem-detector reads the node's kernel ring buffer and journal (/dev/kmsg,
+# /var/log/journal) to raise NodeCondition events, which is only reachable from the node
+# filesystem. Name- AND namespace-scoped: `monitoring` holds many workloads with no such need.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-problem-detector
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('node-problem-detector'))
+
+# kube-prometheus-stack's node-exporter DaemonSet mounts /proc, /sys and the host root read-only
+# to export per-node metrics -- inherent to a node exporter, not a shortcut. Same glob appears in
+# ./disallow-host-network.yaml and ./disallow-host-pid.yaml as separate entries on separate
+# policies.
+#
+# Line-broken before `.startsWith` to stay inside the repo's 120-character yamllint limit; the
+# fold inserts a space and CEL parses `(...) .startsWith(...)` identically. See
+# ./disallow-host-network.yaml for the full note.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-exporter
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('kube-prometheus-stack-prometheus-node-exporter'))
+
+# Grafana Alloy is the node-level log collector. Necessary because node log files
+# (/var/log/pods, /var/log/journal, /run/log/journal), /etc/machine-id, and Alloy's
+# own read-offset state (/var/lib/alloy) are only reachable via the node
+# filesystem, which is inherent to any node-level log collector, not a shortcut
+# specific to Alloy. Bounded by namespace (logging) AND name prefix (alloy*)
+# together -- the prefix match is a coarse control, so anything else deployed into
+# `logging` named alloy* inherits it too. Wrong if Alloy ever stops needing
+# node-level file access, or if `logging` becomes a namespace where arbitrary
+# workloads can be created.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-alloy
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'logging' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('alloy'))
+
+# The Intel GPU device plugin DaemonSet enumerates /dev/dri and the i915 sysfs nodes to advertise
+# GPU capacity to the kubelet. Name- and namespace-scoped, matching the legacy entry exactly.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-intel-gpu-plugin
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'intel-device-plugins' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('intel-gpu-plugin-gpu-device'))
+
+# virt-handler hostPath-mounts libvirt/qemu runtime dirs, kubelet's pod and device
+# dirs, and node-labeller state (see disallow-privileged-containers.yaml for what
+# bounds it). Verified against upstream KubeVirt's generated manifests: virt-launcher
+# gets /dev/kvm and friends through Kubernetes device-plugin resource requests, not a
+# hostPath volume, and virt-operator/virt-api/virt-controller mount none at all --
+# neither is excluded here. Name-scoped, not namespace-scoped, on purpose: a
+# namespace-wide exclusion would silently admit hostPath for anything else later
+# deployed into `kubevirt`, not just this one DaemonSet. `kubevirt` is the conventional
+# install namespace for virt-handler; KubeVirt is not installed yet, so this exclusion
+# grants nothing until it is, and no other namespace is listed since virt-handler never
+# runs outside it.
+#
+# MIGRATION NOTE (Phase 2 kind migration). The block above is ported VERBATIM from the legacy
+# ClusterPolicy's `exclude:` block; two of its statements need re-reading against current facts,
+# and neither changes the exemption:
+#   * "See disallow-privileged-containers.yaml for what bounds it" now means
+#     ./disallow-privileged-containers.yaml -- the anchor rationale for every virt-handler
+#     exemption in this repo lives in that PATCH file, because the pure mirrors carry no estate
+#     content at all (§2.1).
+#   * "KubeVirt is not installed yet, so this exclusion grants nothing until it is" was true when
+#     written. KubeVirt IS installed now (virt-handler runs on the homelab cluster), so the
+#     exclusion is live rather than pre-emptive. The scoping argument in the sentence around it
+#     -- name-scoped, not namespace-scoped -- is unaffected and is the load-bearing half.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

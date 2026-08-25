@@ -1,0 +1,27 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires `exempt-node-level-namespaces, first member of the four-namespace set` of
+# ../../../../../pod-security-standard/baseline/exemptions/disallow-host-path.yaml.
+#
+# ALL FOUR MEMBERS OF THAT ONE `in [...]` LIST GET THEIR OWN FIXTURE. A single fixture would
+# prove the entry fires, not that it still lists all four namespaces -- dropping one from the
+# list is the exact regression §2.5 calls "a bug, not a simplification", and it is invisible to
+# a suite that only exercises one member.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-9k2vq
+  namespace: kube-system
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

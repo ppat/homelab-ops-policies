@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY, and the one whose expected result surprises people:
+# the field is ABSENT, not set to true, and that is still a violation. PSS requires
+# `allowPrivilegeEscalation` to be present and false -- the kubelet's effective default is true --
+# so "we never turn it on" is not compliance. The legacy pattern said the same by anchoring
+# `containers:` unconditionally.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

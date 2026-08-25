@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `exempt-node-exporter` entry, which -- unlike the two namespace-wide exemptions in
+# this directory -- is scoped by name AND namespace together. Its two conjuncts are falsified one
+# at a time by pod-not-node-exporter-in-monitoring-hostnetwork-fail.yaml and
+# pod-node-exporter-name-outside-monitoring-hostnetwork-fail.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-prometheus-stack-prometheus-node-exporter-p95kc
+  namespace: monitoring
+spec:
+  hostNetwork: true
+  containers:
+  - name: node-exporter
+    image: quay.io/prometheus/node-exporter:v1.10.0

@@ -1,0 +1,72 @@
+---
+# CLI tier for disallow-host-probes-and-lifecycle. House-style reference:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the five conventions); see also
+# ../disallow-privileged-containers/kyverno-test.yaml for the fixture-naming rule about
+# `<namespace>/<name>` collisions.
+#
+# ONE `Test` DOCUMENT, not two: this policy has no exemption patch, so `kustomize build` output
+# and the pure mirror are the same policy. `policies:` still points at built output, so if the
+# exemption discussed in the policy's header is ever added, it is covered here automatically.
+#
+# THE ONLY POLICY IN THIS REPO WITH NEITHER A LEGACY RULE NOR AN UPSTREAM FILE BEHIND IT, which
+# is why §6.5 gives it cluster time as well as this tier. The coverage is organised by the
+# fourteen paths the PSS check's own "Restricted Fields" list enumerates, so the suite can be
+# read beside that list:
+#
+#   probes    livenessProbe.httpGet.host       -> pod-liveness-httpget-host-fail.yaml
+#             readinessProbe.tcpSocket.host    -> pod-readiness-tcpsocket-host-fail.yaml
+#             startupProbe.httpGet.host        -> pod-startup-httpget-host-in-init-container-fail.yaml
+#   hooks     lifecycle.preStop.httpGet.host   -> pod-prestop-httpget-host-fail.yaml
+#             lifecycle.postStart.tcpSocket.host
+#                                              -> pod-poststart-tcpsocket-host-in-ephemeral-container-fail.yaml
+#
+# Between them the five `fail` fixtures cover both channels, all three probe types, both hook
+# types, both handler types, and all three container lists -- and the init/ephemeral coverage
+# rides on the same fixtures rather than doubling the count.
+#
+# The `pass` fixtures are not padding. A policy that rejected probes or lifecycle hooks in
+# GENERAL, rather than the `.host` field on them, would satisfy every `fail` row above; the three
+# `pass` fixtures are the only thing standing between this file and that policy. One of them also
+# covers `exec` and `grpc` handlers, which have no host field at all and must therefore make the
+# optional chain yield '' rather than error.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-probes-and-lifecycle
+policies:
+- ../../../.build/baseline/disallow-host-probes-and-lifecycle.yaml
+resources:
+- pod-no-probes-pass.yaml
+- pod-probes-without-host-pass.yaml
+- pod-lifecycle-without-host-pass.yaml
+- pod-liveness-httpget-host-fail.yaml
+- pod-readiness-tcpsocket-host-fail.yaml
+- pod-startup-httpget-host-in-init-container-fail.yaml
+- pod-prestop-httpget-host-fail.yaml
+- pod-poststart-tcpsocket-host-in-ephemeral-container-fail.yaml
+- pod-loopback-probe-host-fail.yaml
+results:
+- policy: disallow-host-probes-and-lifecycle
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/bare-workload-6b9f4c8d5-x2kqp
+  - default/probed-workload-844d7c96b-fq8vn
+  - default/hooked-workload-77955b8c45-52ls7
+  result: pass
+# `csi-driver-nfs/csi-nfs-node-bz2xx` is the estate's own shape, not a hypothetical: four
+# workloads on each live cluster pin a probe to loopback because they are hostNetwork pods. PSS
+# has no loopback carve-out, so they fail, and this row is what makes the resulting Audit noise a
+# tested expectation rather than a surprise. It is also the row that goes red if anyone adds a
+# loopback exception to the policy.
+- policy: disallow-host-probes-and-lifecycle
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ssrf-workload-5f7d9b46c-tn4wq
+  - default/tcp-host-workload-cbf5bd649-mzqns
+  - default/sidecar-startup-host-workload-fd4b5c598-pv8pn
+  - default/prestop-host-workload-9b966fd69-bsmhz
+  - default/ephemeral-poststart-host-workload-6878c58dfc-vzscf
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  result: fail

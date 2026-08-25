@@ -1,6 +1,23 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check runAsUser
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ./restrict-volume-types.yaml (the PSS-mirror family conventions: snapshot
+# marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# This is a LAYER 1 PURE MIRROR: the estate exemption this policy has in production lives in
+# ./exemptions/require-run-as-non-root-user.yaml. Read the two together.
+#
+# THE `matchConditions` LIST HERE IS NOT EMPTY, and its entry is NOT an estate exemption -- it is
+# the PSS v1.35 userns relaxation, which is rule semantics and therefore belongs in the mirror.
+# The pattern's reference instance, with the full reasoning, is
+# ../baseline/disallow-proc-mount.yaml; this file copies its block verbatim rather than
+# re-deriving it. The append seam is unaffected by the list being non-empty: `op: add` onto
+# `/spec/matchConditions/-` appends to a populated list exactly as to an empty one, and every
+# entry is ANDed either way -- which is what lets the estate exemption below it coexist with the
+# standard's own condition without either being able to widen the other.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-run-as-non-root-user
   annotations:
@@ -8,49 +25,86 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    # Bumped from the legacy `kyverno.io/kyverno-version: 1.6.0`, which is dropped as redundant.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       Containers must be required to run as non-root users. This policy ensures
       `runAsUser` is either unset or set to a number greater than zero.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: run-as-non-root-user
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Running as root is not allowed. The fields spec.securityContext.runAsUser,
-        spec.containers[*].securityContext.runAsUser, spec.initContainers[*].securityContext.runAsUser,
-        and spec.ephemeralContainers[*].securityContext.runAsUser must be unset or
-        set to a number greater than zero.
-      pattern:
-        spec:
-          =(securityContext):
-            =(runAsUser): ">0"
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(runAsUser): ">0"
-          =(initContainers):
-          - =(securityContext):
-              =(runAsUser): ">0"
-          containers:
-          - =(securityContext):
-              =(runAsUser): ">0"
-    exclude:
-      any:
-      # virt-handler's node-labeller init container explicitly sets runAsUser: 0 (it needs
-      # root to read/write host device and label state before the main container starts); the
-      # main container leaves runAsUser unset, which this policy already treats as compliant
-      # on its own. See ../baseline/disallow-privileged-containers.yaml for what bounds
-      # virt-handler generally.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  # SECOND INSTANCE OF THE hostUsers SKIP PATTERN (the first is
+  # ../baseline/disallow-proc-mount.yaml, which explains it in full in five numbered points; the
+  # third is ./require-run-as-nonroot.yaml). The spelling is identical in all three on purpose, so
+  # `grep -rn 'skip-user-namespaced-pods'` finds the whole set. Two points from that file are
+  # worth having in front of you here, because they are the ones a reader of THIS policy is most
+  # likely to get wrong:
+  #
+  #   * `== true` IS NOT REDUNDANT. `object.spec` is unstructured, so `object.spec.?hostUsers`
+  #     types as `optional(dyn)` and `.orValue(true)` yields `dyn`, while Kyverno's compiler
+  #     requires the expression's STATIC type to be bool. The design doc's original text without
+  #     `== true` does not compile (measured, Wave A1 spike §4).
+  #   * THIS IS A `matchCondition`, NOT A DISJUNCT IN THE VALIDATION, because PSS's semantics is
+  #     "the check is skipped entirely" -- the resource reports `skip`, not `pass`, and the
+  #     difference is observable in the CLI tier. Do not promise that a live PolicyReport writes a
+  #     `skip` ROW for it; A1 left that unsettled.
+  #
+  # UNLIKE the proc-mount pair, this relaxation has no Restricted-tier sibling that re-tightens
+  # it: PSS relaxes `runAsUser` for user-namespaced pods and leaves it relaxed. There is no
+  # `require-run-as-non-root-user-strict`, and inventing one would not be a mirror of anything.
+  matchConditions:
+  - name: skip-user-namespaced-pods
+    # PSS v1.35 (k8s 1.36): runAsNonRoot/runAsUser are skipped for pods in a user
+    # namespace -- root inside the userns is unprivileged on the host, which is the
+    # property these checks exist to guarantee.
+    expression: "object.spec.?hostUsers.orValue(true) == true"
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # Pod-level `securityContext.runAsUser` plus all three container lists, mirroring
+  # pod-security-admission's own `visitContainers()` on the container half. Translated from the
+  # legacy conditional anchors `=(securityContext): =(runAsUser): ">0"` applied to the pod and
+  # separately to each list -- "if the field is present, it must be greater than zero".
+  #
+  # `.orValue(1)` IS A SENTINEL, NOT AN API DEFAULT, and this is the one place in the PSS family
+  # where the house convention (`.orValue(<the API's own default>)`) has nothing to name:
+  # `runAsUser` has no default, and an unset field means "whatever UID the image declares", which
+  # PSS deliberately permits here (`check_runAsUser.go` only ever objects to an explicit 0). `1`
+  # is the smallest value that satisfies the comparison and so encodes "absent is allowed"
+  # directly. Any positive integer would do; do not read it as a claim that UID 1 is the default.
+  #
+  # `> 0` RATHER THAN `!= 0`, which is what PSS itself tests. The two are equivalent in practice
+  # because core API validation already refuses a negative `runAsUser`, and `> 0` is what the
+  # legacy pattern said and what the message below promises. Keeping the message and the
+  # expression in agreement is worth more here than matching PSS's spelling of an unreachable
+  # case.
+  - expression: >-
+      object.spec.?securityContext.?runAsUser.orValue(1) > 0 &&
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?runAsUser.orValue(1) > 0)
+    # LEGACY WORDING, kept verbatim (restrict-node-port.yaml's DEVIATION 2 house rule).
+    message: >-
+      Running as root is not allowed. The fields spec.securityContext.runAsUser,
+      spec.containers[*].securityContext.runAsUser, spec.initContainers[*].securityContext.runAsUser,
+      and spec.ephemeralContainers[*].securityContext.runAsUser must be unset or
+      set to a number greater than zero.

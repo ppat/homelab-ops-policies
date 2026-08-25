@@ -1,0 +1,23 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY. Seven exemptions are asserted here as `skip`; not
+# one of them means anything unless the rule still objects to an ordinary pod. `default` is a
+# namespace no exemption in this repo names.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

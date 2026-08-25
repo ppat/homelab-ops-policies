@@ -1,6 +1,18 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check runAsNonRoot
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ./restrict-volume-types.yaml (the PSS-mirror family conventions: snapshot
+# marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# This is a LAYER 1 PURE MIRROR: the estate exemption this policy has in production lives in
+# ./exemptions/require-run-as-nonroot.yaml. Read the two together.
+#
+# THE `matchConditions` LIST HERE IS NOT EMPTY -- same PSS v1.35 userns relaxation as
+# ./require-run-as-non-root-user.yaml and ../baseline/disallow-proc-mount.yaml. See the latter for
+# the full five-point reasoning; it is not repeated in this file.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-run-as-nonroot
   annotations:
@@ -8,60 +20,90 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    # Bumped from the legacy `kyverno.io/kyverno-version: 1.6.0`, which is dropped as redundant.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
+    # The legacy description's closing sentence -- "A known issue prevents a policy such as this
+    # using `anyPattern` from being persisted properly in Kubernetes 1.23.0-1.23.2." -- is
+    # DROPPED, not reworded. It described a Kyverno/apiserver interaction with the `anyPattern`
+    # construct, and this file has no `anyPattern`: `ValidatingPolicy` has no such field, and the
+    # disjunction it expressed is now inside one CEL expression. The 1.23.x releases it named are
+    # also three years out of support.
     policies.kyverno.io/description: >-
       Containers must be required to run as non-root users. This policy ensures
-      `runAsNonRoot` is set to `true`. A known issue prevents a policy such as this
-      using `anyPattern` from being persisted properly in Kubernetes 1.23.0-1.23.2.
+      `runAsNonRoot` is set to `true`.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: run-as-non-root
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Running as root is not allowed. Either the field
-        spec.securityContext.runAsNonRoot must be set to `true`, or the fields
-        spec.containers[*].securityContext.runAsNonRoot,
-        spec.initContainers[*].securityContext.runAsNonRoot, and
-        spec.ephemeralContainers[*].securityContext.runAsNonRoot must be set to `true`.
-      anyPattern:
-      - spec:
-          securityContext:
-            runAsNonRoot: "true"
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(runAsNonRoot): "true"
-          =(initContainers):
-          - =(securityContext):
-              =(runAsNonRoot): "true"
-          containers:
-          - =(securityContext):
-              =(runAsNonRoot): "true"
-      - spec:
-          =(ephemeralContainers):
-          - securityContext:
-              runAsNonRoot: "true"
-          =(initContainers):
-          - securityContext:
-              runAsNonRoot: "true"
-          containers:
-          - securityContext:
-              runAsNonRoot: "true"
-    exclude:
-      any:
-      # Neither virt-handler's pod nor any of its containers set runAsNonRoot: true anywhere
-      # -- it runs as root by design (see
-      # ../baseline/disallow-privileged-containers.yaml), so there's no partial-compliance
-      # path here to preserve.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  # THIRD INSTANCE OF THE hostUsers SKIP PATTERN. Reference instance and full reasoning:
+  # ../baseline/disallow-proc-mount.yaml. Keep the spelling identical so the set stays greppable.
+  matchConditions:
+  - name: skip-user-namespaced-pods
+    # PSS v1.35 (k8s 1.36): runAsNonRoot/runAsUser are skipped for pods in a user
+    # namespace -- root inside the userns is unprivileged on the host, which is the
+    # property these checks exist to guarantee.
+    expression: "object.spec.?hostUsers.orValue(true) == true"
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # THIS EXPRESSION REPLACES A TWO-BRANCH `anyPattern`, AND IS NOT A MECHANICAL TRANSCRIPTION OF
+  # IT. Read this note before changing either half -- there is a deliberate content delta here,
+  # the only one in Wave E.
+  #
+  # WHAT PSS ACTUALLY DOES (`check_runAsNonRoot.go`, unchanged in shape since 1.0). It computes,
+  # per container, an EFFECTIVE value: the container's own `runAsNonRoot` if set, otherwise the
+  # pod-level one, otherwise unset. It then forbids three things:
+  #   (a) pod-level `runAsNonRoot: false` -- an explicit opt-out, forbidden on its own, whatever
+  #       the containers say;
+  #   (b) any container with an explicit `runAsNonRoot: false`;
+  #   (c) any container that sets nothing and is not covered by a pod-level `true`.
+  # The two conjuncts below are (a) and then (b)+(c) together, in that order. The inner
+  # `.orValue(<the pod-level value>)` IS the inheritance step, and the outer `.orValue(false)` on
+  # the pod-level lookup is what makes "nobody said anything" a violation rather than a pass.
+  #
+  # THE DELTA FROM THE LEGACY `anyPattern`: exactly case (a). The legacy policy's second pattern
+  # required every container to set `runAsNonRoot: true` and said NOTHING about the pod level, so
+  # a pod with `spec.securityContext.runAsNonRoot: false` and every container overriding it to
+  # true satisfied that pattern and passed. Real PSA forbids it. This file follows PSA, per §2.1's
+  # standing instruction that a pure mirror's delta against the corresponding `check_*.go` is
+  # zero -- and because the AppArmor gap (§5.4), a mirror that silently diverged from the check it
+  # claimed to mirror, is the exact failure class this architecture exists to prevent.
+  # ci/policy-tests/kyverno/restricted/require-run-as-nonroot/pod-podlevel-false-containers-true-fail.yaml
+  # is that case, asserted, so the delta is executable rather than a claim in a comment. Nothing on
+  # this estate is shaped that way today; the cost of the change is at most one Audit row.
+  #
+  # `== true` on both conjuncts is the static-bool requirement, same as the matchCondition above.
+  # `spec.containers` needs no `.?`/`.orValue([])` because the API requires at least one container.
+  - expression: >-
+      object.spec.?securityContext.?runAsNonRoot.orValue(true) == true &&
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?runAsNonRoot.orValue(
+      object.spec.?securityContext.?runAsNonRoot.orValue(false)) == true)
+    # LEGACY WORDING, kept verbatim (restrict-node-port.yaml's DEVIATION 2 house rule). Its
+    # "Either ... or ..." shape still describes the rule correctly: the pod-level field covers
+    # every container that does not override it.
+    message: >-
+      Running as root is not allowed. Either the field
+      spec.securityContext.runAsNonRoot must be set to `true`, or the fields
+      spec.containers[*].securityContext.runAsNonRoot,
+      spec.initContainers[*].securityContext.runAsNonRoot, and
+      spec.ephemeralContainers[*].securityContext.runAsNonRoot must be set to `true`.

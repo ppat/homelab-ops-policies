@@ -1,0 +1,39 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-privilege-escalation.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml. This is a JSON6902 patch document, not a manifest. House-style
+# reference: ./restrict-volume-types.yaml -- its seven numbered conventions apply here unchanged.
+#
+# THE ONE EXEMPTION IN THIS REPO THAT IS NOT A JUDGEMENT CALL. Every other exemption trades some
+# security posture for a workload that would otherwise be flagged, and could in principle be
+# withdrawn by changing the workload. This one cannot: the two fields are mutually exclusive at
+# the API level, so for a privileged container there is no manifest that satisfies this policy.
+# Read the block below as a statement about Kubernetes, not about this estate's appetite.
+
+# Kubernetes rejects allowPrivilegeEscalation: false together with privileged: true, so
+# a privileged container can never satisfy this field -- virt-handler's privilege (see
+# ../baseline/disallow-privileged-containers.yaml) makes this exclusion unavoidable, not
+# optional.
+#
+# MIGRATION NOTE (Phase 2 kind migration). The block above is ported VERBATIM from the legacy
+# policy's `exclude:` block and its argument is unchanged and still correct. Two notes:
+#   * Its cross-reference "see ../baseline/disallow-privileged-containers.yaml" now resolves to
+#     ../../baseline/exemptions/disallow-privileged-containers.yaml, where the estate content --
+#     including this repo's anchor rationale for virt-handler -- moved under §2.1. The pure
+#     mirror at ../../baseline/disallow-privileged-containers.yaml no longer mentions
+#     virt-handler at all.
+#   * The claim is `pkg/apis/core/validation/validation.go`'s `ValidateSecurityContext()`:
+#     "cannot set `allowPrivilegeEscalation` to false and `privileged` to true". It is plain core
+#     API validation with no feature gate on the branch, so it holds on every Pod-creating path
+#     and is not something a cluster setting can relax. That is why WITHDRAWING this exemption is
+#     not a tightening that would merely produce Audit rows -- it would produce Audit rows that
+#     NO edit to virt-handler's manifest could clear, short of dropping its privilege, which
+#     ../../baseline/exemptions/disallow-privileged-containers.yaml argues it needs.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

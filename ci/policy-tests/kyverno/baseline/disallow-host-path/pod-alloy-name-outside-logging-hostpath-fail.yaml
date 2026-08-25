@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# NAMESPACE conjunct of `exempt-alloy`, falsified. Right name, wrong namespace -- what a port that dropped the
+# legacy `namespaces:` half would wrongly skip.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: alloy-impostor
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

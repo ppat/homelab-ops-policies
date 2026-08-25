@@ -1,0 +1,20 @@
+---
+# EXPECTED: `fail`.
+#
+# THE THREE-LIST ASSERTION, second of two: the violation is in an ephemeralContainer -- a
+# `kubectl debug` shell, which is exactly the shape someone reaches for when they want an
+# unmasked /proc on a running pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debugged-workload-5687cbcbf5-bkswh
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      procMount: Unmasked

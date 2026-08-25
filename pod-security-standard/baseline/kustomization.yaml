@@ -4,10 +4,20 @@ kind: Kustomization
 
 resources:
 - disallow-capabilities.yaml
-- disallow-host-namespaces.yaml
+# disallow-host-namespaces.yaml is gone: it was one ClusterPolicy with three rules carrying three
+# different exclusion sets, and `spec.matchConditions` is policy-wide. The three files below
+# replace it (design doc phase2.0-policy-migration-design-v3.md §2.3; the full rationale is in
+# disallow-host-network.yaml's header).
+- disallow-host-ipc.yaml
+- disallow-host-network.yaml
 - disallow-host-path.yaml
+- disallow-host-pid.yaml
 - disallow-host-ports.yaml
 - disallow-host-process.yaml
+# NEW in the Phase 2 migration: PSS Baseline gained the `hostProbesAndHostLifecycle` check at
+# policy version 1.34 and this repo had no equivalent (design §5.2). It has no upstream
+# kyverno/policies ancestor in any variant.
+- disallow-host-probes-and-lifecycle.yaml
 - disallow-privileged-containers.yaml
 - disallow-proc-mount.yaml
 - disallow-selinux.yaml
@@ -19,7 +29,11 @@ resources:
 # entry attaches one file from exemptions/ to the policy of the same basename. The files under
 # exemptions/ are JSON6902 patch documents, NOT manifests, so they must never appear in
 # `resources:` above. See ../restricted/kustomization.yaml for the full convention notes (target
-# matching, the silent-no-op hazard, why `version: v1` must track the policy's own apiVersion).
+# matching, why `version: v1` must track the policy's own apiVersion, and why a patch whose
+# `target:` matches nothing is a SILENT no-op plus what catches that mistake).
+#
+# A policy with no exemptions gets no entry here and no file under exemptions/ -- it still
+# declares `matchConditions: []` in its own file, which is the seam a future exemption appends to.
 patches:
 - path: exemptions/disallow-capabilities.yaml
   target:
@@ -27,9 +41,33 @@ patches:
     version: v1
     kind: ValidatingPolicy
     name: disallow-capabilities
+- path: exemptions/disallow-host-network.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-host-network
+- path: exemptions/disallow-host-path.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-host-path
+- path: exemptions/disallow-host-pid.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-host-pid
 - path: exemptions/disallow-host-ports.yaml
   target:
     group: policies.kyverno.io
     version: v1
     kind: ValidatingPolicy
     name: disallow-host-ports
+- path: exemptions/disallow-privileged-containers.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-privileged-containers

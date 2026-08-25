@@ -1,0 +1,16 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires `exempt-node-problem-detector`, a name-AND-namespace-scoped glob. Both conjuncts are falsified
+# separately by the fail fixtures in this directory.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-problem-detector-fxjb6
+  namespace: monitoring
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

@@ -1,0 +1,16 @@
+---
+# EXPECTED: `pass`.
+#
+# The `.orValue({})` edge: no `metadata.annotations` key at all. Without this fixture the
+# null-safety half of the expression is untested, and a port written as
+# `object.metadata.annotations.all(...)` would raise an evaluation error here rather than
+# returning true.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: annotationless-workload-5687cbcbf5-bkswh
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

@@ -1,78 +1,96 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check
+# capabilities_restricted
+#
+# House style: ../../best-practices/restrict-node-port.yaml and ./restrict-volume-types.yaml.
+#
+# THIS FILE'S HALF OF THE SPLIT is the legacy `adding-capabilities-strict` rule -- the ADD-CHECK.
+# The rationale for splitting the legacy `disallow-capabilities-strict` ClusterPolicy in two is in
+# the header of its sibling ./require-drop-all.yaml; read that one, it is not repeated here.
+#
+# THIS HALF HAS NO ESTATE EXEMPTION AND MUST NOT ACQUIRE ONE BY ACCIDENT. There is no
+# exemptions/disallow-capabilities-strict.yaml and no `patches:` entry for it in
+# ./kustomization.yaml, and that is the whole point of the split: the legacy policy's
+# `virt-handler*`/`kubevirt` exclusion sat on the drop-ALL rule ONLY, because virt-handler's
+# manifest never adds a named capability and so passes this check on its own merits. Attaching
+# that exemption here would excuse a check virt-handler already satisfies, and would excuse it for
+# every future virt-handler container change too. ./exemptions/require-drop-all.yaml carries it.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-capabilities-strict
   annotations:
     policies.kyverno.io/title: Disallow Capabilities (Strict)
     policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
-    policies.kyverno.io/minversion: 1.6.0
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
     policies.kyverno.io/subject: Pod
+    # Bumped from the legacy `kyverno.io/kyverno-version: 1.6.0`, which is dropped as redundant.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
+    # The legacy description's second sentence ("In addition, all containers must explicitly drop
+    # `ALL` capabilities.") moved to ./require-drop-all.yaml with the rule it describes.
     policies.kyverno.io/description: >-
-      Adding capabilities other than `NET_BIND_SERVICE` is disallowed. In addition,
-      all containers must explicitly drop `ALL` capabilities.
+      Adding capabilities other than `NET_BIND_SERVICE` is disallowed.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: require-drop-all
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    preconditions:
-      all:
-      - key: "{{ request.operation || 'BACKGROUND' }}"
-        operator: NotEquals
-        value: DELETE
-    validate:
-      message: >-
-        Containers must drop `ALL` capabilities.
-      foreach:
-      - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-        deny:
-          conditions:
-            all:
-            - key: ALL
-              operator: AnyNotIn
-              value: "{{ element.securityContext.capabilities.drop[] || `[]` }}"
-    exclude:
-      any:
-      # virt-handler's containers don't set capabilities.drop: [ALL] -- Privileged: true (see
-      # ../baseline/disallow-privileged-containers.yaml) already grants everything the
-      # drop-list would otherwise strip, so declaring it would be cosmetic. The sibling rule
-      # below (adding-capabilities-strict) isn't excluded: virt-handler's manifest never adds
-      # a named capability either, so that check already passes on its own.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
-  - name: adding-capabilities-strict
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    preconditions:
-      all:
-      - key: "{{ request.operation || 'BACKGROUND' }}"
-        operator: NotEquals
-        value: DELETE
-    validate:
-      message: >-
-        Any capabilities added other than NET_BIND_SERVICE are disallowed.
-      foreach:
-      - list: request.object.spec.[ephemeralContainers, initContainers, containers][]
-        deny:
-          conditions:
-            all:
-            - key: "{{ element.securityContext.capabilities.add[] || `[]` }}"
-              operator: AnyNotIn
-              value:
-              - NET_BIND_SERVICE
-              - ''
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # THE LEADING WINDOWS DISJUNCT (design §5.8), one of three in this repo -- the others are on
+  # ./disallow-privilege-escalation.yaml and ./restrict-seccomp-strict.yaml. PSS at policy version
+  # v1.25 exempts `spec.os.name == "windows"` pods from the Restricted capabilities,
+  # allowPrivilegeEscalation and seccomp checks: all three constrain Linux kernel primitives that
+  # do not exist on a Windows node, so enforcing them there would flag a pod for not setting a
+  # field that has no meaning. `capabilitiesRestricted_1_25()` implements it as an early
+  # `return CheckResult{Allowed: true}`; a leading `||` disjunct is the same thing in CEL.
+  #
+  # INERT ON THIS ESTATE TODAY -- four Linux nodes, no Windows node, and nothing sets
+  # `spec.os.name`. It is carried for FIDELITY, not for a workload: design §5.8's judgement is
+  # that skipping the PSS 1.25 exemptions because they are currently unreachable is "picking bits"
+  # of a standard this repo has decided to mirror whole. It is also expressed against pod-spec
+  # shape rather than node-OS facts, which is what keeps it correct if that ever changes.
+  #
+  # `.orValue('')` rather than a `has()` guard: `spec.os` is optional and `spec.os.name` is
+  # required within it, so the empty string is unreachable as a real value and reads as "no os
+  # block was set". The comparison also makes this disjunct statically bool on its own.
+  #
+  # Translated from the legacy `foreach` + `deny.conditions` pair
+  # `key: "{{ element.securityContext.capabilities.add[] || `[]` }}", operator: AnyNotIn,
+  # value: [NET_BIND_SERVICE, '']` -- "deny when any added capability is not NET_BIND_SERVICE".
+  # The `''` member of that legacy allow-list is DROPPED, not translated: it was there to absorb
+  # JMESPath's flattening of an empty/absent list into the comparison, and `.orValue([])` plus
+  # `.all()` over an empty list handles that case directly (`.all()` on `[]` is true). The same
+  # flattening artefact was dropped from ./restrict-volume-types.yaml's allow-list for the same
+  # reason; see its validation comment.
+  #
+  # All three container lists concatenated, mirroring `visitContainers()`. The legacy
+  # `preconditions` block asserting `request.operation != DELETE` is dropped, not translated
+  # (design §1.2).
+  - expression: >-
+      object.spec.?os.?name.orValue('') == 'windows' ||
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?capabilities.?add.orValue([]).all(a, a == 'NET_BIND_SERVICE'))
+    # LEGACY WORDING, kept verbatim (restrict-node-port.yaml's DEVIATION 2 house rule).
+    message: >-
+      Any capabilities added other than NET_BIND_SERVICE are disallowed.

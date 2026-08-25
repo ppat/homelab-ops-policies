@@ -1,0 +1,156 @@
+---
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check
+# hostProbesAndHostLifecycle
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ../restricted/restrict-volume-types.yaml (the PSS-mirror family conventions:
+# snapshot marker, empty `matchConditions` seam, autogen off).
+#
+# A NEW POLICY WITH NO ANCESTOR IN THIS REPO AND NO EQUIVALENT IN upstream `kyverno/policies`, in
+# any variant. It is hand-authored from `check_hostProbesAndhostLifecycle.go` on release-1.36
+# (design doc phase2.0-policy-migration-design-v3.md §5.2), which is the one genuinely new
+# Baseline control since 1.25: added by PR #125271 at policy version 1.34, and no longer gated by
+# anything but the policy version (the temporary `ProbeHostPodSecurityStandards` feature gate was
+# deleted in 1.35). There is nothing to diff this against except that file, so the validations
+# below are written to line up with its "Restricted Fields" doc comment one path at a time rather
+# than to be compact.
+#
+# WHAT THE CONTROL IS FOR, since "a probe with a host field" does not obviously read as a
+# security problem: the kubelet performs probe and lifecycle-hook calls FROM THE NODE, not from
+# the pod. A `.host` therefore turns a pod spec into a kubelet-sourced request primitive that
+# reaches anything the node reaches -- other nodes' kubelets, the cloud metadata endpoint, a
+# management network the pod's own NetworkPolicy has no say over -- from an identity that is not
+# the pod's. Without `.host` the kubelet dials the pod's own IP, which is the intended shape.
+#
+# ============================================================================================
+# THIS POLICY DOES NOT LAND SILENTLY. Design §5.2 predicted "zero-friction (nothing here sets
+# `.host`)" and asked for a live check before merge. THE PREDICTION IS WRONG, measured across
+# both clusters at the time this file was written (every pod on `homelab`, every pod on `nas`,
+# read through the cluster API):
+#
+#   csi-driver-nfs/csi-nfs-controller  container `nfs`
+#                                        livenessProbe.httpGet.host: localhost
+#   csi-driver-nfs/csi-nfs-node        containers `nfs`, `node-driver-registrar`
+#                                        livenessProbe.httpGet.host: localhost
+#   metallb-system/metallb-frr-k8s     container `controller`
+#                                        liveness + readinessProbe.httpGet.host: 127.0.0.1
+#   metallb-system/metallb-speaker     container `speaker`
+#                                        liveness + readinessProbe.httpGet.host: 127.0.0.1
+#
+# Both clusters, the same four workloads, the same values. No `tcpSocket.host` anywhere, no
+# lifecycle-hook `.host` anywhere, nothing in an init or ephemeral container. So merging this
+# policy adds four workloads' worth of rows to the Audit stream on each cluster, and that is a
+# CONFIRMED-EXPECTED finding rather than a surprise -- which is exactly what §5.2 asked to
+# establish before merge.
+#
+# Why it is still shipped exemption-free, per §3.1's inventory row ("none"): all four are
+# `hostNetwork: true` pods pinning a probe to LOOPBACK, which is the benign end of this control's
+# range -- the chart authors are stopping the kubelet from dialling the pod's routable address,
+# not reaching anywhere new. But PSS makes no such distinction (`getForbiddenHostProbes()` tests
+# `Host != ""`, nothing more), a faithful mirror must not invent one, and Audit mode makes
+# faithfulness nearly free: the cost is four accurate report rows saying these pods deviate from
+# PSS Baseline, which they do. Note also that all four are ALREADY exempt from
+# ./disallow-host-network.yaml, so this is not a new class of workload -- it is the same four
+# host-network pods, seen through a second check.
+#
+# If the owner would rather the stream were quiet, the fix is one file
+# (exemptions/disallow-host-probes-and-lifecycle.yaml) plus one `patches:` entry, scoped to those
+# two namespaces, and it should carry its own rationale rather than inheriting this comment.
+# That is a decision to take deliberately, not a default -- hence no exemption here.
+# ============================================================================================
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-host-probes-and-lifecycle
+  annotations:
+    policies.kyverno.io/title: Disallow Host Probes and Lifecycle Hooks
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/minversion: 1.17.0
+    # The policy version at which this control exists at all. A cluster pinned below PSS policy
+    # version 1.34 does not run this check -- worth knowing when comparing this repo's findings
+    # against a real PodSecurity admission plugin's.
+    kyverno.io/kubernetes-version: "1.36"
+    policies.kyverno.io/description: >-
+      The kubelet performs probe and lifecycle-hook requests from the node rather than from the
+      Pod, so a `host` field on one of them reaches whatever the node can reach, from an identity
+      that is not the Pod's. This policy ensures the `host` field is unset or empty on every
+      liveness, readiness and startup probe and on every postStart and preStop lifecycle hook.
+spec:
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # TWO VALIDATIONS, PROBES AND HOOKS, rather than one combined expression or ten small ones.
+  # The split follows the check's own two helper functions (`getForbiddenHostProbes()` and
+  # `getForbiddenHostLifecycle()`) and it buys a distinguishable message per channel -- `kyverno
+  # apply` emits one row per POLICY, not per validation, so the message is the only signal that
+  # says which half fired.
+  #
+  # WHY EVERY PATH IS SPELLED OUT rather than factored through a helper or `spec.variables`: this
+  # is the one policy in the repo with no upstream text and no legacy rule to diff against, so
+  # the only available correctness check is reading it beside the Go file's own "Restricted
+  # Fields" list. Ten explicit conjuncts line up with that list one-for-one. A compressed form
+  # would be shorter and strictly harder to audit, which is the wrong trade here.
+  #
+  # `.orValue('')` on the leaf reproduces the check's `Host != ""` test exactly: PSS treats an
+  # ABSENT host and an EMPTY host identically (its doc comment's "Allowed Values: '',
+  # undefined/null"), and the optional chain means an absent probe, an absent handler or an
+  # `exec`/`grpc` handler -- none of which has a host field at all -- simply yields ''.
+  # `spec.containers` needs no `.?` because the API requires at least one container.
+
+  # PROBES: three probe types x two handler types, over all three container lists.
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?livenessProbe.?httpGet.?host.orValue('') == '' &&
+      c.?livenessProbe.?tcpSocket.?host.orValue('') == '' &&
+      c.?readinessProbe.?httpGet.?host.orValue('') == '' &&
+      c.?readinessProbe.?tcpSocket.?host.orValue('') == '' &&
+      c.?startupProbe.?httpGet.?host.orValue('') == '' &&
+      c.?startupProbe.?tcpSocket.?host.orValue('') == '')
+    message: >-
+      Setting a host on a probe is not allowed. The fields
+      spec.containers[*].{liveness,readiness,startup}Probe.{httpGet,tcpSocket}.host,
+      and the same fields on spec.initContainers[*] and spec.ephemeralContainers[*],
+      must be unset or empty.
+
+  # LIFECYCLE HOOKS: two hook types x two handler types, over all three container lists.
+  #
+  # `tcpSocket` is included because the API and the PSS check both still carry it, even though a
+  # TCPSocket handler has never actually been supported as a LifecycleHandler -- the Go file's
+  # own doc comment marks those four paths "Deprecated. TCPSocket is NOT supported as a
+  # LifecycleHandler and kept for backward compatibility". A mirror follows the check, not the
+  # subset of it that does something.
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?lifecycle.?postStart.?httpGet.?host.orValue('') == '' &&
+      c.?lifecycle.?postStart.?tcpSocket.?host.orValue('') == '' &&
+      c.?lifecycle.?preStop.?httpGet.?host.orValue('') == '' &&
+      c.?lifecycle.?preStop.?tcpSocket.?host.orValue('') == '')
+    message: >-
+      Setting a host on a lifecycle hook is not allowed. The fields
+      spec.containers[*].lifecycle.{postStart,preStop}.{httpGet,tcpSocket}.host,
+      and the same fields on spec.initContainers[*] and spec.ephemeralContainers[*],
+      must be unset or empty.

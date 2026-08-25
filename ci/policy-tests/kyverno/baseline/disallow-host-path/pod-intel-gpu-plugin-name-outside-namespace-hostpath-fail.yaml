@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# NAMESPACE conjunct of `exempt-intel-gpu-plugin`, falsified.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: intel-gpu-plugin-gpu-device-impostor
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

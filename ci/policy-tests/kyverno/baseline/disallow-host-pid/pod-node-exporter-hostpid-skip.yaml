@@ -1,0 +1,18 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `exempt-node-exporter` entry of
+# ../../../../../pod-security-standard/baseline/exemptions/disallow-host-pid.yaml. Note this is a
+# SEPARATE entry from the identically-named one in that directory's disallow-host-network.yaml:
+# the two policies were split precisely so each carries its own copy rather than sharing one
+# policy-wide list (design §2.3).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-prometheus-stack-prometheus-node-exporter-p95kc
+  namespace: monitoring
+spec:
+  hostPID: true
+  containers:
+  - name: node-exporter
+    image: quay.io/prometheus/node-exporter:v1.10.0

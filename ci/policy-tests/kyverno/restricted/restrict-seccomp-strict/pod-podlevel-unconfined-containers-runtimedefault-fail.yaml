@@ -1,0 +1,31 @@
+---
+# EXPECTED: `fail` -- SAME DELIBERATE CONTENT DELTA AS
+# ../require-run-as-nonroot/pod-podlevel-false-containers-true-fail.yaml, from the same cause.
+# Read that fixture and
+# ../../../../../pod-security-standard/restricted/restrict-seccomp-strict.yaml's validation
+# comment; the argument is not repeated in full here.
+#
+# In short: the legacy `anyPattern`'s second branch constrained only the containers, so a pod
+# declaring `seccompProfile.type: Unconfined` at the pod level passed as long as every container
+# overrode it. Real PSA puts that pod-level value into `badSetters` and forbids the pod outright,
+# before it looks at the containers. The mirror follows PSA (design §2.1).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: podlevel-unconfined-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  securityContext:
+    seccompProfile:
+      type: Unconfined
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault

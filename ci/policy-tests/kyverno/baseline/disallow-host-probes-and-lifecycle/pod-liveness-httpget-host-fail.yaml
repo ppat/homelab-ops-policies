@@ -1,0 +1,20 @@
+---
+# EXPECTED: `fail` (probe message).
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY, and the shape that MATTERS: an external host on a
+# liveness probe. The kubelet dials it from the node, so this reaches whatever the node reaches
+# from an identity that is not the pod's -- the whole reason the control exists.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ssrf-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    livenessProbe:
+      httpGet:
+        path: /latest/meta-data/
+        port: 80
+        host: 169.254.169.254

@@ -1,0 +1,35 @@
+---
+# EXPECTED: `fail` -- AND THIS IS THE ONE DELIBERATE CONTENT DELTA IN WAVE E. Read
+# ../../../../../pod-security-standard/restricted/require-run-as-nonroot.yaml's validation comment
+# before touching this fixture.
+#
+# The legacy ClusterPolicy PASSED this pod. Its `anyPattern`'s second branch required every
+# container to set `runAsNonRoot: true` and said nothing at all about the pod level, so an
+# explicit pod-level opt-out was invisible to it as long as the containers opted back in.
+#
+# Real PSA forbids it: `check_runAsNonRoot.go` puts an explicit pod-level `false` into
+# `badSetters` and returns forbidden BEFORE it ever looks at whether the containers compensated.
+# The mirror follows PSA (design §2.1: a pure file's delta against its `check_*.go` is zero), so
+# this row is `fail` here and would have been `pass` before the migration.
+#
+# Nothing on this estate is shaped this way today, and the policy is Audit-mode, so the cost of
+# the change is at most one report row. The value is that the mirror no longer disagrees with the
+# apiserver's own implementation of the standard it claims to mirror -- which is the failure class
+# (§5.4's AppArmor gap) this architecture exists to prevent.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: podlevel-false-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: false
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

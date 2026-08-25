@@ -1,0 +1,23 @@
+---
+# EXPECTED: REJECTED by the admission webhook.
+#
+# THE SECOND VALIDATION EXPRESSION, live. The policy has two `validations[]` entries -- probes and
+# lifecycle hooks -- and the pod above only exercises the first. Under `[Deny]` a pod is rejected
+# if ANY validation fails, so without this fixture the lifecycle expression could be deleted
+# outright and every other step of this test would still pass.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prestop-httpget-host
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    lifecycle:
+      preStop:
+        httpGet:
+          path: /drain
+          port: 8080
+          host: 169.254.169.254

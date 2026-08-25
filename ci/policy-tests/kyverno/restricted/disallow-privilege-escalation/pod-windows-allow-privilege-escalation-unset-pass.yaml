@@ -1,0 +1,24 @@
+---
+# EXPECTED: `pass`.
+#
+# THE WINDOWS DISJUNCT FIRING (design §5.8), non-vacuous by construction: this file is
+# ./pod-allow-privilege-escalation-unset-fail.yaml with `spec.os.name: windows` added and nothing
+# else changed. `no_new_privs` is a Linux prctl; there is nothing for the field to mean on a
+# Windows node, which is why `allowPrivilegeEscalation_1_25()` returns `Allowed: true` there.
+#
+# `pass`, NOT `skip` -- see ../disallow-capabilities-strict/pod-windows-add-sys-admin-pass.yaml
+# for why the Windows exemptions are validation disjuncts while the hostUsers relaxation is a
+# `matchCondition`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: windows-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  os:
+    name: windows
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true

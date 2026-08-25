@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail`.
+#
+# THE THREE-LIST ASSERTION, second of two: a `kubectl debug` shell explicitly opting out of a
+# pod-level `true`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debugged-workload-5687cbcbf5-bkswh
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: false

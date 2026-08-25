@@ -1,0 +1,22 @@
+---
+# EXPECTED: `pass`.
+#
+# THE `.orValue(1)` SENTINEL EDGE, in all its shapes at once: no pod-level `securityContext` at
+# all, a container with a `securityContext` that has no `runAsUser`, and a container with no
+# `securityContext` at all. UNSET IS ALLOWED here -- PSS's `check_runAsUser.go` only ever objects
+# to an explicit 0, because an unset field means "whatever UID the image declares", which the
+# `runAsNonRoot` check (../require-run-as-nonroot/) is the one that constrains. Without this
+# fixture the null-safety of the expression is untested.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unset-runasuser-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true
+  - name: bare
+    image: registry.k8s.io/pause:3.10

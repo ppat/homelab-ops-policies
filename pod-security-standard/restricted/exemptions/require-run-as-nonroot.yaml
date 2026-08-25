@@ -1,0 +1,33 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../require-run-as-nonroot.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml. This is a JSON6902 patch document, not a manifest. House-style
+# reference: ./restrict-volume-types.yaml -- its seven numbered conventions apply here unchanged.
+#
+# INDEPENDENT OF THE hostUsers SKIP in the pure mirror -- virt-handler does not set
+# `spec.hostUsers: false`. See ./require-run-as-non-root-user.yaml's header note; the same applies
+# here.
+
+# Neither virt-handler's pod nor any of its containers set runAsNonRoot: true anywhere
+# -- it runs as root by design (see
+# ../baseline/disallow-privileged-containers.yaml), so there's no partial-compliance
+# path here to preserve.
+#
+# MIGRATION NOTE (Phase 2 kind migration). The block above is ported VERBATIM from the legacy
+# policy's `exclude:` block; its argument is unchanged. Its cross-reference now resolves to
+# ../../baseline/exemptions/disallow-privileged-containers.yaml, where this repo's anchor
+# rationale for virt-handler moved under §2.1.
+#
+# "no partial-compliance path here to preserve" is the sentence that distinguishes this exemption
+# from its sibling in ./require-run-as-non-root-user.yaml, and it is worth keeping straight: there
+# the exemption covers one init container in an otherwise-compliant pod, so the pod-wide scope is
+# a cost of the mechanism. Here the whole DaemonSet is non-compliant on this field, so the
+# pod-wide scope costs nothing beyond what the workload already is.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))
