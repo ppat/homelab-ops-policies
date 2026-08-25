@@ -1,0 +1,21 @@
+---
+# NOT A CANDIDATE: satisfies both is-empty and is-old-enough, but sits in the excluded
+# `kube-system` namespace. This is what proves the `matchConstraints.namespaceSelector` exclusion
+# fires -- without it, this fixture would be indistinguishable from rs-empty-and-old.yaml and the
+# exclusion could rot silently (design §2.5's firing-fixture discipline).
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: empty-old-replicaset-kube-system
+  namespace: kube-system
+  creationTimestamp: "2020-01-01T00:00:00Z"
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app: empty-old-replicaset-ks}
+  template:
+    metadata: {labels: {app: empty-old-replicaset-ks}}
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10

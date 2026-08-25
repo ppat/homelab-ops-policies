@@ -1,0 +1,55 @@
+---
+# CLI-tier test for `cleanup-empty-replicasets` (F6, phase2.1-execution-plan.md Wave F-delete).
+# House style set by ../cleanup-bare-pods/kyverno-test.yaml -- read its header first for the
+# `isDeletingPolicy: true` / pass-fail vocabulary this file reuses.
+#
+# THIS TIER OWNS THE 24H AGE DISCRIMINATION EXCLUSIVELY (design doc
+# phase2.0-policy-migration-design-v3.md §6.2): `creationTimestamp` is server-set, so only an
+# offline fixture can declare an arbitrary one and prove BOTH sides of the `< 24h ago` boundary.
+# The companion Chainsaw test
+# (ci/policy-tests/chainsaw/best-practices/cleanup-empty-replicasets/) proves the complementary,
+# CLI-unreachable claim instead: a genuinely fresh ReplicaSet, created live, survives a real
+# cleanup cycle end-to-end. Neither tier repeats the other's claim.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cleanup-empty-replicasets
+policies:
+- ../../../.build/best-practices/cleanup-empty-replicasets.yaml
+resources:
+- rs-empty-and-old.yaml
+- rs-empty-but-fresh.yaml
+- rs-nonempty-and-old.yaml
+- rs-empty-and-old-in-kube-system.yaml
+results:
+# THE LOAD-BEARING CONTROL: the only fixture where every condition holds. Without a `pass` row
+# here, a rotted `matchConstraints`/`conditions` pair (matching nothing) would still be
+# indistinguishable from a correctly-configured policy against the three `fail` rows alone.
+- policy: cleanup-empty-replicasets
+  isDeletingPolicy: true
+  kind: ReplicaSet
+  resources:
+  - default/empty-old-replicaset
+  result: pass
+# Non-vacuity control on is-old-enough: replicas=0 alone is not sufficient.
+- policy: cleanup-empty-replicasets
+  isDeletingPolicy: true
+  kind: ReplicaSet
+  resources:
+  - default/empty-fresh-replicaset
+  result: fail
+# Non-vacuity control on is-empty: age alone is not sufficient.
+- policy: cleanup-empty-replicasets
+  isDeletingPolicy: true
+  kind: ReplicaSet
+  resources:
+  - default/nonempty-old-replicaset
+  result: fail
+# Non-vacuity control on the namespaceSelector exclusion: both conditions hold (replicas=0, well
+# over 24h old), but the namespace is `kube-system`, which the exclusion targets by name.
+- policy: cleanup-empty-replicasets
+  isDeletingPolicy: true
+  kind: ReplicaSet
+  resources:
+  - kube-system/empty-old-replicaset-kube-system
+  result: fail

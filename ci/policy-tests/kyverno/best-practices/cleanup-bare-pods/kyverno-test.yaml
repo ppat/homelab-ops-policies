@@ -1,0 +1,48 @@
+---
+# CLI-tier test for `cleanup-bare-pods` (F5, phase2.1-execution-plan.md Wave F-delete). CLI-tier
+# ONLY per that plan -- no Chainsaw test for this policy (unlike its sibling
+# cleanup-empty-replicasets, which has an age guard whose *inverse* needs a live fixture; this
+# policy has no such asymmetry: "has no owner" is fully decidable offline).
+#
+# House style set by ../restrict-node-port/kyverno-test.yaml -- read its header first, in
+# particular point 2 (`isDeletingPolicy: true` is required, mirroring that file's
+# `isValidatingPolicy: true`) and point 4 (a selector that matches nothing BROADENS rather than
+# failing, so every policy tested here needs at least one non-`pass` row to stay self-falsifying).
+#
+# `result:` VOCABULARY FOR A DeletingPolicy, verified empirically (Wave F-delete) via
+# `kyverno apply` against this exact policy -- there is no third `skip` outcome the way
+# `ValidatingPolicy` has for a `matchConditions`-filtered resource, because `DeletingPolicy` has
+# no separate admission-time exemption seam of that shape (best-practices policies keep any
+# exemptions inline in `conditions[]`, which participates in the same match/no-match decision as
+# everything else):
+#   pass -- `matchConstraints` AND every `conditions[]` entry were satisfied; the resource WOULD
+#           be deleted by a real cleanup cycle.
+#   fail -- the resource did not satisfy the policy ("resource did not match"); it survives.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: cleanup-bare-pods
+policies:
+- ../../../.build/best-practices/cleanup-bare-pods.yaml
+resources:
+- bare-pod-no-owner.yaml
+- pod-owned-by-replicaset.yaml
+results:
+# THE LOAD-BEARING CONTROL: without this row, a policy that had stopped matching anything (a
+# rotted `matchConstraints`, a mis-edited condition) would still show green against
+# pod-owned-by-replicaset.yaml alone.
+- policy: cleanup-bare-pods
+  isDeletingPolicy: true
+  kind: Pod
+  resources:
+  - default/bare-orphan-pod
+  result: pass
+# Non-vacuity control on the CONDITION itself, not merely the policy's existence: a Pod that is
+# otherwise identical but carries a real controller ownerReference must survive, or this policy
+# would be indistinguishable from one that deletes every Pod in the cluster.
+- policy: cleanup-bare-pods
+  isDeletingPolicy: true
+  kind: Pod
+  resources:
+  - default/replicaset-owned-pod
+  result: fail

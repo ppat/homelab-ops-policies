@@ -1,17 +1,48 @@
 ---
-apiVersion: kyverno.io/v2beta1
-kind: ClusterCleanupPolicy
+# PROVENANCE: this is NOT an upstream port. Upstream kyverno/policies' `-dpol` rewrite of this
+# policy (best-practices-dpol/cleanup-bare-pods/cleanup-bare-pods.yaml) exists, but this file
+# does not follow it: design doc phase2.0-policy-migration-design-v3.md §3.3 keeps this repo's
+# existing `0 5 * * *` schedule rather than adopting upstream's `*/5` (aggressive polling upstream
+# uses for its own demo/test convenience, not a fit for a homelab). What migrates is this repo's
+# own legacy `kyverno.io/v2beta1 ClusterCleanupPolicy` (named `clean-bare-pods`), translated to
+# the new kind per the mapping in §1.2 of the design doc.
+#
+# House style is set by best-practices/restrict-node-port.yaml (read its header first) and
+# extended to `DeletingPolicy` by best-practices/cleanup-empty-replicasets.yaml, which carries
+# the fuller DeletingPolicy-specific notes (the `spec.conditions` field-name gotcha, the
+# `resourceFilters` ConfigMap trap). Read that file too if this is the first `DeletingPolicy` you
+# are touching. What is specific to *this* file:
+#
+#   1. `metadata.name` is `cleanup-bare-pods`, not the legacy `clean-bare-pods` -- reconciled
+#      with the file basename per Wave C's naming rule (see restrict-node-port.yaml note 1).
+#   2. No estate exemptions apply (§3.3's inventory lists none for this policy), so there is no
+#      `best-practices/exemptions/cleanup-bare-pods.yaml` -- consistent with best-practices
+#      keeping any exemptions it does have INLINE rather than as a kustomize patch (design §2.1).
+#   3. F5 is CLI-tier only (phase2.1-execution-plan.md, Wave F-delete table): no Chainsaw test.
+#      Its live behaviour (an unowned Pod actually gets deleted by a real cleanup-controller
+#      cycle) is exercised by the `best-practices` profile's ready-smoke prerequisites only to
+#      the extent that DeletingPolicy readiness is asserted there; the deletion itself is not
+#      re-proven live for this specific policy because, unlike F6, there is no age-guard whose
+#      *inverse* needs a live fixture -- "an unowned Pod gets removed" was already proven for the
+#      cleanup mechanism generically by the sibling `cleanup-empty-replicasets` Chainsaw test and
+#      by this file's own CLI-tier fixtures (ci/policy-tests/kyverno/best-practices/cleanup-bare-pods/).
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
-  name: clean-bare-pods
+  name: cleanup-bare-pods
   annotations:
     policies.kyverno.io/title: Cleanup Bare Pods
     policies.kyverno.io/category: Cleanup
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.11.1
-    policies.kyverno.io/minversion: 1.10.0
-    pod-policies.kyverno.io/autogen-controllers: none
-    kyverno.io/kubernetes-version: "1.27"
+    # Bumped from 1.10.0: `policies.kyverno.io/v1 DeletingPolicy` is first served by Kyverno
+    # 1.17. The legacy `kyverno.io/kyverno-version` and `pod-policies.kyverno.io/autogen-controllers`
+    # annotations this file used to also carry are dropped: the version annotation is redundant
+    # with this one, and `DeletingPolicy` has no autogen concept at all (autogen only rewrites a
+    # policy that matches `pods` via a pod-controller's template -- irrelevant to a policy that
+    # already matches `pods` directly and has no controller-shaped variant to synthesise).
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       A bare Pod is any Pod created directly and not owned by a controller such as a
       Deployment or Job. Bare Pods are often create manually by users in an attempt to troubleshoot
@@ -19,14 +50,30 @@ metadata:
       risk. Bare Pods can be cleaned up periodically through use of a policy. This policy finds
       and removes all bare Pods across the cluster at 5am UTC daily.
 spec:
-  match:
-    any:
-    - resources:
-        kinds:
-        - Pod
-  conditions:
-    all:
-    - key: "{{ target.metadata.ownerReferences[] || `[]` }}"
-      operator: Equals
-      value: []
   schedule: "0 5 * * *"
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      # Verified empirically (Wave F-delete) that `operations` does not actually gate which
+      # existing objects the cleanup-controller's periodic LIST-then-delete cycle considers --
+      # a Pod created BEFORE this policy existed was still picked up and deleted on the next
+      # cycle. `CREATE`/`UPDATE` is kept only for consistency with this repo's ValidatingPolicy
+      # house style (restrict-node-port.yaml, restrict-volume-types.yaml); DeletingPolicy has no
+      # admission webhook of its own for this field to gate.
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  # Legacy JMESPath: `{{ target.metadata.ownerReferences[] || `[]` }}` Equals `[]` -- "the pod
+  # has no owner references at all". CEL equivalent below, translated per design §1.2's
+  # `ClusterCleanupPolicy.spec.conditions (JMESPath, target.*) -> DeletingPolicy.spec.conditions[]
+  # (CEL, object.*)` row. `.orValue([])` handles the (never actually optional, but CEL has no
+  # notion of the API's defaulting) case where `ownerReferences` is absent from the object as
+  # listed, the same null-safety habit restrict-node-port.yaml's header documents.
+  conditions:
+  - name: has-no-owner
+    expression: object.metadata.?ownerReferences.orValue([]).size() == 0

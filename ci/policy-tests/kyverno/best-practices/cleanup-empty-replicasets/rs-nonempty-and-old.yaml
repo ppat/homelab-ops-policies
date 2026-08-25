@@ -1,0 +1,20 @@
+---
+# NOT A CANDIDATE: old enough, but not empty (replicas=3). Non-vacuity control on the is-empty
+# condition, paired with rs-empty-and-old.yaml -- without this fixture, a policy mis-edited to
+# ignore replica count entirely (delete anything old) would still show green.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: nonempty-old-replicaset
+  namespace: default
+  creationTimestamp: "2020-01-01T00:00:00Z"
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: nonempty-old-replicaset}
+  template:
+    metadata: {labels: {app: nonempty-old-replicaset}}
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10

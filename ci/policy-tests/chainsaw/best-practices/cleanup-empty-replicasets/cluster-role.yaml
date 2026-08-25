@@ -1,0 +1,42 @@
+---
+# TEST-LOCAL ONLY -- not part of what this repo ships. Mirrors
+# `kyverno:cleanup-controller:additional`, which lives in the ESTATE, not here:
+# homelab-ops-kubernetes-apps, infrastructure/subsystems/security-core/kyverno/rbac.yaml. Same
+# cross-repo pointer as ../../ready-smoke/cleanup-controller-rbac.yaml in the sibling
+# best-practices ready-smoke test -- copied rather than referenced across test directories so
+# this one stays self-contained (house style set by ../../restricted/restrict-volume-types/,
+# whose fixtures are all local to their own directory too).
+#
+# Grants delete on BOTH `pods` and `replicasets`: this test exercises `cleanup-empty-replicasets`
+# using `cleanup-bare-pods` as its "a cycle genuinely ran" witness (see chainsaw-test.yaml's
+# header), so both policies' target kinds need cleanup-controller RBAC.
+#
+# Named distinctly from ../../ready-smoke/cleanup-controller-rbac.yaml's ClusterRole (rather than
+# reusing `kyverno-cleanup-controller-policy-tests`) -- both are cluster-scoped, so Chainsaw's
+# per-test namespace isolation does not apply to them; a shared name would be harmless under this
+# suite's `parallel: 1` (tests never run concurrently) but a distinct name removes any doubt.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno-cleanup-controller-empty-replicasets-test
+  labels:
+    rbac.kyverno.io/aggregate-to-cleanup-controller: "true"
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - watch
+  - list
+  - delete
+- apiGroups:
+  - apps
+  resources:
+  - replicasets
+  verbs:
+  - get
+  - watch
+  - list
+  - delete

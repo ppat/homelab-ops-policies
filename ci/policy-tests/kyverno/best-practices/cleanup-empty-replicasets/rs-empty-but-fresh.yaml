@@ -1,0 +1,33 @@
+---
+# NOT A CANDIDATE: replicas=0, but freshly created (a rollout that just completed or is still in
+# progress). THE FIXTURE THE 24H AGE GUARD EXISTS FOR -- design doc
+# phase2.0-policy-migration-design-v3.md §3.3: "it is what preserves `kubectl rollout undo`".
+#
+# `creationTimestamp` IS DELIBERATELY IN THE FUTURE, not merely recent. A checked-in fixture
+# using a fixed PAST timestamp (e.g. "yesterday relative to when this was written") silently
+# rots: `time.now()` at test-run time is real wall-clock time, which marches forward every day
+# this repo exists, so a "recent" past timestamp eventually crosses the 24h threshold and this
+# fixture would flip from `fail` (correctly not-yet-eligible) to `pass` (wrongly eligible) with
+# no code change at all -- a maintenance trap this repo has no mechanism to catch (nothing
+# revisits fixture content on a schedule). A future timestamp instead guarantees `< 24h ago` for
+# as long as "future" remains future, which for this date is effectively indefinite. This is a
+# real ReplicaSet field accepting a value no live cluster would ever produce; it is fine here
+# because this fixture is evaluated entirely offline (`kyverno test` never defaults or validates
+# against a live API server -- see restrict-node-port.yaml's header on that same property, used
+# there for the opposite reason).
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: empty-fresh-replicaset
+  namespace: default
+  creationTimestamp: "2099-01-01T00:00:00Z"
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app: empty-fresh-replicaset}
+  template:
+    metadata: {labels: {app: empty-fresh-replicaset}}
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10
