@@ -1,0 +1,26 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-virt-handler matchCondition (design doc
+# phase2.0-policy-migration-design-v3.md §2.5). The real virt-handler DaemonSet sets no
+# capabilities.add at all (it relies on `privileged: true` instead, see
+# ../../../../../pod-security-standard/baseline/disallow-privileged-containers.yaml) -- this
+# exclusion is documented as an inert safety margin, kept despite deciding nothing for the
+# workload as it exists today (design §3.1). To prove the exemption expression itself still
+# fires (not merely that it's never exercised), this fixture adds a disallowed capability that a
+# real virt-handler pod would never carry.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  restartPolicy: Always
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0
+    securityContext:
+      privileged: true
+      capabilities:
+        add:
+        - SYS_ADMIN

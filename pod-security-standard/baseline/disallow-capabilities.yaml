@@ -1,76 +1,61 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check capabilities_baseline
+#
+# LAYER 1 PURE MIRROR (design doc phase2.0-policy-migration-design-v3.md §2.1). House style is
+# set by best-practices/restrict-node-port.yaml and ../restricted/restrict-volume-types.yaml --
+# read those headers first; this file follows their conventions without restating them.
+#
+# Estate exemptions for this policy live in exemptions/disallow-capabilities.yaml, applied via
+# the `patches:` entry in kustomization.yaml (design §2.2). This is the ns-exclusion-plus-inert-
+# virt-handler-glob shape those two files document; read them together with this one.
+#
+# check_capabilities_baseline.go: allowed-add set is `capabilities_allowed_1_0`, one version only,
+# unchanged since k8s 1.22 -- thirteen entries, NET_RAW excluded. No user-namespace relaxation
+# exists for this check (unlike runAsNonRoot/runAsUser, §5.5); capabilities stay unconditionally
+# strict per pss-research.md.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-capabilities
   annotations:
     policies.kyverno.io/title: Disallow Capabilities
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
-    kyverno.io/kyverno-version: 1.6.0
-    policies.kyverno.io/minversion: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
     policies.kyverno.io/subject: Pod
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       Adding capabilities beyond those listed in the policy must be disallowed.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: adding-capabilities
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    preconditions:
-      all:
-      - key: "{{ request.operation || 'BACKGROUND' }}"
-        operator: NotEquals
-        value: DELETE
-    validate:
-      message: >-
-        Any capabilities added beyond the allowed list (AUDIT_WRITE, CHOWN, DAC_OVERRIDE, FOWNER,
-        FSETID, KILL, MKNOD, NET_BIND_SERVICE, SETFCAP, SETGID, SETPCAP, SETUID, SYS_CHROOT)
-        are disallowed.
-      deny:
-        conditions:
-          all:
-          # yamllint disable-line rule:line-length
-          - key: "{{ request.object.spec.[ephemeralContainers, initContainers, containers][].securityContext.capabilities.add[] }}"
-            operator: AnyNotIn
-            value:
-            - AUDIT_WRITE
-            - CHOWN
-            - DAC_OVERRIDE
-            - FOWNER
-            - FSETID
-            - KILL
-            - MKNOD
-            - NET_BIND_SERVICE
-            - SETFCAP
-            - SETGID
-            - SETPCAP
-            - SETUID
-            - SYS_CHROOT
-    exclude:
-      any:
-      - resources:
-          namespaces:
-          - csi-driver-nfs
-          - longhorn-system
-          - metallb-system
-          - system-upgrade
-          - tailscale
-      # virt-handler sets no explicit capabilities.add list at all -- Privileged: true (see
-      # disallow-privileged-containers.yaml) already grants everything it needs, so this rule
-      # shouldn't trip in practice. Kept as a low-cost safety margin on the one component in
-      # this repo that runs privileged, rather than removed on that analysis alone.
-      # virt-launcher's default (non-root) capabilities are NET_BIND_SERVICE only, already
-      # inside this policy's allowed set, so it isn't excluded here or anywhere else in this
-      # file.
-      - resources:
-          names:
-          - 'virt-handler*'
-          namespaces:
-          - kubevirt
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?capabilities.?add.orValue([]).all(cap, cap in [
+      'AUDIT_WRITE', 'CHOWN', 'DAC_OVERRIDE', 'FOWNER', 'FSETID', 'KILL', 'MKNOD',
+      'NET_BIND_SERVICE', 'SETFCAP', 'SETGID', 'SETPCAP', 'SETUID', 'SYS_CHROOT']))
+    message: >-
+      Any capabilities added beyond the allowed list (AUDIT_WRITE, CHOWN, DAC_OVERRIDE, FOWNER,
+      FSETID, KILL, MKNOD, NET_BIND_SERVICE, SETFCAP, SETGID, SETPCAP, SETUID, SYS_CHROOT)
+      are disallowed.
