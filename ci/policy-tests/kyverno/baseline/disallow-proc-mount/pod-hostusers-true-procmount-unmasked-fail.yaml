@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail`.
+#
+# `hostUsers: true` STATED EXPLICITLY, which is the shape pod-procmount-unmasked-fail.yaml (field
+# absent) cannot cover: `.orValue(true)` supplies the default there, so the two fixtures together
+# prove the matchCondition reads the field rather than merely defaulting. Without this one, an
+# expression that had degenerated to a constant `true` would still look correct.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: explicit-hostusers-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  hostUsers: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      procMount: Unmasked

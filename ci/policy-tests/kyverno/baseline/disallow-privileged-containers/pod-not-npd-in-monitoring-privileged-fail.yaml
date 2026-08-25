@@ -1,0 +1,18 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# The NAME conjunct of `exempt-node-problem-detector`, falsified -- and pointedly so: node-exporter IS exempt
+# from ../disallow-host-path/ and ../disallow-host-network/ in this same namespace, but is not exempt here,
+# because it mounts host paths without running privileged. A row that went skip would mean a glob had been
+# copied between policies without re-judging it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-prometheus-stack-prometheus-node-exporter-p95kc
+  namespace: monitoring
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

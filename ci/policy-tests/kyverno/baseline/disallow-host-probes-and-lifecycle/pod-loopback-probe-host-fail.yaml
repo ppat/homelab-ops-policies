@@ -1,0 +1,28 @@
+---
+# EXPECTED: `fail` (probe message).
+#
+# THE SHAPE THIS CONTROL ACTUALLY MEETS IN THE FIELD, and the reason it does not land silently.
+# Modelled on csi-driver-nfs's `csi-nfs-node` and metallb's `speaker`/`frr-k8s`: `hostNetwork:
+# true` pods pinning a liveness or readiness probe to `localhost` or `127.0.0.1` so the kubelet
+# does not dial the node's routable address.
+#
+# It is a benign use, and it FAILS ANYWAY. `getForbiddenHostProbes()` tests `Host != ""` and
+# nothing more -- there is no loopback carve-out in the standard, and a mirror must not invent
+# one. This fixture makes the resulting Audit rows a tested consequence rather than a mystery
+# someone debugs later, and turns red if anyone ever adds a loopback exception to the
+# expression.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-nfs-node-bz2xx
+  namespace: csi-driver-nfs
+spec:
+  hostNetwork: true
+  containers:
+  - name: node-driver-registrar
+    image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.16.0
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 29653
+        host: localhost

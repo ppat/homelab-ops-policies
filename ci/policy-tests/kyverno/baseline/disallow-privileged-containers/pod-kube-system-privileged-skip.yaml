@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `kube-system` member of `exempt-node-level-namespaces`. EVERY MEMBER OF THAT `in
+# [...]` LIST GETS ITS OWN FIXTURE: a single fixture would prove the entry fires, not that the
+# list still names every namespace it should.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-9k2vq
+  namespace: kube-system
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

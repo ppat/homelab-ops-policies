@@ -1,6 +1,23 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check
+# procMount_baseline
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ../restricted/restrict-volume-types.yaml (the PSS-mirror family conventions).
+#
+# THE CHECK FILE THIS MIRRORS IS `check_procMount_baseline.go`, not `check_procMount.go`: PSS
+# policy version v1.35 split the control in two when SIG-Auth added a Restricted-tier sibling,
+# `check_procMount_restricted.go` (kubernetes/kubernetes PR #132157), which re-tightens the same
+# field unconditionally. The snapshot marker above names the baseline half deliberately; a resync
+# that diffs against the wrong half will conclude the userns condition below is wrong.
+#
+# This policy has NO estate exemptions: no exemptions/disallow-proc-mount.yaml, no `patches:`
+# entry in ../kustomization.yaml. Its `matchConditions` list is nevertheless non-empty, and the
+# entry in it is NOT an exemption -- see the block above `matchConditions:` below. The append
+# seam is unaffected either way: `op: add` onto `/spec/matchConditions/-` appends to a populated
+# list exactly as to an empty one, and every entry is ANDed.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-proc-mount
   annotations:
@@ -8,37 +25,76 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
-      The default /proc masks are set up to reduce attack surface and should be required. This policy
-      ensures nothing but the default procMount can be specified. Note that in order for users
-      to deviate from the `Default` procMount requires setting a feature gate at the API
-      server.
+      The default /proc masks are set up to reduce attack surface and should be required. This
+      policy ensures nothing but the default procMount can be specified.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: check-proc-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Changing the proc mount from the default is not allowed. The fields
-        spec.containers[*].securityContext.procMount, spec.initContainers[*].securityContext.procMount,
-        and spec.ephemeralContainers[*].securityContext.procMount must be unset or
-        set to `Default`.
-      pattern:
-        spec:
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(procMount): "Default"
-          =(initContainers):
-          - =(securityContext):
-              =(procMount): "Default"
-          containers:
-          - =(securityContext):
-              =(procMount): "Default"
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  # THE hostUsers CONDITION IS PSS SEMANTICS, NOT AN ESTATE EXEMPTION, which is why it sits in
+  # the pure mirror rather than under exemptions/. At policy version v1.35 the Baseline procMount
+  # check is relaxed for pods in a user namespace; the Restricted-tier check re-tightens it. Any
+  # other userns-aware mirror in this repo carries the same block; keep the spelling identical so
+  # it stays greppable.
+  #
+  # A matchCondition RATHER THAN A DISJUNCT IN THE VALIDATION, because PSS's semantics is "the
+  # check does not run", and only a matchCondition reproduces that: the resource reports `skip`,
+  # not `pass`. The difference is observable, not cosmetic -- `kyverno test` rejects a `pass`
+  # assertion on a `hostUsers: false` fixture with "Want pass, got skip". `pass` would claim the
+  # pod satisfied the rule; it did not, the rule never ran. What is NOT established is whether a
+  # live cluster's PolicyReport writes a `skip` ROW for a matchConditions-filtered resource or
+  # simply omits it, so say "the check is skipped", not "you will see a Skip row".
+  #
+  # WHAT THIS COSTS AT ADMISSION ON 1.36: nothing, and the reason matters more than it looks.
+  # Core API validation (`ValidateSecurityContext()`) refuses `procMount: Unmasked` on any pod
+  # with `hostUsers` true or unset, with no feature gate on the branch. So every pod this policy
+  # does not skip is a pod the apiserver already refused, and every pod that could carry
+  # `Unmasked` is one this policy skips -- Baseline procMount is inert at admission by
+  # construction. It still earns its place as a faithful mirror and still fires in background
+  # scans over pods created under an older apiserver, and it means the Restricted-tier mirror is
+  # not belt-and-braces: it is the only one of the pair that can flag a live `Unmasked`.
+  #
+  # ADJACENT FACT, so nobody proposes the same relaxation next door: `hostUsers: false` also makes
+  # the apiserver forbid `hostNetwork`, `hostPID`, `hostIPC` and `volumeDevices` on the same pod.
+  # A userns pod cannot also be a host-namespace pod, so a hostUsers skip on
+  # ./disallow-host-network.yaml, ./disallow-host-pid.yaml or ./disallow-host-ipc.yaml would be
+  # unreachable.
+  matchConditions:
+  - name: skip-user-namespaced-pods
+    # Root inside a user namespace is unprivileged on the host, which is the property these
+    # checks exist to guarantee -- hence the relaxation. `== true` is not redundant: it is what
+    # makes the expression statically bool.
+    expression: "object.spec.?hostUsers.orValue(true) == true"
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # All three container lists concatenated, mirroring pod-security-admission's own
+  # `visitContainers()`; see ./disallow-privileged-containers.yaml for what that costs a sidecar.
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?procMount.orValue('Default') == 'Default')
+    message: >-
+      Changing the proc mount from the default is not allowed. The fields
+      spec.containers[*].securityContext.procMount,
+      spec.initContainers[*].securityContext.procMount,
+      and spec.ephemeralContainers[*].securityContext.procMount must be unset or
+      set to `Default`.

@@ -1,0 +1,27 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `kube-system` member of `exempt-node-level-namespaces` in
+# ../../../../../pod-security-standard/baseline/exemptions/disallow-host-path.yaml.
+#
+# EVERY MEMBER OF THAT ONE `in [...]` LIST GETS ITS OWN FIXTURE, here and in the sibling
+# `...-hostpath-skip.yaml` files. A single fixture would prove the entry fires, not that the list
+# still names every namespace it should -- dropping one is invisible to a suite that exercises
+# only one member.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-proxy-9k2vq
+  namespace: kube-system
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

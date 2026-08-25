@@ -1,0 +1,17 @@
+---
+# EXPECTED: `pass` against both the built policy and the pure mirror.
+#
+# The empty-list edge of `object.spec.?volumes.orValue([]).all(...)`: `spec.volumes` is absent
+# entirely, `.orValue([])` supplies the empty list, and `.all()` over it is true. Without this
+# fixture the null-safety half of the expression is untested -- upstream's own CEL ports have
+# shipped without it and crashed on exactly this shape (see
+# ../../best-practices/restrict-node-port/kyverno-test.yaml's policy header).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volumeless-workload-7c8d6f9b4-mk2rl
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY. This policy has NO exemptions and therefore no
+# `skip` rows, which means the pass rows alone could not tell "the rule is intact" from "the
+# policy was deleted".
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload-5f7d9b46c-tn4wq
+  namespace: default
+spec:
+  hostIPC: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail`.
+#
+# THE MOST IMPORTANT FIXTURE IN THIS DIRECTORY: a pod opting out of confinement through the
+# FIELD and setting no AppArmor annotation at all. A policy watching only the deprecated beta
+# annotation reports `pass` here while real PSA rejects the pod -- the failure mode the field
+# expression exists to close, and the one nothing else in this suite would catch.
+#
+# This is the pod-level half of the field channel. Its container/init/ephemeral siblings are the
+# other `...-field-unconfined-fail.yaml` fixtures here.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-field-unconfined-workload-9b966fd69-bsmhz
+  namespace: default
+spec:
+  securityContext:
+    appArmorProfile:
+      type: Unconfined
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

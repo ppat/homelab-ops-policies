@@ -1,0 +1,18 @@
+---
+# EXPECTED: `pass`.
+#
+# AN EMPTY ANNOTATION VALUE IS ALLOWED, matching `len(profile) == 0 || ...` in
+# check_appArmorProfile.go. This fixture is what holds the mirror to the standard in the STRICT
+# direction: a mirror that rejected the empty value would drift just as surely as one that let
+# `unconfined` through, and is harder to notice because it never lets anything through.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: empty-annotation-workload-6cf66bb57f-dhwpk
+  namespace: default
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/app: ''
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

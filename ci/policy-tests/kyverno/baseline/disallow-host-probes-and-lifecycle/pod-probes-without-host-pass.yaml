@@ -1,0 +1,31 @@
+---
+# EXPECTED: `pass`.
+#
+# THE ORDINARY SHAPE, and the fixture that stops this policy from being accidentally right by
+# rejecting probes in general: all three probe types, both handler kinds,
+# plus an `exec` handler and a `grpc` handler -- neither of which HAS a host field, so the
+# optional chain must yield '' for them rather than erroring.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: probed-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+    startupProbe:
+      exec:
+        command: [/bin/true]
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    livenessProbe:
+      grpc:
+        port: 9090

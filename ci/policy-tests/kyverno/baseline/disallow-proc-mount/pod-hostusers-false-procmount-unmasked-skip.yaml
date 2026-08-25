@@ -1,0 +1,25 @@
+---
+# EXPECTED: `skip`.
+#
+# THE LOAD-BEARING FIXTURE FOR THE hostUsers RELAXATION, and the one that makes the Skip/Pass
+# distinction falsifiable rather than a claim in a comment. Declaring `result: pass` on this row
+# makes the suite fail with "Want pass, got skip" -- so the assertion that PSS SKIPS the check for
+# a user-namespaced pod, rather than the pod merely satisfying it, is genuinely tested here.
+#
+# Non-vacuous by construction: this pod carries `procMount: Unmasked`, a real violation of the
+# rule. Its twin pod-hostusers-true-procmount-unmasked-fail.yaml differs in exactly one field.
+#
+# THIS IS ALSO THE ONLY `Unmasked` SHAPE IN THIS DIRECTORY A 1.36 APISERVER WOULD ACCEPT: core
+# API validation refuses `procMount: Unmasked` unless `hostUsers` is false.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: userns-workload-9b966fd69-bsmhz
+  namespace: default
+spec:
+  hostUsers: false
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      procMount: Unmasked

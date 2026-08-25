@@ -1,0 +1,51 @@
+---
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check hostNamespaces
+#
+# House style: ../../best-practices/restrict-node-port.yaml and
+# ../restricted/restrict-volume-types.yaml. Why PSS's single `hostNamespaces` check is three
+# policies here: see disallow-host-network.yaml's header.
+#
+# The exemptions in exemptions/disallow-host-pid.yaml are the hostPID ones ALONE. The hostNetwork
+# exemptions are not repeated here and must not be; hostIPC has none at all.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-host-pid
+  annotations:
+    policies.kyverno.io/title: Disallow Host PID Namespace
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
+    policies.kyverno.io/description: >-
+      The host process ID namespace allows access to shared information and can be used to
+      elevate privileges. Pods should not be allowed access to it. This policy ensures the
+      field which makes use of the host PID namespace is unset or set to `false`.
+spec:
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  - expression: >-
+      !object.spec.?hostPID.orValue(false)
+    message: >-
+      Sharing the host pid namespaces is disallowed. The field spec.hostPID must be
+      unset or set to `false`.

@@ -1,0 +1,131 @@
+---
+# CLI tier for disallow-privileged-containers. House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the conventions for this tier) and
+# ../../restricted/restrict-volume-types/kyverno-test.yaml (why an exemption-carrying policy
+# needs a built document and a pure document). Neither is restated.
+#
+# ONE FIXTURE-NAMING RULE THAT NEITHER OF THOSE FILES STATES: a `resources:` selector is
+# `<namespace>/<name>`, so two fixture FILES in the same `Test` document sharing a namespace AND
+# a name are indistinguishable to the selector. The collision is silent -- no error, no
+# duplicate-key complaint; a row simply lands on whichever resource the loader kept, and the
+# other fixture is never asserted on. Combined with the house reference's point that a selector
+# matching nothing BROADENS rather than fails, the result is a suite that goes green while
+# testing something other than what it claims. Every fixture in a directory therefore gets a
+# distinct `namespace`+`name` pair. Reusing a name ACROSS directories is fine and is done
+# deliberately here (`default/ordinary-workload-...` recurs in several suites): each `Test`
+# document loads only its own `resources:` list.
+#
+# WHAT THIS SUITE COVERS beyond the exemption set: the three-container-list concatenation.
+# pod-init-container-privileged-fail.yaml (a native sidecar) and
+# pod-ephemeral-container-privileged-fail.yaml (a `kubectl debug` shell) are the only fixtures in
+# the baseline suite that exercise the `initContainers` and `ephemeralContainers` terms of the
+# expression -- a mirror that dropped either term passes every other fixture here.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-privileged-containers-built
+policies:
+- ../../../.build/baseline/disallow-privileged-containers.yaml
+resources:
+- pod-privileged-fail.yaml
+- pod-not-privileged-pass.yaml
+- pod-init-container-privileged-fail.yaml
+- pod-ephemeral-container-privileged-fail.yaml
+- pod-kube-system-privileged-skip.yaml
+- pod-longhorn-privileged-skip.yaml
+- pod-csi-driver-nfs-privileged-skip.yaml
+- pod-system-upgrade-privileged-skip.yaml
+- pod-tailscale-privileged-skip.yaml
+- pod-node-problem-detector-privileged-skip.yaml
+- pod-virt-handler-privileged-skip.yaml
+- pod-virt-handler-generatename-privileged-skip.yaml
+- pod-not-npd-in-monitoring-privileged-fail.yaml
+- pod-npd-name-outside-monitoring-privileged-fail.yaml
+- pod-not-virt-handler-in-kubevirt-privileged-fail.yaml
+results:
+- policy: disallow-privileged-containers
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  result: pass
+# The rule still objects: an ordinary pod, a sidecar, an ephemeral debug container, and each
+# glob's two conjuncts falsified one at a time.
+- policy: disallow-privileged-containers
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/sidecar-workload-844d7c96b-fq8vn
+  - default/debugged-workload-77955b8c45-52ls7
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - default/node-problem-detector-impostor
+  - kubevirt/virt-api-6794fd7fd6-9429f
+  result: fail
+# Every exemption firing, one row per member of the namespace list. `skip`, not `pass`:
+# every one of these pods sets `privileged: true`. `kubevirt/` -- namespace, slash, EMPTY name --
+# addresses the generateName-only fixture.
+- policy: disallow-privileged-containers
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/kube-proxy-9k2vq
+  - longhorn-system/longhorn-manager-rg2fl
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  - system-upgrade/apply-k3s-server-on-node-abc12
+  - tailscale/ts-homelab-bmjbv-0
+  - monitoring/node-problem-detector-fxjb6
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-privileged-containers-pure
+policies:
+- ../../../../../pod-security-standard/baseline/disallow-privileged-containers.yaml
+resources:
+- pod-privileged-fail.yaml
+- pod-not-privileged-pass.yaml
+- pod-init-container-privileged-fail.yaml
+- pod-ephemeral-container-privileged-fail.yaml
+- pod-kube-system-privileged-skip.yaml
+- pod-longhorn-privileged-skip.yaml
+- pod-csi-driver-nfs-privileged-skip.yaml
+- pod-system-upgrade-privileged-skip.yaml
+- pod-tailscale-privileged-skip.yaml
+- pod-node-problem-detector-privileged-skip.yaml
+- pod-virt-handler-privileged-skip.yaml
+- pod-virt-handler-generatename-privileged-skip.yaml
+- pod-not-npd-in-monitoring-privileged-fail.yaml
+- pod-npd-name-outside-monitoring-privileged-fail.yaml
+- pod-not-virt-handler-in-kubevirt-privileged-fail.yaml
+results:
+- policy: disallow-privileged-containers
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  result: pass
+# THE FIRING ASSERTION: every pod the built policy skips is a real violation of the pure mirror.
+- policy: disallow-privileged-containers
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/sidecar-workload-844d7c96b-fq8vn
+  - default/debugged-workload-77955b8c45-52ls7
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - default/node-problem-detector-impostor
+  - kubevirt/virt-api-6794fd7fd6-9429f
+  - kube-system/kube-proxy-9k2vq
+  - longhorn-system/longhorn-manager-rg2fl
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  - system-upgrade/apply-k3s-server-on-node-abc12
+  - tailscale/ts-homelab-bmjbv-0
+  - monitoring/node-problem-detector-fxjb6
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: fail

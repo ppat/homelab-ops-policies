@@ -1,0 +1,21 @@
+---
+# EXPECTED: `pass`.
+#
+# The `.orValue('Default')` edge, in all three of its shapes at once: a container with a
+# `securityContext` that has no `procMount` key, a container with no `securityContext` at all,
+# and two absent container lists. Without this fixture the null-safety of the expression is
+# untested -- and a CEL port that reached for `object.spec.containers[0].securityContext.procMount`
+# directly would raise an evaluation error here rather than returning true.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unset-procmount-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10

@@ -1,0 +1,67 @@
+---
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check hostNamespaces
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape and CEL
+# conventions) and ../restricted/restrict-volume-types.yaml (the PSS-mirror family: the
+# `PSS-SNAPSHOT:` marker, the empty `matchConditions` seam, `autogen.podControllers.controllers:
+# []`). Nothing either says is restated here or in the sibling files named below.
+#
+# ONE OF THREE POLICIES COVERING PSS's SINGLE `hostNamespaces` CHECK, with disallow-host-pid.yaml
+# and disallow-host-ipc.yaml. They are separate files because `spec.matchConditions` is
+# POLICY-WIDE while the three fields carry three DIFFERENT exemption sets -- see
+# exemptions/disallow-host-network.yaml and exemptions/disallow-host-pid.yaml for which workload
+# is excused from which field, and note there is no exemption file for hostIPC at all. Joined
+# into one policy, each field would inherit the other two's exemptions; the alternative is
+# pushing the exemptions back inside the validation expressions, which is the layering the
+# pure-mirror/patch split exists to undo.
+#
+# The cost, recorded once here rather than in all three: three PolicyReport policy names where
+# PSS reports one check. Nothing consumes those names programmatically and this repo is
+# Audit-mode.
+#
+# PSS's own check granularity is NOT a constraint on this. pod-security-admission implements all
+# three fields in a single `hostNamespaces` check, but that is its internal bookkeeping (one
+# CheckResult, one ForbiddenDetail string). Fidelity means the same admission decision on the
+# same pod, which the three files reproduce exactly.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-host-network
+  annotations:
+    policies.kyverno.io/title: Disallow Host Network Namespace
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
+    policies.kyverno.io/description: >-
+      The host network namespace allows access to shared information and can be used to
+      elevate privileges. Pods should not be allowed access to it. This policy ensures the
+      field which makes use of the host network namespace is unset or set to `false`.
+spec:
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  - expression: >-
+      !object.spec.?hostNetwork.orValue(false)
+    message: >-
+      Sharing the host network namespaces is disallowed. The field spec.hostNetwork
+      must be unset or set to `false`.

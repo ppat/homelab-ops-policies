@@ -1,0 +1,16 @@
+---
+# EXPECTED: `pass`.
+#
+# The all-absent edge: no probes, no lifecycle, no containers beyond the required list. Every
+# link of the optional chain `c.?livenessProbe.?httpGet.?host.orValue('')` is exercised as
+# absent here. A port written with direct field access instead would raise an evaluation error
+# on this pod rather than returning true.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bare-workload-6b9f4c8d5-x2kqp
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

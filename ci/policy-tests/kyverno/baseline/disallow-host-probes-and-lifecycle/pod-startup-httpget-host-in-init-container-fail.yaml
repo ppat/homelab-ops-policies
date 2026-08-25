@@ -1,0 +1,25 @@
+---
+# EXPECTED: `fail` (probe message).
+#
+# Two things at once, both otherwise uncovered: the `startupProbe` type, and the `initContainers`
+# term of the concatenation -- via a NATIVE SIDECAR (`restartPolicy: Always`), which is the only
+# kind of initContainer that may carry a startupProbe at all. pod-security-admission does no
+# sidecar special-casing, so the mirror must not either.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-startup-host-workload-fd4b5c598-pv8pn
+  namespace: default
+spec:
+  initContainers:
+  - name: log-rotate
+    image: registry.k8s.io/pause:3.10
+    restartPolicy: Always
+    startupProbe:
+      httpGet:
+        path: /ready
+        port: 8080
+        host: 192.168.8.1
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

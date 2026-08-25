@@ -1,0 +1,45 @@
+---
+# CLI tier for disallow-host-ipc. House-style reference:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml.
+#
+# ONE `Test` DOCUMENT, not two, because this policy has no exemption patch: `kustomize build`
+# output and the pure mirror are the same policy, so a second document would assert nothing new.
+# (Compare ../disallow-host-network/ and ../disallow-host-pid/, which do have one.) `policies:`
+# still points at built output, which is the invariant -- a future exemption is then covered here
+# automatically rather than silently bypassing the suite.
+#
+# MOST OF THE FIXTURES HERE ARE ANTI-LEAK ASSERTIONS FOR THE THREE-POLICY SPLIT: each is a pod
+# that one of the two sibling policies DOES exempt, carrying a hostIPC violation instead. They
+# are what makes "the split partitions the exemption sets correctly" a falsifiable claim rather
+# than a code-review observation. Read their individual headers.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-ipc
+policies:
+- ../../../.build/baseline/disallow-host-ipc.yaml
+resources:
+- pod-hostipc-fail.yaml
+- pod-no-hostipc-pass.yaml
+- pod-virt-handler-hostipc-fail.yaml
+- pod-csi-nfs-hostipc-fail.yaml
+- pod-node-exporter-hostipc-fail.yaml
+results:
+# `pass`, not `skip`: this policy has no `matchConditions` entries at all, so nothing can be
+# filtered out before evaluation. A `skip` appearing anywhere in this file means an exemption
+# leaked in from a sibling policy -- which is the entire hazard the three-way split removes.
+- policy: disallow-host-ipc
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  result: pass
+- policy: disallow-host-ipc
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - kubevirt/virt-handler-54dpv
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  result: fail

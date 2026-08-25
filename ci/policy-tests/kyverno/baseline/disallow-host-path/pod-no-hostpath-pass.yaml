@@ -1,0 +1,23 @@
+---
+# EXPECTED: `pass` against both the built policy and the pure mirror.
+#
+# Carries volumes -- deliberately, and of a type this policy has nothing to say about -- so that
+# `pass` here means "the allow decision was made about hostPath" rather than "there was nothing
+# to look at". A pod with no `volumes:` key at all is covered separately by
+# pod-no-volumes-pass.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-workload-6b9f4c8d5-x2kqp
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  volumes:
+  - name: config
+    configMap:
+      name: app-config
+  - name: scratch
+    emptyDir:
+      sizeLimit: 16Mi

@@ -1,0 +1,14 @@
+---
+# EXPECTED: `pass`. The `localhost/*` prefix form, which is a `.startsWith` rather than an
+# equality and so needs its own fixture.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: localhost-annotation-workload-844d7c96b-fq8vn
+  namespace: default
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/app: localhost/k8s-apparmor-example-deny-write
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

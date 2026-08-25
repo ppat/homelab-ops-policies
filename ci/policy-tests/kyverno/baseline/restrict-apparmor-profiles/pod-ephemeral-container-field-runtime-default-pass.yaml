@@ -1,0 +1,22 @@
+---
+# EXPECTED: `pass`.
+#
+# NON-VACUITY CONTROL: a COMPLIANT ephemeralContainer. It
+# proves the ephemeral-container `fail` is caused by the AppArmor value rather than by the mere
+# presence of an `ephemeralContainers` list -- a plausible way for a hand-written CEL port to be
+# accidentally right for the wrong reason.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-field-compliant-workload-79dbb95cdb-t2t8j
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      appArmorProfile:
+        type: RuntimeDefault

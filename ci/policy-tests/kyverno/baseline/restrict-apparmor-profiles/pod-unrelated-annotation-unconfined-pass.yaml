@@ -1,0 +1,18 @@
+---
+# EXPECTED: `pass`.
+#
+# THE PREFIX-GUARD CONTROL. An annotation whose VALUE is `unconfined` but whose key is not in the
+# AppArmor family. Without this fixture, an expression that had lost its
+# `!k.startsWith(...) ||` guard -- and so constrained every annotation on the pod -- would look
+# correct against every other fixture here.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unrelated-annotation-workload-77955b8c45-52ls7
+  namespace: default
+  annotations:
+    example.com/security-posture: unconfined
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

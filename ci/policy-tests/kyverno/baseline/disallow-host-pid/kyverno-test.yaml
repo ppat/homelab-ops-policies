@@ -1,0 +1,91 @@
+---
+# CLI tier for disallow-host-pid. House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the conventions for this tier) and
+# ../../restricted/restrict-volume-types/kyverno-test.yaml (why an exemption-carrying policy
+# needs a built document and a pure document).
+#
+# WHAT THIS SUITE ADDS BEYOND ITS OWN POLICY: pod-csi-nfs-hostpid-fail.yaml is an ANTI-LEAK
+# assertion for the three-policy split of PSS's `hostNamespaces` check. Read its header. Its
+# twin lives in ../disallow-host-ipc/.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-pid-built
+policies:
+- ../../../.build/baseline/disallow-host-pid.yaml
+resources:
+- pod-hostpid-fail.yaml
+- pod-no-hostpid-pass.yaml
+- pod-node-exporter-hostpid-skip.yaml
+- pod-virt-handler-hostpid-skip.yaml
+- pod-virt-handler-generatename-hostpid-skip.yaml
+- pod-not-virt-handler-in-kubevirt-hostpid-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-hostpid-fail.yaml
+- pod-csi-nfs-hostpid-fail.yaml
+results:
+- policy: disallow-host-pid
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  result: pass
+# The rule still objects: an ordinary pod; each half of the virt-handler exemption falsified on
+# its own; and a namespace that IS exempt from the sibling hostNetwork policy but not from this
+# one.
+- policy: disallow-host-pid
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - kubevirt/virt-api-6794fd7fd6-9429f
+  - default/virt-handler-impostor
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  result: fail
+# The two estate exemptions firing. `skip`, not `pass`: every one of these pods sets
+# `hostPID: true`. `kubevirt/` -- namespace, slash, EMPTY name -- addresses the generateName-only
+# fixture.
+- policy: disallow-host-pid
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-pid-pure
+policies:
+- ../../../../../pod-security-standard/baseline/disallow-host-pid.yaml
+resources:
+- pod-hostpid-fail.yaml
+- pod-no-hostpid-pass.yaml
+- pod-node-exporter-hostpid-skip.yaml
+- pod-virt-handler-hostpid-skip.yaml
+- pod-virt-handler-generatename-hostpid-skip.yaml
+- pod-not-virt-handler-in-kubevirt-hostpid-fail.yaml
+- pod-virt-handler-name-outside-kubevirt-hostpid-fail.yaml
+- pod-csi-nfs-hostpid-fail.yaml
+results:
+- policy: disallow-host-pid
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  result: pass
+# THE FIRING ASSERTION: every pod the built policy skips is a real violation here.
+- policy: disallow-host-pid
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - kubevirt/virt-api-6794fd7fd6-9429f
+  - default/virt-handler-impostor
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - kubevirt/virt-handler-54dpv
+  - kubevirt/
+  result: fail

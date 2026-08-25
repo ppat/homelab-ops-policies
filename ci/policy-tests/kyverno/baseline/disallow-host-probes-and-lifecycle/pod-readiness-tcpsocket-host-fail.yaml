@@ -1,0 +1,17 @@
+---
+# EXPECTED: `fail` (probe message). The `tcpSocket` handler on a readiness probe -- a different
+# probe type AND a different handler type from the liveness/httpGet fixture, so the two together
+# cover both axes of the probe half of the expression.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tcp-host-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    readinessProbe:
+      tcpSocket:
+        port: 6443
+        host: 10.0.0.1

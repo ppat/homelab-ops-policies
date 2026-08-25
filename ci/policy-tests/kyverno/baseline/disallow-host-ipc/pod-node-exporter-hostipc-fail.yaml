@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail`.
+#
+# ANTI-LEAK ASSERTION. The node-exporter glob is the one exemption appearing in BOTH sibling
+# policies, as two separate entries. It appears in neither for hostIPC, and node-exporter has no
+# need of the host IPC namespace.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-prometheus-stack-prometheus-node-exporter-p95kc
+  namespace: monitoring
+spec:
+  hostIPC: true
+  containers:
+  - name: node-exporter
+    image: quay.io/prometheus/node-exporter:v1.10.0

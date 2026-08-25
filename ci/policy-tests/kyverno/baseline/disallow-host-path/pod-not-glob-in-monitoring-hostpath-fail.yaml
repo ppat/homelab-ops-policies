@@ -1,0 +1,23 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# NAME conjunct of both monitoring globs, falsified. `monitoring` is NOT exempted wholesale, unlike the four
+# namespaces in `exempt-node-level-namespaces` -- this row going `skip` would mean one of the globs had been
+# widened into a namespace exemption.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: grafana-786bb9ffd6-dqkl2
+  namespace: monitoring
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

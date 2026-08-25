@@ -1,0 +1,94 @@
+---
+# CLI tier for disallow-host-network. Read
+# ../../best-practices/restrict-node-port/kyverno-test.yaml first (house-style reference for this
+# tier) and ../../restricted/restrict-volume-types/kyverno-test.yaml second (why a policy WITH an
+# exemption patch needs two `Test` documents rather than one). Neither is restated here.
+#
+# The built/pure pair states the firing-fixture rule in falsifiable form: every pod the built
+# policy `skip`s must be a real violation of the pure mirror, or the `skip` proves nothing about
+# the exemption.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-network-built
+policies:
+- ../../../.build/baseline/disallow-host-network.yaml
+resources:
+- pod-hostnetwork-fail.yaml
+- pod-no-hostnetwork-pass.yaml
+- pod-csi-nfs-hostnetwork-skip.yaml
+- pod-metallb-speaker-hostnetwork-skip.yaml
+- pod-node-exporter-hostnetwork-skip.yaml
+- pod-node-exporter-generatename-hostnetwork-skip.yaml
+- pod-not-node-exporter-in-monitoring-hostnetwork-fail.yaml
+- pod-node-exporter-name-outside-monitoring-hostnetwork-fail.yaml
+results:
+- policy: disallow-host-network
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  result: pass
+# The rule still objects: an ordinary pod, plus each half of the name+namespace exemption
+# falsified on its own.
+- policy: disallow-host-network
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - monitoring/grafana-786bb9ffd6-dqkl2
+  - default/kube-prometheus-stack-prometheus-node-exporter-impostor
+  result: fail
+# The three estate exemptions firing. `skip`, not `pass`: every one of these pods sets
+# `hostNetwork: true`, so `pass` would mean the RULE had been weakened rather than the pod
+# exempted. Declaring `pass` on any of these rows makes the suite fail with "Want pass, got
+# skip". `monitoring/` -- namespace, slash, EMPTY name -- addresses the generateName-only fixture.
+- policy: disallow-host-network
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  - metallb-system/metallb-speaker-7vp5r
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - monitoring/
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-network-pure
+policies:
+- ../../../../../pod-security-standard/baseline/disallow-host-network.yaml
+resources:
+- pod-hostnetwork-fail.yaml
+- pod-no-hostnetwork-pass.yaml
+- pod-csi-nfs-hostnetwork-skip.yaml
+- pod-metallb-speaker-hostnetwork-skip.yaml
+- pod-node-exporter-hostnetwork-skip.yaml
+- pod-node-exporter-generatename-hostnetwork-skip.yaml
+- pod-not-node-exporter-in-monitoring-hostnetwork-fail.yaml
+- pod-node-exporter-name-outside-monitoring-hostnetwork-fail.yaml
+results:
+- policy: disallow-host-network
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/compliant-workload-6b9f4c8d5-x2kqp
+  result: pass
+# THE FIRING ASSERTION. Every pod the built policy skips is a real violation here, so each `skip`
+# above is attributable to its exemption and nothing else. The pods that fail under both policies
+# are listed here too: under the pure mirror there is no `skip` result at all, so a
+# `matchConditions` entry leaking into the mirror file turns one of these rows red.
+- policy: disallow-host-network
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - monitoring/grafana-786bb9ffd6-dqkl2
+  - default/kube-prometheus-stack-prometheus-node-exporter-impostor
+  - csi-driver-nfs/csi-nfs-node-bz2xx
+  - metallb-system/metallb-speaker-7vp5r
+  - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - monitoring/
+  result: fail

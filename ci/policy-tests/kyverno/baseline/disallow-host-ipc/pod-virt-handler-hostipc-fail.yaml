@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail`.
+#
+# ANTI-LEAK ASSERTION for the three-policy split. virt-handler is exempt from hostPID -- see
+# ../disallow-host-pid/pod-virt-handler-hostpid-skip.yaml, which reports `skip` on a structurally
+# identical pod. It is NOT exempt from hostIPC, and the rationale in
+# ../../../../../pod-security-standard/baseline/exemptions/disallow-host-pid.yaml says so
+# explicitly ("virt-handler doesn't set hostNetwork or hostIPC"). Because `spec.matchConditions`
+# is policy-wide, folding the three checks into one policy would turn this row green -- silently.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  hostIPC: true
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0
