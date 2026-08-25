@@ -1,0 +1,36 @@
+---
+# EXPECTED: `skip`.
+#
+# Name-glob exemption 4 of 4: `virt-launcher*` in `sandbox-docker` + `sandbox-talos`.
+#
+# DELIBERATELY SYNTHETIC, and labelled as such so nobody mistakes it for estate reality. A real
+# virt-launcher pod is created directly by virt-controller against the VirtualMachineInstance, not
+# by a Deployment, DaemonSet or StatefulSet -- so after the redesign
+# (../../../../../best-practices/require-probes.yaml matches only those three kinds) the
+# virt-launcher exemption has nothing in the real estate to fire on. It is retained anyway for the
+# reason its in-policy comment gives at length: the rationale is the durable part.
+#
+# This fixture is what keeps the retained expression HONEST rather than merely present. A
+# `virt-launcher`-prefixed StatefulSet exists nowhere but this directory, but it exercises exactly
+# the predicate the policy carries, so if the expression is mistyped -- wrong namespace list,
+# `==` instead of `startsWith`, a lost `generateName` term -- this row goes red instead of the
+# error sitting undetected behind an exemption that never fires. Its non-vacuous twin is the
+# `default`-namespace unprobed StatefulSet ./statefulset-no-probes-fail.yaml.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: virt-launcher-talos-vm
+  namespace: sandbox-talos
+spec:
+  serviceName: virt-launcher-talos-vm
+  selector:
+    matchLabels:
+      app: virt-launcher-talos-vm
+  template:
+    metadata:
+      labels:
+        app: virt-launcher-talos-vm
+    spec:
+      containers:
+      - name: compute
+        image: registry.internal/virt-launcher:v1.6.0

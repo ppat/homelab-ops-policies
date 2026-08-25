@@ -1,0 +1,23 @@
+---
+# EXPECTED: `fail`.
+#
+# The core assertion of the redesign, kind 2 of 3 -- DaemonSet, matched directly. Each of the
+# three kinds gets its own fixture because each is a separate entry in `matchConstraints.
+# resourceRules[].resources`, and deleting one leaves the other two green.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: log-collector
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: log-collector
+  template:
+    metadata:
+      labels:
+        app: log-collector
+    spec:
+      containers:
+      - name: collector
+        image: registry.internal/collector:v1.2.3

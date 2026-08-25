@@ -1,0 +1,24 @@
+---
+# EXPECTED: `skip`.
+#
+# Namespace exemption, 2 of 4 (`kube-system`). Written as a DaemonSet rather than a Deployment so
+# the namespace exemptions are exercised across kinds too -- a `matchCondition` reads
+# `object.metadata`, which is kind-independent, and this fixture is what makes that claim testable
+# rather than assumed.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-proxy-shim
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: kube-proxy-shim
+  template:
+    metadata:
+      labels:
+        app: kube-proxy-shim
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

@@ -1,0 +1,22 @@
+---
+# EXPECTED: `skip`.
+#
+# Namespace exemption, 3 of 4 (`longhorn-system`), on the third kind.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: longhorn-engine-manager
+  namespace: longhorn-system
+spec:
+  serviceName: longhorn-engine-manager
+  selector:
+    matchLabels:
+      app: longhorn-engine-manager
+  template:
+    metadata:
+      labels:
+        app: longhorn-engine-manager
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

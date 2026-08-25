@@ -1,0 +1,23 @@
+---
+# EXPECTED: `fail`.
+#
+# Non-vacuity twin B for the metallb-speaker exemption: right NAME, wrong namespace. Proves the
+# exemption is a conjunction of namespace AND name rather than a bare name glob -- the failure
+# mode where a workload anywhere in the estate can opt out of the policy by choosing its name.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: metallb-speaker
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: metallb-speaker
+  template:
+    metadata:
+      labels:
+        app: metallb-speaker
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

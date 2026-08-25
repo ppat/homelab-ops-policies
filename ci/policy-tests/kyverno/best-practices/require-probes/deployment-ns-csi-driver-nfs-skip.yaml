@@ -1,0 +1,29 @@
+---
+# EXPECTED: `skip`.
+#
+# Namespace exemption, 1 of 4 (`csi-driver-nfs`). `skip`, NOT `pass`: this controller has an
+# unprobed container, so it IS a violation -- `pass` here would mean the RULE had been weakened
+# rather than the exemption applied, which is a different policy. Declaring `pass` on this row
+# makes the suite fail with "Want pass, got skip", so the distinction is observable in this tier
+# and is not cosmetic.
+#
+# Non-vacuity of the four namespace rows comes from ./deployment-no-probes-fail.yaml and its two
+# siblings: identically-shaped unprobed controllers in `default`, which fail. Same shape, same
+# containers, different namespace, opposite result.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-node-driver
+  namespace: csi-driver-nfs
+spec:
+  selector:
+    matchLabels:
+      app: nfs-node-driver
+  template:
+    metadata:
+      labels:
+        app: nfs-node-driver
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

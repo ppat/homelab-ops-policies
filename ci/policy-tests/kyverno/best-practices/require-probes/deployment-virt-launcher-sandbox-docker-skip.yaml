@@ -1,0 +1,26 @@
+---
+# EXPECTED: `skip`.
+#
+# The SECOND namespace of the virt-launcher exemption (`sandbox-docker`). Also synthetic -- see
+# ./statefulset-virt-launcher-sandbox-talos-skip.yaml for why.
+#
+# Both namespaces get a fixture because the exemption is scoped to exactly these two rather than
+# left open to any future VM namespace, and a two-element list is precisely where a copy-paste
+# drops an element. One fixture per element is the only thing that notices.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: virt-launcher-docker-vm
+  namespace: sandbox-docker
+spec:
+  selector:
+    matchLabels:
+      app: virt-launcher-docker-vm
+  template:
+    metadata:
+      labels:
+        app: virt-launcher-docker-vm
+    spec:
+      containers:
+      - name: compute
+        image: registry.internal/virt-launcher:v1.6.0

@@ -1,0 +1,21 @@
+---
+# EXPECTED: `skip`.
+#
+# Namespace exemption, 4 of 4 (`system-upgrade`).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: system-upgrade-controller
+  namespace: system-upgrade
+spec:
+  selector:
+    matchLabels:
+      app: system-upgrade-controller
+  template:
+    metadata:
+      labels:
+        app: system-upgrade-controller
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0
