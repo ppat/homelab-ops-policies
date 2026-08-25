@@ -1,0 +1,83 @@
+---
+# Cluster tier for disallow-host-probes-and-lifecycle. House-style reference:
+# ../../restricted/restrict-volume-types/chainsaw-test.yaml -- read its header for the shape, the
+# `template: false` rule, the bar for adding a test at this tier, and the deterministic
+# webhook-readiness gate. None of that is restated.
+#
+# WHY THIS POLICY EARNS CLUSTER TIME: it is the only policy in the repo with no upstream
+# `kyverno/policies` file behind it, hand-authored from `check_hostProbesAndhostLifecycle.go`, so
+# it carries the highest translation risk per line. The CLI tier owns WHICH shapes it flags, and
+# does so more thoroughly, in ../../../kyverno/baseline/disallow-host-probes-and-lifecycle/. What
+# only a cluster adds is below, and each item is invisible offline:
+#
+#   1. The policy reaches Ready against the real webhook -- policy-ready.yaml.
+#   2. Under `[Deny]`, the API server actually refuses these pods. That is worth more here than
+#      for most policies: `host` on a probe is a perfectly legal field a 1.36 API server accepts,
+#      so a rejection is attributable to Kyverno. (Contrast disallow-proc-mount, whose violating
+#      shape core API validation refuses on its own, which is why that policy gets no test here.)
+#   3. BOTH `validations[]` entries reject, separately -- a single bad pod would leave half the
+#      policy untested.
+#   4. The shape this control actually meets in the field, arriving through a REAL CONTROLLER --
+#      daemonset-loopback-probe-host.yaml. This is also the end-to-end check on
+#      `autogen.podControllers.controllers: []`: the DaemonSet is admitted and its pods are not.
+#
+# NON-VACUOUS PAIRING throughout: every rejected fixture has an admitted sibling differing in
+# exactly one `host:` line, so no step can pass because the webhook was never wired up, and none
+# can pass because the policy rejects probes or lifecycle hooks in general.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-probes-and-lifecycle
+spec:
+  template: false
+  steps:
+  - name: install-policy
+    try:
+    - apply:
+        file: ../../../.build/baseline/disallow-host-probes-and-lifecycle.yaml
+    - patch:
+        resource:
+          apiVersion: policies.kyverno.io/v1
+          kind: ValidatingPolicy
+          metadata:
+            name: disallow-host-probes-and-lifecycle
+          spec:
+            validationActions:
+            - Deny
+    - assert:
+        file: policy-ready.yaml
+    - script:
+        content: ../../scripts/wait-for-webhook-deny.sh pod-liveness-httpget-host-rejected.yaml 90
+        check:
+          ($error == null): true
+
+  - name: probe-host-denied-plain-probe-allowed
+    try:
+    - apply:
+        file: pod-probes-without-host-admitted.yaml
+    - apply:
+        file: pod-liveness-httpget-host-rejected.yaml
+        expect:
+        - check:
+            ($error != null): true
+
+  - name: lifecycle-host-denied-plain-hook-allowed
+    try:
+    - apply:
+        file: pod-lifecycle-without-host-admitted.yaml
+    - apply:
+        file: pod-prestop-httpget-host-rejected.yaml
+        expect:
+        - check:
+            ($error != null): true
+
+  - name: controller-created-pods-are-refused
+    try:
+    # The DaemonSet itself must be ADMITTED: this policy matches `pods` only and autogen is off,
+    # so nothing rewrites it into a controller-shaped variant. If this apply fails, autogen has
+    # been turned back on.
+    - apply:
+        file: daemonset-loopback-probe-host.yaml
+    # ...and its pods must be refused, so it never becomes ready.
+    - assert:
+        file: daemonset-loopback-probe-host-blocked.yaml

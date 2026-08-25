@@ -1,0 +1,31 @@
+---
+# EXPECTED: ADMITTED, under a real admission webhook with the policy patched to `[Deny]`.
+#
+# The non-vacuous half of the flagship pair. It carries an httpGet liveness probe and a tcpSocket
+# readiness probe -- so it differs from its rejected sibling in exactly one field, `host` -- which
+# is what stops the pair from being satisfied by a policy that simply rejects every probe.
+#
+# The probe thresholds are deliberately slack. `pause` listens on nothing, so these probes will
+# never succeed; what is under test is ADMISSION, not readiness, and a long period plus a high
+# failure threshold keeps the pod from restarting mid-test and muddying the log.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: probes-without-host
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      periodSeconds: 300
+      failureThreshold: 30
+    readinessProbe:
+      tcpSocket:
+        port: 8080
+      periodSeconds: 300
+      failureThreshold: 30

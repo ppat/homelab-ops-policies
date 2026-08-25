@@ -1,0 +1,15 @@
+---
+# EXPECTED: `pass` against both the built policy and the pure mirror.
+#
+# `pass`, NOT `skip`: this pod is evaluated and satisfies the rule. The field is absent entirely,
+# which is the normal way to write "an ordinary pod" -- and this tier has no API-server defaulting
+# step, so `.orValue(false)` is the only reason the expression sees a value at all.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-workload-6b9f4c8d5-x2kqp
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

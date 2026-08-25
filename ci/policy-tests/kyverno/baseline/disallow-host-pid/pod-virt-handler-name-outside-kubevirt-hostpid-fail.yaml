@@ -1,0 +1,14 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# The NAMESPACE conjunct of `exempt-virt-handler`, falsified. Right name, wrong namespace.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-impostor
+  namespace: default
+spec:
+  hostPID: true
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0

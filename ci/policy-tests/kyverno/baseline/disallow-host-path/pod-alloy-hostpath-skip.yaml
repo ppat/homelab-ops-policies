@@ -1,0 +1,25 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `exempt-alloy` entry of
+# ../../../../../pod-security-standard/baseline/exemptions/disallow-host-path.yaml -- a
+# name-AND-namespace-scoped glob, unlike the four namespace-wide members of
+# `exempt-node-level-namespaces`. Both of its conjuncts are falsified separately by the
+# `...-fail` fixtures in this directory.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: alloy-bxg4j
+  namespace: logging
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

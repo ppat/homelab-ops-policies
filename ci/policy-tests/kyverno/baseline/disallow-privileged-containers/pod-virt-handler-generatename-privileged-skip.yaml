@@ -1,0 +1,19 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# The generateName-only shape, pinning the `(name + generateName)` concatenation. A CLI-tier
+# shape only -- at live admission a controller-created Pod carries both fields. See
+# ../../restricted/restrict-volume-types/pod-virt-handler-generatename-hostpath-skip.yaml.
+#
+# Selector in kyverno-test.yaml: `kubevirt/` -- namespace, slash, EMPTY name.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: virt-handler-
+  namespace: kubevirt
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

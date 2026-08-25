@@ -1,0 +1,20 @@
+---
+# EXPECTED: `fail`.
+#
+# The `ephemeralContainers` term: a `kubectl debug` shell opting out of confinement, which is
+# exactly the shape that makes an unwatched ephemeral-container list worth caring about.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ephemeral-field-unconfined-workload-6878c58dfc-vzscf
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+  ephemeralContainers:
+  - name: debugger
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      appArmorProfile:
+        type: Unconfined

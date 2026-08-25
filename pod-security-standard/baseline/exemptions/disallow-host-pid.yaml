@@ -1,0 +1,36 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-host-pid.yaml, applied by the `patches:` entry in
+# ../kustomization.yaml. House-style reference for this file shape:
+# ../../restricted/exemptions/restrict-volume-types.yaml.
+#
+# THESE ARE THE hostPID EXEMPTIONS AND ONLY THOSE. The `csi-driver-nfs` and `metallb-system`
+# exemptions in ./disallow-host-network.yaml belong to the hostNetwork field; they are not
+# repeated here and must not be.
+
+# kube-prometheus-stack's node-exporter DaemonSet reads per-node process and kernel state, which
+# requires seeing the host's PID namespace. Name- AND namespace-scoped together:
+# `monitoring` holds many workloads with no such need.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-exporter
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('kube-prometheus-stack-prometheus-node-exporter'))
+
+# virt-handler sets hostPID: true to see and supervise the qemu process libvirt starts on the
+# node -- it has no other way to monitor a process that isn't a child of its own container. See
+# ./disallow-privileged-containers.yaml for what bounds virt-handler's access generally. Verified
+# against upstream KubeVirt's generated manifests: virt-handler doesn't set hostNetwork or
+# hostIPC, so neither ../disallow-host-network.yaml nor ../disallow-host-ipc.yaml carries a
+# KubeVirt exemption, and virt-operator/virt-api/virt-controller/virt-launcher don't need this
+# one either.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

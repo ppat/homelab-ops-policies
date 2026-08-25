@@ -1,0 +1,24 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# A Pod carrying `metadata.generateName` and NO `metadata.name`, pinning that the
+# `(name + generateName)` concatenation in the exemption expression still matches when only one
+# of the two fields is present. This is a CLI-TIER SHAPE ONLY: at live admission the API server
+# generates the name before the webhook runs, so a controller-created Pod arrives carrying both
+# fields -- see
+# ../../../restricted/restrict-volume-types/pod-virt-handler-generatename-hostpath-skip.yaml. The
+# concatenation is kept because it is defensive and costs nothing.
+#
+# Its `resources:` selector in kyverno-test.yaml is `monitoring/` -- namespace, slash, EMPTY
+# name. The bare-name form does not reach a generateName-only pod, and a selector matching
+# nothing silently broadens to every resource in the file rather than failing.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: kube-prometheus-stack-prometheus-node-exporter-
+  namespace: monitoring
+spec:
+  hostNetwork: true
+  containers:
+  - name: node-exporter
+    image: quay.io/prometheus/node-exporter:v1.10.0

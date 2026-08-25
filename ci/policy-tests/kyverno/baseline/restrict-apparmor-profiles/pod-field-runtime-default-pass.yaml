@@ -1,0 +1,14 @@
+---
+# EXPECTED: `pass`. The allowed field value at pod level.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-field-runtime-default-workload-767bdf6d7-pwccr
+  namespace: default
+spec:
+  securityContext:
+    appArmorProfile:
+      type: RuntimeDefault
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

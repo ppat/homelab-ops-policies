@@ -1,0 +1,28 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# The generateName-only shape, pinning the `(name + generateName)` concatenation. ONE FIXTURE OF
+# THIS SHAPE PER POLICY, not one per glob: the concatenation is a property of the expression
+# template, not of any particular glob.
+#
+# A CLI-tier shape only -- at live admission a controller-created Pod carries both fields. See
+# ../../restricted/restrict-volume-types/pod-virt-handler-generatename-hostpath-skip.yaml.
+#
+# Selector in kyverno-test.yaml: `monitoring/` -- namespace, slash, EMPTY name.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: node-problem-detector-
+  namespace: monitoring
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

@@ -1,0 +1,18 @@
+---
+# EXPECTED: `fail`. The container-level half of the field channel: the pod-level securityContext
+# is compliant and one ordinary container opts out.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: container-field-unconfined-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  securityContext:
+    appArmorProfile:
+      type: RuntimeDefault
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      appArmorProfile:
+        type: Unconfined

@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# The NAMESPACE conjunct of `exempt-node-exporter`, falsified. Right name, wrong namespace. A
+# name-only exemption would `skip` this pod, which is why namespace is always part of the
+# predicate.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-prometheus-stack-prometheus-node-exporter-impostor
+  namespace: default
+spec:
+  hostNetwork: true
+  containers:
+  - name: node-exporter
+    image: quay.io/prometheus/node-exporter:v1.10.0

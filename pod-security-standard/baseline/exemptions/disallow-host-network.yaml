@@ -1,0 +1,47 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-host-network.yaml, applied by the `patches:` entry
+# in ../kustomization.yaml. House-style reference for this file shape:
+# ../../restricted/exemptions/restrict-volume-types.yaml, whose numbered conventions apply here
+# unchanged and are not restated.
+#
+# THESE ARE THE hostNetwork EXEMPTIONS AND ONLY THOSE. `csi-driver-nfs` and `metallb-system` are
+# excused from this field alone -- not from hostPID or hostIPC -- which is why the three fields
+# are three policies rather than one; see ../disallow-host-network.yaml's header.
+
+# csi-driver-nfs: both the controller Deployment and the node DaemonSet run with
+# hostNetwork: true so the in-kernel NFS client mounts they set up are made in the node's network
+# namespace, where the kubelet and the mounted filesystem actually live. Namespace-scoped: csi-driver-nfs is a
+# dedicated single-chart namespace.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-csi-driver-nfs-namespace
+    expression: >-
+      object.metadata.?namespace.orValue('') != 'csi-driver-nfs'
+
+# metallb-system: the speaker DaemonSet and the frr-k8s DaemonSet program the node's own routing
+# and ARP/NDP state and speak BGP from the node's addresses, which is only possible in the host
+# network namespace. Namespace-scoped: metallb-system is a dedicated single-chart namespace.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-metallb-system-namespace
+    expression: >-
+      object.metadata.?namespace.orValue('') != 'metallb-system'
+
+# kube-prometheus-stack's node-exporter DaemonSet reads per-node kernel and hardware counters and
+# exposes them on the node's own address. Name-scoped AND namespace-scoped together, unlike the
+# two namespace-wide exemptions above: `monitoring` holds many other workloads that have no
+# business in the host network namespace.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-exporter
+    # Line-broken before `.startsWith` to stay inside the repo's 120-character yamllint limit.
+    # Continuation lines of a `>-` scalar must sit at the SAME indent as the first
+    # (`indentation.check-multi-line-strings`), so the fold inserts a space and CEL parses
+    # `(...) .startsWith(...)` identically.
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('kube-prometheus-stack-prometheus-node-exporter'))

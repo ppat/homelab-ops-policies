@@ -1,0 +1,22 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `csi-driver-nfs` member of `exempt-node-level-namespaces`; see
+# ./pod-kube-system-hostpath-skip.yaml for why each member has its own fixture.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-nfs-node-bz2xx
+  namespace: csi-driver-nfs
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

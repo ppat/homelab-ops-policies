@@ -1,6 +1,23 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check appArmorProfile
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ../restricted/restrict-volume-types.yaml (the PSS-mirror family conventions).
+#
+# WHY THIS POLICY EXISTS AT ALL, since upstream `kyverno/policies` has no CEL variant of it and a
+# reader will meet that absence first: the deletion was upstream's EDITORIAL choice, not
+# Kubernetes dropping the control. `check_appArmorProfile.go` is present on release-1.36 and
+# AppArmor is a live Baseline check there. The rule this file mirrors is Kubernetes', so
+# upstream's catalogue is not the authority on whether to keep it.
+#
+# The related "nothing here uses AppArmor, so drop it" argument misreads the check: it does not
+# REQUIRE AppArmor, it forbids a pod OPTING OUT of confinement. That intent is host-OS-agnostic.
+#
+# This policy has NO estate exemptions: no exemptions/restrict-apparmor-profiles.yaml, no
+# `patches:` entry in ../kustomization.yaml. `matchConditions: []` is declared as the seam a
+# future exemption would append to.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: restrict-apparmor-profiles
   annotations:
@@ -8,30 +25,86 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod, Annotation
-    policies.kyverno.io/minversion: 1.3.0
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       On supported hosts, the 'runtime/default' AppArmor profile is applied by default.
       The default policy should prevent overriding or disabling the policy, or restrict
-      overrides to an allowed set of profiles. This policy ensures Pods do not
-      specify any other AppArmor profiles than `runtime/default` or `localhost/*`.
+      overrides to an allowed set of profiles. This policy ensures Pods do not specify any
+      AppArmor profile other than `RuntimeDefault` or `Localhost`, through either the
+      `securityContext.appArmorProfile` field or the deprecated
+      `container.apparmor.security.beta.kubernetes.io/*` annotation.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: app-armor
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Specifying other AppArmor profiles is disallowed. The annotation
-        `container.apparmor.security.beta.kubernetes.io` if defined
-        must not be set to anything other than `runtime/default` or `localhost/*`.
-      pattern:
-        =(metadata):
-          =(annotations):
-            =(container.apparmor.security.beta.kubernetes.io/*): "runtime/default | localhost/*"
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # TWO CHANNELS, BOTH ENFORCED, and NEITHER IS REDUNDANT. `check_appArmorProfile.go` inspects
+  # the `securityContext.appArmorProfile` field and the deprecated
+  # `container.apparmor.security.beta.kubernetes.io/*` annotation, and a pod can opt out of
+  # confinement through either one. The field is how anyone has written it since Kubernetes 1.30,
+  # so a policy watching only the annotation reports green on the channel actually in use; the
+  # annotation is deprecated in NAME ONLY and PSA still rejects `unconfined` set that way, so a
+  # policy watching only the field reopens the same hole from the other end. Dropping either
+  # expression is a mirror-fidelity regression, not a simplification.
+  #
+  # The two `message:` strings are deliberately distinguishable: `kyverno apply` emits one row
+  # per POLICY, not per validation, so the message is the only thing that says which channel
+  # fired.
+
+  # FIELD PATH -- pod-level `spec.securityContext.appArmorProfile.type` plus every container in
+  # all three lists, mirroring the check's `visitContainers()`. Absent is allowed: the Go check
+  # only fires when `SecurityContext != nil && AppArmorProfile != nil`, which `.orValue(
+  # 'RuntimeDefault')` reproduces by defaulting an absent field to an allowed value. `Localhost`
+  # is allowed on the TYPE alone -- the check does not inspect `localhostProfile`.
+  - expression: >-
+      object.spec.?securityContext.?appArmorProfile.?type.orValue('RuntimeDefault')
+      in ['RuntimeDefault', 'Localhost'] &&
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?appArmorProfile.?type.orValue('RuntimeDefault')
+      in ['RuntimeDefault', 'Localhost'])
+    message: >-
+      AppArmor profile type must be RuntimeDefault or Localhost. The fields
+      spec.securityContext.appArmorProfile.type,
+      spec.containers[*].securityContext.appArmorProfile.type,
+      spec.initContainers[*].securityContext.appArmorProfile.type, and
+      spec.ephemeralContainers[*].securityContext.appArmorProfile.type must be unset or
+      set to `RuntimeDefault` or `Localhost`.
+
+  # ANNOTATION PATH. An EMPTY annotation value is allowed, matching the check's
+  # `len(profile) == 0 || profile == "runtime/default" || strings.HasPrefix(profile,
+  # "localhost/")`. A mirror that omitted the empty case would be stricter than the standard it
+  # mirrors, which is drift in the direction that is hardest to notice because it never lets
+  # anything through.
+  #
+  # The `!k.startsWith(...) ||` guard is the "only constrain keys in this family" half; without
+  # it the expression constrains every annotation on the pod.
+  - expression: >-
+      object.metadata.?annotations.orValue({}).all(k,
+      !k.startsWith('container.apparmor.security.beta.kubernetes.io/') ||
+      object.metadata.annotations[k] == '' ||
+      object.metadata.annotations[k] == 'runtime/default' ||
+      object.metadata.annotations[k].startsWith('localhost/'))
+    message: >-
+      Specifying other AppArmor profiles is disallowed. The annotation
+      `container.apparmor.security.beta.kubernetes.io` if defined
+      must not be set to anything other than empty, `runtime/default` or `localhost/*`.

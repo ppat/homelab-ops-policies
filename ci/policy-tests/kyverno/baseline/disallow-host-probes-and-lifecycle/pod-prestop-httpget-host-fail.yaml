@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail` (LIFECYCLE message, not the probe one).
+#
+# The lifecycle half of the policy, which is a SEPARATE `validations[]` entry with its own
+# message. If this row ever reports the probe message instead, the two expressions have been
+# merged or reordered -- `kyverno apply` emits one row per policy, so the message text is the
+# only thing that distinguishes the two channels.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prestop-host-workload-9b966fd69-bsmhz
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    lifecycle:
+      preStop:
+        httpGet:
+          path: /drain
+          port: 8080
+          host: 169.254.169.254

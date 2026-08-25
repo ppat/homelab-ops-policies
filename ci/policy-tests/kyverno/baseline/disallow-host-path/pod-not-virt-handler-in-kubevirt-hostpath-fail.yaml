@@ -1,0 +1,22 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# NAME conjunct of `exempt-virt-handler`, falsified. The exemption is name-scoped on purpose: a namespace-wide
+# `kubevirt` exclusion would silently admit hostPath for anything else deployed there.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-api-6794fd7fd6-9429f
+  namespace: kubevirt
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+      readOnly: true
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /

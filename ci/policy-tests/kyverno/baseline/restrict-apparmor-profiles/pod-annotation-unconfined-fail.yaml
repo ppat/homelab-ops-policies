@@ -1,0 +1,17 @@
+---
+# EXPECTED: `fail`.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY at the annotation channel: `unconfined` set through
+# the deprecated beta annotation, which PSA still rejects on release-1.36 despite the annotation
+# being "deprecated" in name only.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unconfined-annotation-workload-5f7d9b46c-tn4wq
+  namespace: default
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/app: unconfined
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

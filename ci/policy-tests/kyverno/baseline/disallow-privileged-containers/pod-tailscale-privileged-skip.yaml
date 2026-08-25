@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `tailscale` member of `exempt-node-level-namespaces` -- the one this policy's list
+# has and ../disallow-host-path/'s does not (tailscale needs privileged mode for /dev/net/tun,
+# not a host path). This fixture has no counterpart there, and that asymmetry is intentional.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ts-homelab-bmjbv-0
+  namespace: tailscale
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

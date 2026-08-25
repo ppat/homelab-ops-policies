@@ -1,0 +1,24 @@
+---
+# EXPECTED: `pass`.
+#
+# The lifecycle counterpart of pod-probes-without-host-pass.yaml: both hook types, an `httpGet`
+# handler with no host and an `exec` handler. `exec` is by far the commonest real shape, so a
+# policy that rejected lifecycle hooks outright would break real workloads, and this fixture is
+# what catches that.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hooked-workload-77955b8c45-52ls7
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    lifecycle:
+      postStart:
+        httpGet:
+          path: /warm
+          port: 8080
+      preStop:
+        exec:
+          command: [/bin/sh, -c, sleep 15]

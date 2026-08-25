@@ -1,0 +1,27 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# THE THREE-LIST ASSERTION, first of two. The ordinary containers here are compliant; the
+# violation is in an initContainer that is also a NATIVE SIDECAR (`restartPolicy: Always`).
+# pod-security-admission does no special-casing of sidecars -- its `visitContainers()` iterates
+# all three lists identically, with zero `RestartPolicy` references in its policy directory -- so
+# a sidecar must carry a compliant securityContext itself. The mirror reproduces that by
+# concatenating the lists; without this fixture the `initContainers` term of the concatenation is
+# untested.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sidecar-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  initContainers:
+  - name: log-rotate
+    image: registry.k8s.io/pause:3.10
+    restartPolicy: Always
+    securityContext:
+      privileged: true
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: false

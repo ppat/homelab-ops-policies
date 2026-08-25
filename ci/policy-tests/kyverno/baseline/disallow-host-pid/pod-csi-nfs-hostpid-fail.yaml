@@ -1,0 +1,19 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# THE ANTI-LEAK ASSERTION FOR THE THREE-POLICY SPLIT, and the reason the split is not merely a
+# cosmetic file reorganisation. `csi-driver-nfs` is exempted NAMESPACE-WIDE from
+# ../disallow-host-network/ and from that policy only. Because `spec.matchConditions` is
+# policy-wide, a single policy covering all three host-namespace fields would grant this pod the
+# hostPID relaxation too. This fixture is what goes red if someone ever "simplifies" the three
+# files back into one.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-nfs-node-bz2xx
+  namespace: csi-driver-nfs
+spec:
+  hostPID: true
+  containers:
+  - name: nfs
+    image: registry.k8s.io/sig-storage/nfsplugin:v4.13.4
