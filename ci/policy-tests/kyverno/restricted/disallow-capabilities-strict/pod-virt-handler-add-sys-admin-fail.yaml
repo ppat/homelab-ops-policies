@@ -1,0 +1,29 @@
+---
+# EXPECTED: `fail` -- AND THIS IS THE MOST IMPORTANT ROW IN THE WAVE-E SPLIT.
+#
+# The legacy `disallow-capabilities-strict` ClusterPolicy excluded `virt-handler*`/`kubevirt` from
+# its `require-drop-all` rule ONLY. `spec.matchConditions` is policy-wide, so had the two rules
+# been carried into one `ValidatingPolicy`, that exclusion would silently have covered the
+# add-check too -- a real weakening, and one no `pass`-asserting fixture would notice. The §2.3
+# split is what prevents it and THIS FIXTURE IS WHAT PROVES THE SPLIT HELD: the same pod reports
+# `skip` in ../require-drop-all/ and `fail` here.
+#
+# So: if someone ever adds an exemptions/disallow-capabilities-strict.yaml carrying a copy of the
+# virt-handler entry, this row goes red. That is the alarm. The counterpart claim -- that
+# virt-handler does not need it, because its manifest never adds a named capability -- is the
+# legacy policy's own comment, preserved in
+# ../../../../../pod-security-standard/restricted/exemptions/require-drop-all.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  containers:
+  - name: virt-handler
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true
+      capabilities:
+        add:
+        - SYS_ADMIN

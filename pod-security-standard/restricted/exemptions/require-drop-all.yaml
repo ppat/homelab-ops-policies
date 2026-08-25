@@ -1,0 +1,40 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../require-drop-all.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml. This is a JSON6902 patch document, not a manifest. House-style
+# reference: ./restrict-volume-types.yaml -- its seven numbered conventions apply here unchanged.
+#
+# THIS EXEMPTION BELONGS TO THE DROP-ALL HALF ONLY. The legacy `disallow-capabilities-strict`
+# ClusterPolicy attached it to the `require-drop-all` rule and deliberately not to
+# `adding-capabilities-strict`; the §2.3 split exists so that distinction survives into a world
+# where `matchConditions` are policy-wide. Do not add a copy of this file for
+# ../disallow-capabilities-strict.yaml -- see that file's header.
+
+# virt-handler's containers don't set capabilities.drop: [ALL] -- Privileged: true (see
+# ../../baseline/exemptions/disallow-privileged-containers.yaml) already grants everything the
+# drop-list would otherwise strip, so declaring it would be cosmetic. The sibling rule
+# below (adding-capabilities-strict) isn't excluded: virt-handler's manifest never adds
+# a named capability either, so that check already passes on its own.
+#
+# MIGRATION NOTE (Phase 2 kind migration). The block above is ported VERBATIM from the legacy
+# policy's `exclude:` block and its argument is unchanged. Two of its references now resolve
+# differently and are worth spelling out rather than silently editing:
+#   * "see ../baseline/disallow-privileged-containers.yaml" -> the anchor rationale for
+#     virt-handler moved with the rest of the estate content into
+#     ../../baseline/exemptions/disallow-privileged-containers.yaml (§2.1). That file is the one
+#     place this repo argues the virt-handler case; cite it, do not restate it.
+#   * "The sibling rule below (adding-capabilities-strict)" -- there is no "below" any more. The
+#     sibling is now a separate policy, ../disallow-capabilities-strict.yaml, and the sentence is
+#     the reason it has no exemption patch of its own. That is exactly what
+#     ci/policy-tests/kyverno/restricted/require-drop-all/ asserts: the virt-handler fixture
+#     reports `skip` against require-drop-all and `fail` against disallow-capabilities-strict when
+#     it adds a capability, so a copy-paste of this file onto the add-check would turn that row
+#     red rather than passing unnoticed.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-handler'))

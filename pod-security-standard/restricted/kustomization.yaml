@@ -4,8 +4,15 @@ kind: Kustomization
 
 resources:
 - ../baseline
+# disallow-capabilities-strict.yaml is now the ADD-CHECK ONLY: it was one ClusterPolicy with two
+# rules whose `exclude:` blocks differed (`require-drop-all` excluded virt-handler, the add-check
+# excluded nothing), and `spec.matchConditions` is policy-wide. require-drop-all.yaml below is the
+# other half (design doc phase2.0-policy-migration-design-v3.md §2.3; full rationale in
+# require-drop-all.yaml's header). Keeping them joined would have widened the virt-handler
+# exemption to the add-check.
 - disallow-capabilities-strict.yaml
 - disallow-privilege-escalation.yaml
+- require-drop-all.yaml
 - require-run-as-non-root-user.yaml
 - require-run-as-nonroot.yaml
 - restrict-seccomp-strict.yaml
@@ -25,7 +32,18 @@ resources:
 # build. The thing that actually catches a mistyped target is the CLI-tier test asserting `skip`
 # on each exemption's firing fixture (ci/policy-tests/kyverno/restricted/restrict-volume-types/)
 # -- without the exemption those fixtures report `fail`. Do not add an entry here without one.
+#
+# ONE POLICY IN THIS PROFILE DELIBERATELY HAS NO ENTRY: disallow-capabilities-strict, the
+# add-check half of the §2.3 split -- attaching require-drop-all's virt-handler exemption to it is
+# the specific mistake the split exists to prevent. It still declares `matchConditions: []` in its
+# own file, which is the seam a future exemption appends to.
 patches:
+- path: exemptions/require-drop-all.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: require-drop-all
 - path: exemptions/restrict-volume-types.yaml
   target:
     group: policies.kyverno.io

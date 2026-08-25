@@ -1,0 +1,31 @@
+---
+# EXPECTED: `pass`.
+#
+# The `.orValue([])` edge, in three shapes at once: a container with a `capabilities` block that
+# has no `add` key, a container with a `securityContext` but no `capabilities`, and a container
+# with no `securityContext` at all. `.all()` over an empty list is true, which is what makes
+# "added nothing" pass. Without this fixture the null-safety of the expression is untested -- and
+# a CEL port reaching for `object.spec.containers[0].securityContext.capabilities.add` directly
+# would raise an evaluation error here rather than returning true.
+#
+# NOTE WHAT THIS POLICY DOES NOT ASK: none of these containers drops ALL, and that is not this
+# policy's business. ../require-drop-all/ flags exactly this pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: plain-workload-844d7c96b-fq8vn
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      capabilities:
+        drop:
+        - CHOWN
+  - name: sidecar
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      runAsNonRoot: true
+  - name: bare
+    image: registry.k8s.io/pause:3.10

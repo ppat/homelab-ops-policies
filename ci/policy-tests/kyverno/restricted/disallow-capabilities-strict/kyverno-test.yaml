@@ -1,0 +1,51 @@
+---
+# CLI tier for disallow-capabilities-strict -- the ADD-CHECK half of the §2.3 split of the legacy
+# policy of the same name. House-style references:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the five conventions) and
+# ../../baseline/disallow-privileged-containers/kyverno-test.yaml (the `<namespace>/<name>`
+# fixture-collision rule). Neither is restated.
+#
+# ONE `Test` DOCUMENT, not two, because this half has NO exemption patch: `kustomize build` output
+# and the pure mirror are the same policy. `policies:` still points at built output, so if an
+# exemption is ever added it is covered here automatically -- and
+# ./pod-virt-handler-add-sys-admin-fail.yaml is what would notice.
+#
+# READ ../require-drop-all/kyverno-test.yaml ALONGSIDE THIS ONE. The pair is what makes the split
+# falsifiable: there the virt-handler pod reports `skip`, here it reports `fail`.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-capabilities-strict
+policies:
+- ../../../.build/restricted/disallow-capabilities-strict.yaml
+resources:
+- pod-add-sys-admin-fail.yaml
+- pod-add-net-bind-service-pass.yaml
+- pod-no-capabilities-pass.yaml
+- pod-init-container-add-fail.yaml
+- pod-ephemeral-container-add-fail.yaml
+- pod-windows-add-sys-admin-pass.yaml
+- pod-virt-handler-add-sys-admin-fail.yaml
+results:
+# `default/windows-workload-...` is the §5.8 Windows disjunct firing. It is `pass`, not `skip`,
+# because PSS spells this exemption as an allow rather than as declining to run the check -- see
+# the fixture for why that distinction is kept.
+- policy: disallow-capabilities-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/netbind-workload-6b9f4c8d5-x2kqp
+  - default/plain-workload-844d7c96b-fq8vn
+  - default/windows-workload-cbf5bd649-mzqns
+  result: pass
+# The rule objects. `kubevirt/virt-handler-54dpv` is the load-bearing row of the whole §2.3
+# split -- the same pod reports `skip` against ../require-drop-all/ and must report `fail` here.
+- policy: disallow-capabilities-strict
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/sidecar-workload-77955b8c45-52ls7
+  - default/debugged-workload-5687cbcbf5-bkswh
+  - kubevirt/virt-handler-54dpv
+  result: fail

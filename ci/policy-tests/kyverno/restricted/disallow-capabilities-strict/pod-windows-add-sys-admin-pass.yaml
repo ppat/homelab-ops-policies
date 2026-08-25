@@ -1,0 +1,35 @@
+---
+# EXPECTED: `pass`.
+#
+# THE WINDOWS DISJUNCT FIRING (design §5.8), and non-vacuous by construction: this file is
+# ./pod-add-sys-admin-fail.yaml with `spec.os.name: windows` added and nothing else changed, so
+# the `pass` is attributable to the disjunct and to nothing else. Delete the disjunct from
+# ../../../../../pod-security-standard/restricted/disallow-capabilities-strict.yaml and this row
+# goes red.
+#
+# `pass`, NOT `skip`: the Windows exemption is a leading disjunct inside the validation, not a
+# `matchCondition`, because that is how PSS spells it -- `capabilitiesRestricted_1_25()` returns
+# `CheckResult{Allowed: true}`, an allow, rather than declining to run. Contrast the hostUsers
+# relaxation in ../../baseline/disallow-proc-mount/, which PSS genuinely SKIPS and which is
+# therefore a `matchCondition` reporting `skip`. The two are not interchangeable and the reports
+# read differently.
+#
+# INERT ON THIS ESTATE: there are no Windows nodes and nothing sets `spec.os.name`. The fixture
+# exists so the disjunct is falsifiable rather than decorative.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: windows-workload-cbf5bd649-mzqns
+  namespace: default
+spec:
+  os:
+    name: windows
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      capabilities:
+        drop:
+        - ALL
+        add:
+        - SYS_ADMIN
