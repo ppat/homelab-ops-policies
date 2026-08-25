@@ -6,10 +6,10 @@
 # net.ipv4.tcp_fin_timeout, net.ipv4.tcp_keepalive_intvl, net.ipv4.tcp_keepalive_probes (policy
 # 1.29); net.ipv4.tcp_rmem, net.ipv4.tcp_wmem (policy 1.32).
 #
-# Under the STRUCTURAL kind-migration commit (this file's first version) the allow-list is still
-# the pre-migration five-entry 1.22-era list, so this pod is expected to `fail`. The content-delta
-# commit that expands the allow-list to twelve entries flips the expectation below to `pass` in
-# the same commit -- see that commit's kyverno-test.yaml diff.
+# This pod now asserts `pass`: the content-delta commit expanded
+# ../../../../../pod-security-standard/baseline/restrict-sysctls.yaml's allow-list to twelve
+# entries. The prior (structural kind-migration only) commit asserted `fail` here -- see that
+# commit's kyverno-test.yaml for the pre-delta expectation.
 apiVersion: v1
 kind: Pod
 metadata:

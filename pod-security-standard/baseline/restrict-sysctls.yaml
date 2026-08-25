@@ -12,11 +12,27 @@
 #
 # check_sysctls.go: allow-list of sysctls considered kernel-namespaced/pod-isolated ("safe"),
 # checked against `spec.securityContext.sysctls` only (the one place the API allows them -- no
-# container-level equivalent exists). This is the MECHANICAL kind-migration commit -- the
-# allow-list stays the five entries the legacy 1.22-era file carried. The 5 -> 12 expansion
-# (design §5.3, verified against pss-research.md directly rather than the design doc's own
-# summary of it) lands in a separate follow-up commit on this same file, so a revert of just that
-# content refresh is possible without reverting the kind migration.
+# container-level equivalent exists).
+#
+# CONTENT DELTA (design §5.3): allow-list expanded from the legacy 1.22-era five entries to the
+# full k8s 1.36 / policy v1.35 twelve, on top of the structural kind-migration commit that ported
+# this file with the five-entry list unchanged. "Safe" is a kernel-namespacing property SIG-Node
+# evaluated per entry, not a policy preference -- the short list was an out-of-date copy, not
+# extra margin. Re-verified against pss-research.md directly (check_sysctls.go:85-106), not
+# against the design doc's own summary table, per this unit's instruction:
+#
+#   net.ipv4.ip_local_reserved_ports    policy 1.27 (commit ca4022c4d, 2023-01-31)
+#   net.ipv4.tcp_keepalive_time         policy 1.29 (commit b42b3f740)
+#   net.ipv4.tcp_fin_timeout            policy 1.29 (commit 1132fd0af)
+#   net.ipv4.tcp_keepalive_intvl        policy 1.29 (commit 1132fd0af)
+#   net.ipv4.tcp_keepalive_probes       policy 1.29 (commit 1132fd0af)
+#   net.ipv4.tcp_rmem                   policy 1.32 (PR #125234, commit ab87218cf)
+#   net.ipv4.tcp_wmem                   policy 1.32 (same PR)
+#
+# All seven confirmed present in pss-research.md's direct read of check_sysctls.go, matching the
+# design doc's §5.3 summary exactly -- no discrepancy found between the two. (1.37 adds two more,
+# net.ipv4.tcp_slow_start_after_idle and net.ipv4.tcp_notsent_lowat -- not yet, per the design;
+# the PSS-SNAPSHOT marker at the top of this file makes that a one-line future diff.)
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -61,10 +77,16 @@ spec:
       object.spec.?securityContext.?sysctls.orValue([]).all(s, s.name in [
       'kernel.shm_rmid_forced', 'net.ipv4.ip_local_port_range',
       'net.ipv4.ip_unprivileged_port_start', 'net.ipv4.tcp_syncookies',
-      'net.ipv4.ping_group_range'])
+      'net.ipv4.ping_group_range', 'net.ipv4.ip_local_reserved_ports',
+      'net.ipv4.tcp_keepalive_time', 'net.ipv4.tcp_fin_timeout',
+      'net.ipv4.tcp_keepalive_intvl', 'net.ipv4.tcp_keepalive_probes',
+      'net.ipv4.tcp_rmem', 'net.ipv4.tcp_wmem'])
     message: >-
       Setting additional sysctls above the allowed type is disallowed.
       The field spec.securityContext.sysctls must be unset or not use any other names
       than kernel.shm_rmid_forced, net.ipv4.ip_local_port_range,
-      net.ipv4.ip_unprivileged_port_start, net.ipv4.tcp_syncookies and
-      net.ipv4.ping_group_range.
+      net.ipv4.ip_unprivileged_port_start, net.ipv4.tcp_syncookies,
+      net.ipv4.ping_group_range, net.ipv4.ip_local_reserved_ports,
+      net.ipv4.tcp_keepalive_time, net.ipv4.tcp_fin_timeout,
+      net.ipv4.tcp_keepalive_intvl, net.ipv4.tcp_keepalive_probes,
+      net.ipv4.tcp_rmem, or net.ipv4.tcp_wmem.

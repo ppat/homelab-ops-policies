@@ -5,9 +5,8 @@
 # document: this policy carries no estate exemptions (design §3.1), so built output and the pure
 # mirror are identical.
 #
-# pod-new-safe-sysctls.yaml's expected result tracks which commit is checked out -- see that
-# fixture's own header. It reads `fail` on the structural kind-migration commit and `pass` once
-# the 5->12 content-delta commit lands on the same PR.
+# pod-new-safe-sysctls.yaml now asserts `pass` -- the content-delta commit expanded the mirror's
+# allow-list from five to twelve entries. See that fixture's own header.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -26,11 +25,11 @@ results:
   resources:
   - default/ordinary-workload
   - default/legacy-allowed-workload
+  - default/new-safe-sysctls-workload
   result: pass
 - policy: restrict-sysctls
   isValidatingPolicy: true
   kind: Pod
   resources:
   - default/disallowed-sysctl-workload
-  - default/new-safe-sysctls-workload
   result: fail
