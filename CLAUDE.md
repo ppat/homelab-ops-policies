@@ -15,11 +15,13 @@ change.
 
 ## Policy kinds
 
-The tree holds a mix. `best-practices/restrict-node-port.yaml` and
-`pod-security-standard/restricted/restrict-volume-types.yaml` are
-`policies.kyverno.io/v1 ValidatingPolicy`; the rest are still Kyverno's
+The tree holds a mix, and the `kind:` line in each policy file is the
+authority on which is which: a growing set is
+`policies.kyverno.io/v1 ValidatingPolicy`, the rest are still Kyverno's
 deprecated `ClusterPolicy`/`ClusterCleanupPolicy`, ported one at a time.
-Those two are the house-style references — their file headers state the
+`best-practices/restrict-node-port.yaml` and
+`pod-security-standard/restricted/restrict-volume-types.yaml` are the
+house-style references — their file headers state the
 conventions (`metadata.name` equals the file basename, alphabetical `spec`
 keys, null-safe statically-bool CEL, where provenance and snapshot comments
 go).

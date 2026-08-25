@@ -1,0 +1,20 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the exempt-namespaces matchCondition, standing in for all five namespaces in
+# that set. SYS_ADMIN is off the mirror's allow-list, so the `fail` half establishes that this pod
+# is a genuine violation and the `skip` half can then only be coming from the exemption patch.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-nfs-controller-6f9b8d5c7-abcde
+  namespace: csi-driver-nfs
+spec:
+  restartPolicy: Always
+  containers:
+  - name: csi-driver
+    image: ghcr.io/example/csi-driver-nfs:1.0.0
+    securityContext:
+      capabilities:
+        add:
+        - SYS_ADMIN

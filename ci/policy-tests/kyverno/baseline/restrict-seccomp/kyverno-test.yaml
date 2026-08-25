@@ -1,0 +1,30 @@
+---
+# CLI tier for restrict-seccomp. Read
+# ../../best-practices/restrict-node-port/kyverno-test.yaml first -- it is the house-style
+# reference and its numbered conventions all apply here. One `Test` document rather than the
+# `-built`/`-pure` pair: this policy carries no estate exemptions, so built output and the pure
+# mirror are the same policy.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-seccomp
+policies:
+- ../../../.build/baseline/restrict-seccomp.yaml
+resources:
+- pod-unset-pass.yaml
+- pod-runtimedefault-pass.yaml
+- pod-unconfined-fail.yaml
+results:
+- policy: restrict-seccomp
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload
+  - default/runtime-default-workload
+  result: pass
+- policy: restrict-seccomp
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/unconfined-workload
+  result: fail

@@ -1,0 +1,35 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-host-ports.yaml, applied by the `patches:` entry in
+# ../kustomization.yaml. A JSON6902 patch document, NOT a manifest. The conventions every
+# exemption file here follows are stated in
+# ../../restricted/exemptions/restrict-volume-types.yaml.
+#
+# Both entries name a workload as well as a namespace, because both namespaces hold more than the
+# component being excused. The prefixes are THIS ESTATE'S HELM RELEASE NAMES, not upstream
+# component names: rename a release and the exemption stops matching, which surfaces as the
+# workload turning up in the audit stream rather than as a red build or a failing test.
+#
+# Both carry the same cost -- any other pod sharing the prefix in that namespace inherits the
+# exemption -- and both become wrong the moment their namespace turns into somewhere arbitrary
+# workloads can be created.
+
+# metallb's speaker binds a host port on every node it runs on; no change to its manifest avoids
+# that while leaving it able to announce addresses.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-metallb-speaker
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'metallb-system' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith('metallb-speaker'))
+
+# node-exporter binds a host port for the same structural reason: reaching it through a Service
+# ClusterIP would lose which node a sample came from.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-exporter
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith(
+      'kube-prometheus-stack-prometheus-node-exporter'))
