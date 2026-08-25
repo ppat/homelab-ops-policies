@@ -1,0 +1,15 @@
+---
+# EXPECTED: `fail`.
+#
+# ANTI-LEAK ASSERTION #2. `csi-driver-nfs` is exempted namespace-wide from
+# ../disallow-host-network/ and from nothing else in this family.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-nfs-node-bz2xx
+  namespace: csi-driver-nfs
+spec:
+  hostIPC: true
+  containers:
+  - name: nfs
+    image: registry.k8s.io/sig-storage/nfsplugin:v4.13.4

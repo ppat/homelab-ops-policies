@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail`.
+#
+# ANTI-LEAK ASSERTION #1 for the three-way split (design doc
+# phase2.0-policy-migration-design-v3.md §2.3). virt-handler is exempt from hostPID -- see
+# ../disallow-host-pid/pod-virt-handler-hostpid-skip.yaml, which reports `skip` on a
+# structurally identical pod. It is NOT exempt from hostIPC, and the ported rationale comment in
+# ../../../../../pod-security-standard/baseline/exemptions/disallow-host-pid.yaml says so
+# explicitly ("virt-handler doesn't set hostNetwork or hostIPC"). In the legacy single
+# ClusterPolicy that separation was per-rule; on a `ValidatingPolicy` `spec.matchConditions` is
+# policy-wide, so joining the three checks back together would turn this row green -- silently.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  hostIPC: true
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0

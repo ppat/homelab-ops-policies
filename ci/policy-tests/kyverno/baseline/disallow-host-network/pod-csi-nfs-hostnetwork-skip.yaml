@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `exempt-csi-driver-nfs-namespace` entry of
+# ../../../../../pod-security-standard/baseline/exemptions/disallow-host-network.yaml. The
+# exemption is namespace-wide, so the pod's NAME is deliberately irrelevant here -- that is what
+# distinguishes this fixture from the name-scoped ones in this directory.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-nfs-node-bz2xx
+  namespace: csi-driver-nfs
+spec:
+  hostNetwork: true
+  containers:
+  - name: nfs
+    image: registry.k8s.io/sig-storage/nfsplugin:v4.13.4

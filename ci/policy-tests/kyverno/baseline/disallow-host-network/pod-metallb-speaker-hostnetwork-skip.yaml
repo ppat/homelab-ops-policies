@@ -1,0 +1,14 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `exempt-metallb-system-namespace` entry. Also namespace-wide.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: metallb-speaker-7vp5r
+  namespace: metallb-system
+spec:
+  hostNetwork: true
+  containers:
+  - name: speaker
+    image: quay.io/metallb/speaker:v0.15.2

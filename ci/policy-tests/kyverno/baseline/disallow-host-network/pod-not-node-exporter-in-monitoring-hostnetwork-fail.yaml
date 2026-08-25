@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# The NAME conjunct of `exempt-node-exporter`, falsified. Right namespace, wrong name: `monitoring`
+# is not exempted wholesale, unlike `csi-driver-nfs` and `metallb-system`. If this ever reports
+# `skip`, the exemption has been widened to a namespace-wide one.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: grafana-786bb9ffd6-dqkl2
+  namespace: monitoring
+spec:
+  hostNetwork: true
+  containers:
+  - name: grafana
+    image: docker.io/grafana/grafana:12.4.0

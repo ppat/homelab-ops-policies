@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires the `exempt-virt-handler` entry, the one carrying the ported hostPID rationale comment.
+# virt-handler is exempted from hostPID and from NOTHING ELSE in the host-namespaces family --
+# its siblings pod-virt-handler-hostipc-fail.yaml (in ../disallow-host-ipc/) assert the other
+# half of that claim, which only exists as an assertable claim because of the three-way split.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-handler-54dpv
+  namespace: kubevirt
+spec:
+  hostPID: true
+  containers:
+  - name: virt-handler
+    image: quay.io/kubevirt/virt-handler:v1.9.0

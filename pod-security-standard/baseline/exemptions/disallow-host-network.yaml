@@ -1,0 +1,58 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-host-network.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml. This is a JSON6902 patch document, not a manifest; see
+# ../../restricted/exemptions/restrict-volume-types.yaml, which is the house-style reference for
+# this file shape and states all seven conventions (negation, name+generateName concatenation,
+# trailing-`*` glob to `.startsWith`, namespace always in the predicate, no `spec.variables`).
+#
+# THESE THREE ENTRIES ARE THE `host-network-namespaces` RULE'S EXCLUSIONS AND ONLY THOSE. The
+# legacy `disallow-host-namespaces` ClusterPolicy scoped them per-rule; this file's existence is
+# the reason that policy was split three ways (see ../disallow-host-network.yaml's header).
+# `csi-driver-nfs` and `metallb-system` are exempt from the hostNetwork check ALONE -- they are
+# not exempt from hostPID or hostIPC, and pushing them into a joined policy would have granted
+# exactly that.
+#
+# The legacy `exclude:` block for this rule carried no rationale comments of its own; what
+# follows is therefore descriptive of the excluded workloads, not ported prose. Where a legacy
+# comment did exist it is ported verbatim (see ./disallow-host-pid.yaml and
+# ./disallow-privileged-containers.yaml).
+
+# csi-driver-nfs: both the controller Deployment and the node DaemonSet run with
+# hostNetwork: true so the in-kernel NFS client mounts they set up are made in the node's network
+# namespace, where the kubelet and the mounted filesystem actually live. Namespace-scoped, as it
+# was in the legacy policy -- csi-driver-nfs is a dedicated single-chart namespace.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-csi-driver-nfs-namespace
+    expression: >-
+      object.metadata.?namespace.orValue('') != 'csi-driver-nfs'
+
+# metallb-system: the speaker DaemonSet and the frr-k8s DaemonSet program the node's own routing
+# and ARP/NDP state and speak BGP from the node's addresses, which is only possible in the host
+# network namespace. Namespace-scoped, as it was in the legacy policy.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-metallb-system-namespace
+    expression: >-
+      object.metadata.?namespace.orValue('') != 'metallb-system'
+
+# kube-prometheus-stack's node-exporter DaemonSet reads per-node kernel and hardware counters and
+# exposes them on the node's own address. Name-scoped AND namespace-scoped together, unlike the
+# two namespace-wide exclusions above: `monitoring` holds many other workloads that have no
+# business in the host network namespace.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-node-exporter
+    # Line-broken before `.startsWith` because the glob is long enough to breach the repo's
+    # 120-character yamllint limit on one line. Every continuation line of a `>-` folded scalar
+    # must sit at the SAME indent as the first (`indentation.check-multi-line-strings`), so the
+    # fold inserts a space and CEL sees `(...) .startsWith(...)`, which parses identically. The
+    # design doc's own §2.2 example is written this way.
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('kube-prometheus-stack-prometheus-node-exporter'))
