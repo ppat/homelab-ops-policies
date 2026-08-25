@@ -1,0 +1,30 @@
+---
+# Profile ready-smoke for `best-practices`. See ../../restricted/ready-smoke/chainsaw-test.yaml
+# for the full rationale of this test shape -- it is the house-style reference.
+#
+# The one thing this profile needs that the two PSS profiles do not: a ClusterRole granting the
+# Kyverno cleanup controller delete on pods and replicasets, applied FIRST. Without it the
+# `apply:` step below does not merely leave the two cleanup policies un-Ready -- the cleanup
+# controller's admission webhook REJECTS them outright and the step fails. See
+# cleanup-controller-rbac.yaml for the measurement and for where the estate's real grant lives.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: best-practices-ready-smoke
+spec:
+  template: false
+  steps:
+  - name: grant-cleanup-controller-rbac
+    try:
+    - apply:
+        file: cleanup-controller-rbac.yaml
+  - name: install-profile
+    try:
+    - apply:
+        file: ../../../.build/best-practices/*.yaml
+  - name: assert-every-policy-ready
+    try:
+    - script:
+        content: ../../scripts/assert-built-profile-ready.sh ../../../.build/best-practices 120
+        check:
+          ($error == null): true

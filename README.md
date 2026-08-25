@@ -1,11 +1,24 @@
 # homelab-ops-policies
 
-Cluster-agnostic [Kyverno](https://kyverno.io/) `ClusterPolicy`/`ClusterCleanupPolicy`
-definitions. This repo holds policy content only — no Flux wiring, no
+Cluster-agnostic [Kyverno](https://kyverno.io/) policy definitions. This repo
+holds policy content only — no Flux wiring, no
 cluster-specific configuration, no awareness of what's consuming it. It's
 released independently and referenced by tag from wherever it's applied,
 the same way [`homelab-ops-kubernetes-apps`](https://github.com/ppat/homelab-ops-kubernetes-apps)
 modules are referenced from the cluster-wiring repo.
+
+> **Two policy kinds are in the tree.** Kyverno's `ClusterPolicy` and
+> `ClusterCleanupPolicy` are deprecated, and policies are being ported one at
+> a time to the CEL-based `policies.kyverno.io/v1` kinds. Ported so far:
+> `best-practices/restrict-node-port.yaml` and
+> `pod-security-standard/restricted/restrict-volume-types.yaml`.
+>
+> This matters to a consumer in one place: a `Kustomization` patch that
+> targets a policy by kind must target the kind that policy actually uses, so
+> a patch written against `kind: ClusterPolicy` silently matches nothing for
+> a ported policy. Pinning a released tag insulates you until you move to a
+> tag containing ported policies; that cutover is a coordinated change on
+> both sides.
 
 ## Groups
 
@@ -36,7 +49,11 @@ flowchart LR
 ## Pod Security Standards
 
 Ports the upstream [Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
-to Kyverno `ClusterPolicy` validation rules.
+to Kyverno validation rules. A ported policy file is an exemption-free mirror
+of the upstream standard, so it stays diffable against it; this estate's own
+exemptions sit beside it as kustomize patches in
+`pod-security-standard/<profile>/exemptions/` and build into the shipped
+result.
 
 | Policy | What it disallows/requires |
 | --- | --- |
@@ -79,11 +96,12 @@ Mixes validation, mutation, and scheduled cleanup:
 | `cleanup-bare-pods` | Cleanup | Deletes unowned (controller-less) Pods on a daily schedule |
 | `cleanup-empty-replicasets` | Cleanup | Deletes empty `ReplicaSet`s on a recurring schedule |
 
-Each policy excludes the system namespaces and workloads that legitimately
+Each policy exempts the system namespaces and workloads that legitimately
 need the behavior it otherwise disallows (e.g. `require-probes` doesn't apply
-to a handful of infra DaemonSets that have none) — the exact exclusion list
-is a policy-tuning detail that lives in, and should be read from, each
-policy's own `exclude` block rather than restated here.
+to a handful of infra DaemonSets that have none) — the exact list is a
+policy-tuning detail that should be read from the policy itself rather than
+restated here. `best-practices` policies carry theirs inline; Pod Security
+Standards policies carry theirs in the profile's `exemptions/` directory.
 
 ## Consuming this repo
 
@@ -120,13 +138,14 @@ spec:
     namespace: flux-system
 ```
 
-Every `Validate`-type policy here ships with whatever `validationFailureAction`
-its manifest sets (`Mutate` rules and `ClusterCleanupPolicy` don't have this
-field) — this repo doesn't know whether a given consumer wants violations to
-just report (`Audit`) or actually block admission (`Enforce`). A consumer
-that wants a different mode overrides it with a patch on its own
-`Kustomization`, targeting `kind: ClusterPolicy`, rather than this repo
-forking policy content per desired mode.
+Every validating policy here ships with whatever enforcement mode its
+manifest sets — this repo doesn't know whether a given consumer wants
+violations to just report or to actually block admission. A consumer wanting
+a different mode overrides it with a patch on its own `Kustomization`, rather
+than this repo forking policy content per desired mode. The field is
+`validationFailureAction` (`Audit`/`Enforce`) on `ClusterPolicy` and
+`validationActions` (`Audit`/`Deny`) on `ValidatingPolicy`, so the patch must
+target the kind the policy in question actually uses.
 
 ## Versioning and releases
 

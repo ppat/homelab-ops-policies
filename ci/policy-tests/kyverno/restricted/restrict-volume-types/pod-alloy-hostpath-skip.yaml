@@ -1,0 +1,42 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# FIRING FIXTURE for the `alloy*` / `logging` exemption. Every exemption in this repo has one:
+# without it the exemption could be deleted, mistyped, or scoped to the wrong namespace and
+# nothing would go red.
+#
+# Carries the hostPath half of what Alloy mounts as a node-level log collector; its allow-listed
+# volumes are omitted since the policy reads volume keys only.
+#
+# Its NAME-axis control is pod-not-alloy-in-logging-hostpath-fail.yaml -- without it, this
+# fixture would pass just as happily against a blanket exemption for the whole `logging`
+# namespace.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: alloy-logs-9k2vq
+  namespace: logging
+spec:
+  restartPolicy: Always
+  containers:
+  - name: alloy
+    image: docker.io/grafana/alloy:v1.12.1
+    volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+      readOnly: true
+  volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: machine-id
+    hostPath:
+      path: /etc/machine-id
+      type: File
+  - name: kubelet-pods
+    hostPath:
+      path: /var/lib/kubelet/pods
+  - name: positions
+    hostPath:
+      path: /var/lib/alloy/positions
+      type: DirectoryOrCreate

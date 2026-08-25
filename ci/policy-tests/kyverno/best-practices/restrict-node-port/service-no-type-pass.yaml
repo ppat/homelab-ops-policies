@@ -1,0 +1,25 @@
+---
+# EXPECTED: `pass`.
+#
+# THE FIXTURE THE HOUSE-STYLE CEL DEVIATION EXISTS FOR. `Service.spec.type` is optional and the
+# API server defaults it to ClusterIP, so this is the ordinary way a human writes an internal
+# Service -- and CEL has no notion of that default. Upstream kyverno/policies' vpol form
+# (`object.spec.type != 'NodePort'`) produces `Error: failed to load context: no such key: type`
+# on this exact resource; measured, which is why ../../../../../best-practices/restrict-node-port.yaml
+# writes `object.spec.?type.orValue('ClusterIP') != 'NodePort'` instead.
+#
+# Note WHY the CLI tier is where this has to be asserted and the Chainsaw tier cannot: a live API
+# server defaults `spec.type` before any webhook runs, so a cluster-tier test could never
+# construct the un-defaulted object. This tier evaluates fixture YAML with no defaulting step,
+# which makes it strictly stronger here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: headless-peers
+  namespace: monitoring
+spec:
+  clusterIP: None
+  selector:
+    app: peers
+  ports:
+  - port: 9000

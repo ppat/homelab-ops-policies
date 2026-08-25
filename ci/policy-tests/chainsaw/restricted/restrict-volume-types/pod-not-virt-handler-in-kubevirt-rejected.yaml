@@ -1,0 +1,22 @@
+---
+# EXPECTED: REJECTED by the admission webhook.
+#
+# NAME-AXIS control for the exempt-virt-handler matchCondition: right namespace, wrong name. If
+# `virt-handler`-prefix matching were ever dropped, every workload anyone puts in `kubevirt`
+# would get a free pass on hostPath -- i.e. on node-root access -- and the DaemonSet fixture
+# alongside would go on passing regardless. This is the fixture that turns red instead.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: some-other-kubevirt-workload
+  namespace: kubevirt
+spec:
+  restartPolicy: Never
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10
+  volumes:
+  - name: host-log
+    hostPath:
+      path: /var/log
+      type: Directory

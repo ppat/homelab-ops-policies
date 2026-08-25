@@ -1,0 +1,35 @@
+---
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
+#
+# NAME-axis control for the `alloy*` / `logging` exemption: right namespace, wrong name, same
+# hostPath volumes as pod-alloy-hostpath-skip.yaml. Drop `alloy*` from that exemption, leaving it
+# scoped to the namespace alone, and this pod starts being skipped -- nothing else in the suite
+# would notice.
+#
+# Not a hypothetical widening: `logging` runs a Loki stack besides Alloy, and "namespace-only" is
+# the easier expression to write, so it is the likely accident.
+#
+# The namespace-axis control for the same exemption is every other -fail fixture here: they carry
+# hostPath outside `logging` and are all flagged.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: loki-backend-0
+  namespace: logging
+spec:
+  restartPolicy: Always
+  containers:
+  - name: loki
+    image: docker.io/grafana/loki:3.6.1
+    volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+      readOnly: true
+  volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: machine-id
+    hostPath:
+      path: /etc/machine-id
+      type: File

@@ -1,0 +1,27 @@
+---
+# Profile ready-smoke for `pod-security-standard/baseline`. See
+# ../../restricted/ready-smoke/chainsaw-test.yaml for the full rationale of this test shape --
+# it is the house-style reference and this file is deliberately a near-copy of it.
+#
+# This profile is a strict subset of `restricted` (whose kustomization.yaml lists ../baseline),
+# so the restricted ready-smoke already covers these policies. It is kept as its own test because
+# a consumer can point a Flux Kustomization at `pod-security-standard/baseline` alone, and
+# "baseline builds and goes Ready by itself" is that consumer's claim to make, not something to
+# infer from the restricted run.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: baseline-ready-smoke
+spec:
+  template: false
+  steps:
+  - name: install-profile
+    try:
+    - apply:
+        file: ../../../.build/baseline/*.yaml
+  - name: assert-every-policy-ready
+    try:
+    - script:
+        content: ../../scripts/assert-built-profile-ready.sh ../../../.build/baseline 120
+        check:
+          ($error == null): true
