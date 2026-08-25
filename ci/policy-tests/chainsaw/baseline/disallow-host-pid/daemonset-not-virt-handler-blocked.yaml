@@ -1,0 +1,20 @@
+---
+# `desiredNumberScheduled: 1` AND `numberReady: 0`, both literal -- the pair is the point, same
+# construction as ../disallow-host-probes-and-lifecycle/daemonset-loopback-probe-host-blocked.yaml
+# (the house-style reference for this exact assertion shape).
+#
+# `numberReady: 0` alone would be satisfied by a DaemonSet that scheduled nothing at all, which
+# is also what an untolerated DaemonSet looks like on this single-node, control-plane-tainted
+# cluster (../../kind-config.yaml) -- that would make the assertion vacuous. `desiredNumberScheduled: 1`
+# says the DaemonSet DID want a pod on the node; `numberReady: 0` says admission refused to let
+# one exist. Loosen `exempt-virt-handler`'s name match (or delete the policy) and this assertion
+# goes red because the pod is admitted and becomes ready, exactly as
+# daemonset-virt-handler-ready.yaml does for the exempted twin.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-agent
+  namespace: kubevirt
+status:
+  desiredNumberScheduled: 1
+  numberReady: 0

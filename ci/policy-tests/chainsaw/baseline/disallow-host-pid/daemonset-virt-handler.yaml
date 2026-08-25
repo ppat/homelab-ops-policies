@@ -1,0 +1,64 @@
+---
+# EXPECTED: the DaemonSet is admitted, AND its pods are admitted, AND it becomes fully ready.
+#
+# THE TEST THIS DIRECTORY EXISTS FOR (design doc phase2.0-policy-migration-design-v3.md §6.5:
+# "disallow-host-pid ... Real DaemonSet + generateName exemption -- the live §3.3-class
+# regression test", and §6.2: the CLI tier owns exemption expressions, the cluster tier owns "the
+# real-controller case -- a live DaemonSet's pods arriving through actual admission"). Everything
+# else about this policy could be established offline; this could not, and it is the specific gap
+# a regression-tally audit found: this file was the one Chainsaw test on the §6.5 list that had
+# never actually been written.
+#
+# What only a cluster can show, stated precisely -- and NARROWER than the design doc's original
+# premise, exactly as already corrected by
+# ../../restricted/restrict-volume-types/daemonset-virt-handler.yaml (read that header in full;
+# the correction is not repeated at length here). Short version: the design doc's §2.2/§6.2 text
+# assumed a DaemonSet-created Pod reaches the webhook with `generateName` set and NO `name`.
+# Measured firsthand against the pinned stack (kind v1.36.1 + Kyverno chart 3.8.2), it reaches
+# the webhook with BOTH populated -- `name=[virt-handler-xxxxx]
+# generateName=[virt-handler-]` -- because the API server assigns the name before admission
+# runs. The exemption's CEL, `(object.metadata.?name.orValue('') +
+# object.metadata.?generateName.orValue('')).startsWith('virt-handler')`, is written to match
+# either shape and is unaffected by which one is true; this test proves it fires against the
+# real (both-populated) shape rather than the CLI tier's name-less approximation
+# (../../../kyverno/baseline/disallow-host-pid/pod-virt-handler-generatename-hostpid-skip.yaml).
+#
+# What this test therefore proves, all of it invisible offline:
+#   * The exemption is evaluated by the real admission webhook against an object the DAEMONSET
+#     CONTROLLER generated, not one a human hand-wrote to look like it. The CLI tier only ever
+#     sees the latter.
+#   * Under real `[Deny]`, the exempted workload actually RUNS -- `numberReady` reaching
+#     `desiredNumberScheduled` is the end-to-end outcome the estate cares about. Delete the
+#     exemption and admission refuses every pod, the kubelet never gets one, and this never
+#     converges.
+#   * `spec.autogen.podControllers.controllers: []` (pod-security-standard/baseline/
+#     disallow-host-pid.yaml) holds against a real pod controller. With autogen ON, Kyverno
+#     rewrites `object.` to `object.spec.template.` inside the matchCondition -- this is exactly
+#     the autogen-breaks-metadata-exclusions hazard the whole Chainsaw tier exists to catch, and
+#     this DaemonSet is the shape that would expose it; no Pod-shaped fixture can.
+#
+# TOLERATIONS are required, not decorative: the kind cluster (../../kind-config.yaml) is a
+# single control-plane node carrying `node-role.kubernetes.io/control-plane:NoSchedule`, so an
+# untolerated DaemonSet schedules zero pods and the readiness assertion would pass vacuously
+# against 0/0 rather than 1/1.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: virt-handler
+  namespace: kubevirt
+spec:
+  selector:
+    matchLabels:
+      app: virt-handler
+  template:
+    metadata:
+      labels:
+        app: virt-handler
+    spec:
+      tolerations:
+      - operator: Exists
+      terminationGracePeriodSeconds: 0
+      hostPID: true
+      containers:
+      - name: virt-handler
+        image: registry.k8s.io/pause:3.10

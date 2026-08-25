@@ -1,0 +1,18 @@
+---
+# EXPECTED: REJECTED by the admission webhook.
+#
+# THE LOAD-BEARING CONTROL OF THIS DIRECTORY, same role as
+# ../../restricted/restrict-volume-types/pod-hostpath-volume-rejected.yaml: without it, every
+# `admitted`/`ready` fixture below could be produced by a policy that had stopped objecting to
+# anything, or by a webhook that was never wired up. Also the fixture the deterministic
+# readiness gate in chainsaw-test.yaml polls against.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ordinary-workload
+spec:
+  hostPID: true
+  restartPolicy: Never
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

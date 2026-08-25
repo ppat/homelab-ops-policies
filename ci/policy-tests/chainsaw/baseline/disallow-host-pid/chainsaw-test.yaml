@@ -1,0 +1,106 @@
+---
+# Cluster tier for disallow-host-pid. House-style reference:
+# ../../restricted/restrict-volume-types/chainsaw-test.yaml -- read its header for the shape, the
+# `template: false` rule, and the deterministic webhook-readiness gate. None of that is restated.
+#
+# WHY THIS POLICY EARNS CLUSTER TIME (design doc phase2.0-policy-migration-design-v3.md §6.5,
+# which lists it explicitly as "Real DaemonSet + generateName exemption -- the live §3.3-class
+# regression test"): a regression-tally audit found this was the one test on the §6.5 Pareto list
+# that had never actually been written -- everything else in the migration was complete and
+# verified. What only a cluster adds here, each item invisible offline:
+#
+#   1. The policy reaches Ready against the real webhook -- policy-ready.yaml.
+#   2. `[Deny]` actually rejects, and an ordinary pod without the field is admitted -- the
+#      non-vacuous flagship pair every fixture in this directory ultimately depends on.
+#   3. The exemption fires for a pod the DAEMONSET CONTROLLER created and the real webhook saw --
+#      daemonset-virt-handler.yaml, whose header records where the design doc's stated reason for
+#      this step turned out to be subtly wrong (both `name` and `generateName` are populated by
+#      admission time for a real controller-created pod, not `generateName`-only as originally
+#      assumed -- the same correction Wave C already made and documented for
+#      ../../restricted/restrict-volume-types/daemonset-virt-handler.yaml). This is the exact
+#      class of bug the autogen hazard hid.
+#   4. A second, non-exempt DaemonSet in the SAME namespace is correctly refused --
+#      daemonset-not-virt-handler.yaml -- so step 3's result is falsifiable rather than "nothing
+#      crashed": if the exemption's name match were ever loosened, this is the fixture that would
+#      turn from blocked to ready.
+#
+# Everything about the RULE ITSELF and the exemption's CEL shapes (both name forms) lives in
+# ../../../kyverno/baseline/disallow-host-pid/kyverno-test.yaml, where it is cheaper and more
+# thorough. Do not duplicate it here.
+#
+# NON-VACUOUS PAIRING throughout, repo-wide discipline: every `admitted`/`ready` fixture below has
+# a `rejected`/`blocked` sibling differing in exactly one axis, so no step can pass because the
+# webhook was never wired up, and the exemption step cannot pass because its pod was compliant
+# anyway (both DaemonSets set `hostPID: true`; only the name prefix differs).
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-pid
+spec:
+  # See ../ready-smoke/chainsaw-test.yaml -- `template: false` is repo-wide, because chainsaw's
+  # templating reads `(...)` as JMESPath and CEL is made of parentheses.
+  template: false
+  steps:
+  - name: install-policy
+    try:
+    # Built output, never the file in the shipped tree: what a consumer applies is
+    # `kustomize build pod-security-standard/baseline`, i.e. the pure mirror WITH its
+    # exemptions/ patch. Applying the pure file would leave the exemption layer -- the subject of
+    # half this test -- untested. (§6.3, ci/scripts/build-policies.sh.)
+    - apply:
+        file: ../../../.build/baseline/disallow-host-pid.yaml
+    # In-test only. The shipped policy authors `Audit` and must keep authoring it: enforcement
+    # mode is a point-of-use decision (README.md, CLAUDE.md) and a consumer overrides it with its
+    # own Kustomization patch.
+    - patch:
+        resource:
+          apiVersion: policies.kyverno.io/v1
+          kind: ValidatingPolicy
+          metadata:
+            name: disallow-host-pid
+          spec:
+            validationActions:
+            - Deny
+    - assert:
+        file: policy-ready.yaml
+    - script:
+        content: ../../scripts/wait-for-webhook-deny.sh pod-hostpid-rejected.yaml 90
+        check:
+          ($error == null): true
+
+  - name: hostpid-denied-plain-pod-allowed
+    try:
+    # The flagship pair, live and under real `[Deny]`. Neither half means anything without the
+    # other: the admitted pod alone would be green against a deleted policy, and the rejected pod
+    # alone would be green against a policy that refused everything.
+    - apply:
+        file: pod-no-hostpid-admitted.yaml
+    - apply:
+        file: pod-hostpid-rejected.yaml
+        expect:
+        - check:
+            ($error != null): true
+
+  - name: exemption-fires-for-a-real-controller
+    try:
+    - apply:
+        file: namespace-kubevirt.yaml
+    - apply:
+        file: daemonset-virt-handler.yaml
+    # Polls until the DaemonSet's pod is admitted, scheduled, and running. If the exemption did
+    # not reach a controller-created pod, admission refuses it and this never converges.
+    - assert:
+        file: daemonset-virt-handler-ready.yaml
+
+  - name: controller-created-pods-not-matching-the-exemption-are-refused
+    try:
+    # The DaemonSet itself must be ADMITTED: this policy matches `pods` only and autogen is off
+    # (spec.autogen.podControllers.controllers: []), so nothing rewrites it into a
+    # DaemonSet-shaped variant. If this apply fails, autogen has been turned back on.
+    - apply:
+        file: daemonset-not-virt-handler.yaml
+    # ...and its pods must be refused, so it never becomes ready. Chainsaw `assert:` polls until
+    # the timeout, so this converges as soon as the DaemonSet controller has published a
+    # desiredNumberScheduled.
+    - assert:
+        file: daemonset-not-virt-handler-blocked.yaml

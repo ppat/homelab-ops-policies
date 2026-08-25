@@ -1,0 +1,11 @@
+---
+# The exempt-virt-handler matchCondition is scoped by the REAL namespace name `kubevirt`, so the
+# test has to create that namespace rather than use chainsaw's generated per-test namespace. That
+# is also why every test in this repo sets `template: false` and hardcodes it (design doc
+# phase2.0-policy-migration-design-v3.md §6.4).
+#
+# Chainsaw deletes what it applied, so this namespace is torn down with the test.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubevirt

@@ -1,0 +1,39 @@
+---
+# EXPECTED: the DaemonSet ITSELF is admitted (autogen is off, per daemonset-virt-handler.yaml's
+# header -- the DaemonSet object is never matched by this Pod-only policy), and its PODS are
+# REFUSED, so it never becomes ready.
+#
+# THE NEGATIVE CONTROL that makes daemonset-virt-handler.yaml's exemption-firing result
+# falsifiable rather than merely "nothing crashed" -- same role and same construction as
+# ../disallow-host-probes-and-lifecycle/daemonset-loopback-probe-host.yaml (read that header for
+# the general shape of "controller-created pods are refused" as a Chainsaw assertion). Same
+# namespace (`kubevirt`) and same `hostPID: true` as the exempted DaemonSet, differing in exactly
+# one axis: this DaemonSet's name does not start with `virt-handler`, so
+# `exempt-virt-handler`'s name conjunct does not match and the pod it creates is an ordinary
+# violation. If the exemption's name-prefix match were ever loosened to match anything in
+# `kubevirt`, this is the fixture that would turn from blocked to ready.
+#
+# Same tolerations rationale as daemonset-virt-handler.yaml: without them the DaemonSet schedules
+# zero pods on this single tainted node and daemonset-not-virt-handler-blocked.yaml's assertion
+# would pass vacuously against 0/0 instead of the intended 1/0.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-agent
+  namespace: kubevirt
+spec:
+  selector:
+    matchLabels:
+      app: node-agent
+  template:
+    metadata:
+      labels:
+        app: node-agent
+    spec:
+      tolerations:
+      - operator: Exists
+      terminationGracePeriodSeconds: 0
+      hostPID: true
+      containers:
+      - name: node-agent
+        image: registry.k8s.io/pause:3.10

@@ -1,0 +1,16 @@
+---
+# EXPECTED: ADMITTED, under a real admission webhook with the policy patched to `[Deny]`.
+#
+# The non-vacuous pair for pod-hostpid-rejected.yaml (repo-wide discipline, see
+# ../../restricted/restrict-volume-types/chainsaw-test.yaml's header): the field is simply
+# absent, which the rule allows. Lands in chainsaw's generated per-test namespace -- an ordinary
+# workload, no exemption, a namespace no exemption in this repo could match.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compliant-workload
+spec:
+  restartPolicy: Never
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
