@@ -1,0 +1,13 @@
+---
+# EXPECTED: `pass`. The allowed annotation value.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: runtime-default-annotation-workload-6b9f4c8d5-x2kqp
+  namespace: default
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/app: runtime/default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10

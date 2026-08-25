@@ -1,6 +1,26 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check appArmorProfile
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ../restricted/restrict-volume-types.yaml (the PSS-mirror family conventions:
+# snapshot marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# WHY THIS POLICY STILL EXISTS, since upstream `kyverno/policies` deleted it from both of its CEL
+# variants and a reader will meet that absence first. The deletion was upstream's EDITORIAL
+# choice, not Kubernetes dropping the control: `check_appArmorProfile.go` is present on
+# release-1.36 and AppArmor is a live Baseline check there (verified firsthand, design doc
+# phase2.0-policy-migration-design-v3.md §5.4). The rule this file mirrors is Kubernetes', so
+# upstream's catalogue is not the authority on whether to keep it.
+#
+# The related "nothing in this estate uses AppArmor, so drop it" argument misreads the check: it
+# does not REQUIRE AppArmor, it forbids a pod OPTING OUT of confinement. That intent is
+# host-OS-agnostic.
+#
+# This policy has NO estate exemptions: no exemptions/restrict-apparmor-profiles.yaml, no
+# `patches:` entry in ../kustomization.yaml. `matchConditions: []` is present and empty as the
+# seam a future exemption would append to.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: restrict-apparmor-profiles
   annotations:
@@ -8,30 +28,61 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod, Annotation
-    policies.kyverno.io/minversion: 1.3.0
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    # Bumped from 1.3.0, and the legacy `kyverno.io/kyverno-version: 1.6.0` is dropped as
+    # redundant with it: `policies.kyverno.io/v1 ValidatingPolicy` is first served by Kyverno 1.17.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       On supported hosts, the 'runtime/default' AppArmor profile is applied by default.
       The default policy should prevent overriding or disabling the policy, or restrict
       overrides to an allowed set of profiles. This policy ensures Pods do not
       specify any other AppArmor profiles than `runtime/default` or `localhost/*`.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: app-armor
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Specifying other AppArmor profiles is disallowed. The annotation
-        `container.apparmor.security.beta.kubernetes.io` if defined
-        must not be set to anything other than `runtime/default` or `localhost/*`.
-      pattern:
-        =(metadata):
-          =(annotations):
-            =(container.apparmor.security.beta.kubernetes.io/*): "runtime/default | localhost/*"
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # MECHANICAL TRANSLATION OF THE LEGACY RULE, WHICH CHECKS ONLY THE DEPRECATED ANNOTATION. That
+  # is a known and deliberate under-check at this commit, not an oversight: it is closed by the
+  # very next commit (§5.4's field+annotation rewrite), kept separate so the kind migration and
+  # the behaviour change are independently revertible. A pod setting
+  # `securityContext.appArmorProfile.type: Unconfined` -- the way anyone has written it since
+  # Kubernetes 1.30 -- passes this expression and fails real PSA.
+  #
+  # The legacy form was a JMESPath WILDCARD-KEY conditional anchor,
+  # `=(container.apparmor.security.beta.kubernetes.io/*): "runtime/default | localhost/*"`.
+  # CEL has no key wildcard, so the map is iterated and the prefix tested per key; `!prefix || ...`
+  # is the "only constrain keys in this family" half that `=(...)` expressed positionally.
+  # `.orValue({})` handles a pod with no annotations (`.all()` over an empty map is true) and
+  # `.all()` makes the expression statically bool.
+  #
+  # `object.metadata.annotations[k]` inside the body is safe without a `.?`: `k` came from the
+  # same map, and `.all()` only enters the body when the map exists.
+  - expression: >-
+      object.metadata.?annotations.orValue({}).all(k,
+      !k.startsWith('container.apparmor.security.beta.kubernetes.io/') ||
+      object.metadata.annotations[k] == 'runtime/default' ||
+      object.metadata.annotations[k].startsWith('localhost/'))
+    message: >-
+      Specifying other AppArmor profiles is disallowed. The annotation
+      `container.apparmor.security.beta.kubernetes.io` if defined
+      must not be set to anything other than `runtime/default` or `localhost/*`.
