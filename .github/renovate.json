@@ -22,11 +22,28 @@
     "mergeConfidence:all-badges",
     "github>ppat/renovate-presets#v1.0.0",
     "github>ppat/renovate-presets:dev-tools#v1.0.0",
-    "github>ppat/renovate-presets:github-actions-provider#v1.0.0"
+    "github>ppat/renovate-presets:github-actions#v1.0.0"
   ],
   "internalChecksFilter": "strict",
   "labels": [
     "pr-type:renovate"
+  ],
+  "packageRules": [
+    {
+      "description": "PROBLEM THIS SOLVES: nothing this repo depends on is shipped. The released artifact is the policy YAML under best-practices/ and pod-security-standard/, which a consumer points a Flux Kustomization.spec.path at; every dependency Renovate manages here (GitHub Actions, plus the Kyverno CLI / Chainsaw / kind / kustomize / yq / Helm versions CI resolves through the custom regex manager) exists only to lint and test that YAML and never reaches a consumer. The shared default preset assumes the opposite - that a repo's dependencies are part of what it ships - and so types major/minor updates as feat and patch/digest as fix, and appends '!' to every major. Under release-please those markers size a release of the POLICY artifact: an actions/checkout v4->v5 bump would have cut policies v2.0.0, and a Chainsaw patch bump would have cut a patch release, both with the update rendered in a consumer-facing changelog. Forcing chore and dropping the '!' makes dependency updates release-neutral (chore is hidden in release-please-config.json, and a period containing only hidden types produces an empty changelog, which release-please skips entirely). Revisit ONLY if this repo ever gains a dependency that a consumer actually receives.",
+      "matchPackageNames": [
+        "*"
+      ],
+      "semanticCommitType": "chore",
+      "commitMessagePrefix": "chore{{#if semanticCommitScope}}({{semanticCommitScope}}){{/if}}:"
+    },
+    {
+      "description": "PROBLEM THIS SOLVES: commitlint.config.js' scope-enum is a closed set, so any scope Renovate emits that is not in it turns every affected update into a red PR that Renovate will not automerge - updates stall silently. The scope for the custom regex manager is exactly the field the org's two github-actions presets disagree about (the '...-provider' variant calls these deps 'shipped-dependencies', which is both off-enum here and untrue of this repo), so it is the field most likely to move under a preset bump. Claiming it locally makes the commitlint seam invariant across preset versions rather than dependent on an upstream rule surviving to the end of the chain. Keep this value in the scope-enum whenever it changes.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "semanticCommitScope": "internal-dependencies"
+    }
   ],
   "prConcurrentLimit": 0,
   "prHourlyLimit": 0,

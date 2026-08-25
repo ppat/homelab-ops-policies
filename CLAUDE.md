@@ -187,21 +187,111 @@ Rules that apply to both tiers:
 
 ## Commit conventions
 
-Conventional Commits, enforced by commitlint. `commitlint.config.js` is the
-source of truth for allowed types and scopes — read it rather than assuming
-scopes from another repo apply here.
+Conventional Commits, enforced by commitlint. `commitlint.config.js` holds the
+enums; this section holds the rules for choosing between them. Don't import
+scopes from another repo in this estate — this one is shaped by policy groups,
+not clusters or modules.
 
-The scope enum is still a placeholder. A dedicated pass to derive this repo's
-commit taxonomy from scratch has not run yet; don't over-specify scopes or build
-tooling around the current list. Most commits here need no scope at all.
+### What the header is
 
-The Kyverno kind migration was authored as breaking changes — `feat!` with a
-`BREAKING CHANGE:` footer — because it changes the kind consumers patch against
-by name. The intent is that these cut **v1.0.0**. That release has not been cut
-yet (the repo is on `0.0.1`), and cutting it needs a config change first:
-release-please bumps MINOR rather than MAJOR on a breaking change below 1.0.0
-unless `release-please-config.json` sets `bump-minor-pre-major: false`, which it
-currently does not.
+Nothing in the release machinery routes on **scope**. This is a single
+release-please package (`.`), so a release is sized by **type plus the breaking
+marker**, and scope only *renders* — it becomes the bold prefix on a changelog
+line. So a scope is a claim about the diff. Make it true; it steers nothing.
+
+The one header that is operative is the **pull request title**. This repo is
+squash-merge only, so a multi-commit PR lands exactly one commit on `main`
+whose subject is the PR title. The individual commit subjects survive only
+inside that commit's body, and release-please does not read them there.
+
+- **Type the PR title for the whole PR's shipped impact**, not for its biggest
+  commit. A PR titled `ci:` cuts no release however its commits are typed.
+- A `BREAKING CHANGE:` footer **is** still read out of the squashed body, so a
+  breaking footer can force a major bump under a tame-looking title. Keep the
+  title and the footers agreeing in both directions.
+- Interior commit headers are for humans reading `git log`. Commitlint still
+  applies to them; the release does not.
+- A single-commit PR lands its own commit header, so there the two coincide.
+
+### Types
+
+| Type | Use for | Changelog |
+| --- | --- | --- |
+| `feat` | shipped policy behaviour gained or widened | ✨ Features |
+| `fix` | shipped policy behaviour corrected | 🚀 Enhancements + Bug Fixes |
+| `perf`, `refactor` | shipped policy reworked, behaviour held | 🚀 Enhancements + Bug Fixes |
+| `revert` | undoing a shipped change | ⚙️ Other |
+| `docs`, `test`, `ci`, `build`, `style`, `chore` | anything a consumer never receives | hidden |
+
+Only the visible types can cut a release: when every commit since the last tag
+maps to a hidden section the rendered changelog is empty, and release-please
+skips the release entirely. That is the intended behaviour — CI, tests, docs
+and dependency bumps should not version the policy artifact.
+
+Append `!` and a `BREAKING CHANGE:` footer when a change alters what a consumer
+patches against by name — the kind, the `apiVersion`, or a policy's
+`metadata.name`. A breaking change bumps **major** even below 1.0.0
+(`bump-minor-pre-major: false`).
+
+### Scopes
+
+Ordered; **take the first row that matches**, and read `''` (no scope) as a
+real answer rather than a fallback.
+
+| # | Scope | The diff touches |
+| --- | --- | --- |
+| 1 | *(none)* | more than one of rows 2–4 — a cross-profile change |
+| 2 | `best-practices` | `best-practices/` |
+| 3 | `baseline` | `pod-security-standard/baseline/` |
+| 4 | `restricted` | `pod-security-standard/restricted/` |
+| 5 | `policy-tests` | `ci/` — either test tier, the build script, the kubeconform harness |
+| 6 | `github-actions` | `.github/workflows/` |
+| 7 | `repo-tooling` | the lint/release/commit/dependency scaffolding: `commitlint.config.js`, `release-please-config.json`, `.github/renovate.json`, `.pre-commit-config.yaml`, `.yamllint`, `.markdownlint-cli2.yaml` |
+| 8 | *(none)* | nothing above — e.g. a docs-only change to `README.md`, `CLAUDE.md`, `DESIGN.md` |
+
+Rows 2–4 are the **shipped** scopes: they name the three directories a consumer
+can point a Flux `Kustomization.spec.path` at, which is what makes them worth
+distinguishing at all. Rows 5–7 name real surfaces no consumer ever receives.
+
+Two scopes are machine-emitted and exist only so the bot's commits pass lint —
+never hand-write them: `internal-dependencies` (Renovate) and `release`
+(release-please's own `pull-request-title-pattern`).
+
+Rules that decide the cases the table alone doesn't:
+
+- **A policy plus its tests takes the policy's scope.** That is what the
+  ordering above buys: the shipped half is what a changelog reader cares
+  about, and the fixtures ride along. Only a test-only diff is `policy-tests`.
+- **Exemptions get no scope of their own.** An exemption patch lives inside a
+  profile directory, so it takes that profile's scope; say "exemption" in the
+  subject. A second name for a sub-shape of the same surface buys ambiguity,
+  not precision.
+- **Scope names what the diff touched, not the blast radius.** `restricted`
+  lists `../baseline` as a resource, so a `baseline` change reaches restricted
+  consumers too. Still scope it `baseline`.
+- **Types that claim shipped behaviour changed** — `feat`, `fix`, `perf`,
+  `refactor` — belong only on rows 1–4. A workflow or harness change is `ci`,
+  `test` or `chore` however substantial it feels; typing it `feat` on an
+  internal scope is what silently versions the artifact for a non-event. This
+  is a convention, not a commitlint rule (see below).
+- **Never hand-write a dependency bump as `feat` or `fix`.** Renovate is
+  configured to emit `chore` for every update, because nothing this repo
+  depends on is shipped; a hand-written `feat` would undo that.
+
+### Gotchas
+
+- `pre-commit run --all-files` does **not** run the commitlint hook — it is a
+  `commit-msg`-stage hook, and `--all-files` never reaches that stage. Commit
+  messages are checked by the `commit-messages` job in `lint.yaml`, and locally
+  only by an actual `git commit`.
+- Nothing lints the **pull request title**, which is the one string that sizes
+  the release. Check it by hand before merging.
+- The scope enum and `.github/renovate.json` are a matched pair. Renovate's
+  scopes come from shared presets, so a preset bump can introduce a scope the
+  enum rejects — which turns every affected update into a red PR that Renovate
+  will not automerge, stalling updates quietly. `.github/renovate.json` claims
+  the volatile scope locally to blunt this; when it changes, change the enum in
+  the same commit.
 
 ## CI
 

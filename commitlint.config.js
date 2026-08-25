@@ -1,8 +1,21 @@
 const { maxLineLength } = require('@commitlint/ensure');
 
+// Renovate composes dependency-update commit bodies from templates that can emit
+// lines longer than the limit humans are held to (grouped updates list one row per
+// dependency, and release-note/config-warning blocks are not wrapped). Exempting
+// those bodies keeps the length rule strict for prose without failing machine
+// commits nobody can reflow.
+//
+// The predicate must match what Renovate ACTUALLY emits in this repo, or the
+// exemption is dead code. Every Renovate commit here is `chore` (forced in
+// .github/renovate.json, because nothing this repo depends on is shipped) carrying
+// one of the two dependency scopes below. If either of those facts changes, this
+// list changes with it.
+const machineDependencyScopes = ['internal-dependencies', 'github-actions'];
+
 const validateBodyMaxLengthIgnoringDeps = (parsedCommit) => {
   const { type, scope, body } = parsedCommit
-  const isDepsCommit = type === 'chore' && scope === 'deps'
+  const isDepsCommit = type === 'chore' && machineDependencyScopes.includes(scope)
 
   const bodyMaxLineLength = 120;
 
@@ -30,13 +43,33 @@ module.exports = {
       validateBodyMaxLengthIgnoringDeps
     ],
 
-    // specify the allowed scopes
+    // The closed set of scopes for this repo. Each one names a surface that
+    // actually exists here; see CLAUDE.md "Commit conventions" for the
+    // stop-at-first-match rule that picks between them, and for why a change
+    // spanning more than one of them takes no scope at all.
+    //
+    // Two entries are emitted by machines and cannot be dropped without
+    // breaking them: `github-actions` and `internal-dependencies` come from
+    // Renovate (via the shared presets in .github/renovate.json), and `release`
+    // comes from release-please's own `pull-request-title-pattern`.
     'scope-enum': [2, 'always',
       [
+        // no scope: the change spans several scopes below, or fits none of them
         '',
-        'internal-dependencies',
+
+        // shipped: the three policy directories a consumer can point a Flux
+        // Kustomization.spec.path at, and which therefore are the artifact
+        'best-practices',
+        'baseline',
+        'restricted',
+
+        // internal: real surfaces here that no consumer ever receives
+        'policy-tests',
         'github-actions',
-        'renovate',
+        'repo-tooling',
+        'internal-dependencies',
+
+        // release-please's own release pull request
         'release'
       ]
     ],
