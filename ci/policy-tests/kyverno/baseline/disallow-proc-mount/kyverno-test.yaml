@@ -1,0 +1,37 @@
+---
+# CLI tier for disallow-proc-mount. House-style reference:
+# ../../best-practices/restrict-node-port/kyverno-test.yaml (the five conventions); see also
+# ../disallow-privileged-containers/kyverno-test.yaml for the fixture-naming rule about
+# `<namespace>/<name>` collisions.
+#
+# ONE `Test` DOCUMENT, not two, because this policy has no exemption patch: `kustomize build`
+# output and the pure mirror are the same policy. `policies:` still points at built output, so a
+# future exemption is covered here automatically.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-proc-mount
+policies:
+- ../../../.build/baseline/disallow-proc-mount.yaml
+resources:
+- pod-procmount-unmasked-fail.yaml
+- pod-procmount-default-pass.yaml
+- pod-no-procmount-pass.yaml
+- pod-init-container-procmount-unmasked-fail.yaml
+- pod-ephemeral-container-procmount-unmasked-fail.yaml
+results:
+- policy: disallow-proc-mount
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/explicit-default-workload-6b9f4c8d5-x2kqp
+  - default/unset-procmount-workload-844d7c96b-fq8vn
+  result: pass
+- policy: disallow-proc-mount
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload-5f7d9b46c-tn4wq
+  - default/sidecar-workload-77955b8c45-52ls7
+  - default/debugged-workload-5687cbcbf5-bkswh
+  result: fail

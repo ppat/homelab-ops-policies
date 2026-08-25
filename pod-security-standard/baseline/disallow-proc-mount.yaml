@@ -1,6 +1,21 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check
+# procMount_baseline
+#
+# House style: ../../best-practices/restrict-node-port.yaml (ValidatingPolicy shape, CEL
+# conventions) and ../restricted/restrict-volume-types.yaml (the PSS-mirror family conventions:
+# snapshot marker, empty `matchConditions` seam, autogen off, dropped `preconditions`).
+#
+# THE CHECK FILE THIS MIRRORS WAS RENAMED AT PSS POLICY v1.35: `check_procMount.go` became
+# `check_procMount_baseline.go` when SIG-Auth added a Restricted-tier sibling
+# (`check_procMount_restricted.go`, PR #132157). The snapshot marker above names the baseline
+# half deliberately. The Restricted half lands as ../restricted/disallow-proc-mount-strict.yaml.
+#
+# This policy has NO estate exemptions: there is no exemptions/disallow-proc-mount.yaml and no
+# `patches:` entry for it in ../kustomization.yaml. `matchConditions: []` is present and empty
+# regardless, as the seam a future exemption would append to.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-proc-mount
   annotations:
@@ -8,37 +23,68 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    # Bumped from the legacy `kyverno.io/kyverno-version: 1.6.0`, which is dropped as redundant.
+    policies.kyverno.io/minversion: 1.17.0
+    # Was "1.22-1.23" on the legacy ClusterPolicy; this file is a fresh mirror at the snapshot
+    # named at the top.
+    kyverno.io/kubernetes-version: "1.36"
+    # The legacy description's closing sentence -- "Note that in order for users to deviate from
+    # the `Default` procMount requires setting a feature gate at the API server" -- is DROPPED,
+    # not reworded. It has been false since Kubernetes 1.36: `ProcMountType` is GA and
+    # LockToDefault there, so there is no gate left to set. What actually constrains a non-Default
+    # procMount now is plain core API validation, described in the validation comment below.
     policies.kyverno.io/description: >-
-      The default /proc masks are set up to reduce attack surface and should be required. This policy
-      ensures nothing but the default procMount can be specified. Note that in order for users
-      to deviate from the `Default` procMount requires setting a feature gate at the API
-      server.
+      The default /proc masks are set up to reduce attack surface and should be required. This
+      policy ensures nothing but the default procMount can be specified.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: check-proc-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Changing the proc mount from the default is not allowed. The fields
-        spec.containers[*].securityContext.procMount, spec.initContainers[*].securityContext.procMount,
-        and spec.ephemeralContainers[*].securityContext.procMount must be unset or
-        set to `Default`.
-      pattern:
-        spec:
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(procMount): "Default"
-          =(initContainers):
-          - =(securityContext):
-              =(procMount): "Default"
-          containers:
-          - =(securityContext):
-              =(procMount): "Default"
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # All three container lists concatenated, mirroring pod-security-admission's own
+  # `visitContainers()`. Translated from the legacy conditional-anchor pattern
+  # `=(procMount): "Default"` applied separately to each of the three lists; `.orValue('Default')`
+  # reproduces "absent is allowed" and the comparison makes the expression statically bool.
+  # `spec.containers` needs no `.?`/`.orValue([])` because the API requires at least one container.
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?procMount.orValue('Default') == 'Default')
+    # DELIBERATE DIVERGENCE FROM THE WAVE A1 SPIKE NOTE, and E6's implementer must read this
+    # before copying that note's block for ../restricted/disallow-proc-mount-strict.yaml. A1 §5
+    # illustrates this policy with the message "Setting securityContext.procMount to anything but
+    # Default is not allowed." and its strict sibling with the same sentence plus ", including for
+    # pods in a user namespace". The CEL from that note IS copied verbatim -- that is what the
+    # spike validated. The message is not: this file keeps the LEGACY wording, per the house rule
+    # ../../best-practices/restrict-node-port.yaml states as its DEVIATION 2 (the message is what
+    # already appears in this estate's PolicyReports, and a mechanical kind migration is not the
+    # moment to churn a human-facing string). The legacy wording also names the three field paths,
+    # which an Audit reader wants.
+    #
+    # To keep the baseline/strict PAIR distinguishable -- which is the real point of A1's two
+    # messages, since both policies can fire on the same pod -- the strict sibling should append
+    # its clause to THIS sentence rather than replace it.
+    message: >-
+      Changing the proc mount from the default is not allowed. The fields
+      spec.containers[*].securityContext.procMount,
+      spec.initContainers[*].securityContext.procMount,
+      and spec.ephemeralContainers[*].securityContext.procMount must be unset or
+      set to `Default`.
