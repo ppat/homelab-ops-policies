@@ -1,0 +1,21 @@
+---
+# EXPECTED: `pass`.
+#
+# Digest-pinned references, including one that carries `:latest` AND a digest. A digest is
+# immutable regardless of what the tag says, so flagging it would be a false positive -- and the
+# policy's `endsWith(':latest')` correctly does not, because the digest follows the tag.
+#
+# This is the fixture that would go red if anyone "hardened" the second rule into
+# `!container.image.contains(':latest')` or a `.matches('latest')` regex. The legacy glob
+# `!*:latest` this policy replaces agreed with the current form; upstream's `endsWith` does too.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: digest-pinned-app
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.internal/app@sha256:2c1b9d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c
+  - name: sidecar
+    image: registry.internal/proxy:latest@sha256:3d2c8e5f7a9b1c4d6e8f0a2b4c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d

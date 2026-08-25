@@ -1,0 +1,34 @@
+---
+# EXPECTED: NO RESULT AT ALL -- and that is why this file is NOT listed in kyverno-test.yaml's
+# `resources:`. Read the "THE ONE ASSERTION THIS TIER CANNOT MAKE" section of that file first;
+# this fixture exists to serve the manual command it documents, and for no other reason.
+#
+# An unprobed bare Pod. Under the LEGACY `ClusterPolicy` this was a violation: that policy matched
+# `Pod`, and its `ownerReferences[?kind == 'Job']` precondition spared only Job-OWNED pods, not
+# bare ones. Under the redesign (design doc phase2.0-policy-migration-design-v3.md §2.4) `pods` is
+# absent from `matchConstraints` and autogen is off, so this Pod is not matched, not evaluated,
+# and produces no PolicyReport row of any kind -- not `pass`, not `skip`, nothing.
+#
+# `kyverno test` has no vocabulary for that outcome: a `results[]` row naming a resource that
+# produced no result is reported as "Not found" and FAILS, and every result value the CLI accepts
+# (`pass`/`fail`/`skip`/`warn`/`error`) asserts that a result exists. Measured against the pinned
+# CLI v1.18.2 -- `notfound`, `notFound`, `nomatch` and an omitted `resources:` selector were all
+# tried and all fail. So the assertion is made by hand instead:
+#
+#   kyverno apply ci/policy-tests/.build/best-practices/require-probes.yaml \
+#     --resource ci/policy-tests/kyverno/best-practices/require-probes/pod-bare-no-probes-unmatched.yaml \
+#     --detailed-results
+#
+# Expected output: `pass: 0, fail: 0, warn: 0, error: 0, skip: 0`. A non-zero count in ANY column
+# means the policy is matching Pods again -- which would mean autogen was re-enabled or `pods` was
+# added back to `matchConstraints`, and would silently re-expose every exemption above to design
+# §2.4's rewrite hazard.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-shell
+  namespace: default
+spec:
+  containers:
+  - name: shell
+    image: registry.internal/debug-tools:v0.4.1

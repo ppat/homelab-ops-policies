@@ -1,0 +1,16 @@
+---
+# EXPECTED: `fail` (rule 3 of 4 -- "Use of the CRI-O Unix socket is not allowed.").
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crio-sock-consumer
+  namespace: default
+spec:
+  containers:
+  - name: agent
+    image: registry.internal/agent:v1.4.0
+  volumes:
+  - name: cri
+    hostPath:
+      path: /var/run/crio/crio.sock
+      type: Socket

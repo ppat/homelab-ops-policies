@@ -1,0 +1,21 @@
+---
+# EXPECTED: `pass`.
+#
+# An ordinary, permitted hostPath mount. Establishes that this policy objects to FOUR specific
+# paths and not to hostPath as such -- that broader objection is `disallow-host-path`'s job, and
+# conflating the two is the misreading the keep-rationale in
+# ../../../../../best-practices/disallow-cri-sock-mount.yaml guards against.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: log-shipper
+  namespace: logging
+spec:
+  containers:
+  - name: shipper
+    image: registry.internal/shipper:v2.1.0
+  volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+      type: Directory

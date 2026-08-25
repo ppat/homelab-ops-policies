@@ -1,0 +1,29 @@
+---
+# EXPECTED: `pass`.
+#
+# THE FIXTURE THE `.matches()` DEVIATION EXISTS FOR, half one of two.
+#
+# Upstream kyverno/policies' vpol writes `!volume.hostPath.path.matches('/var/run/docker.sock')`.
+# In CEL, `.matches()` is RE2 and `.` is a metaclass matching ANY character, so upstream's
+# expression flags this path -- `/var/run/dockerXsock` -- as if it were the Docker socket. It is
+# not a socket at all. Exact comparison, which
+# ../../../../../best-practices/disallow-cri-sock-mount.yaml uses instead, passes it.
+#
+# This is the FALSE-POSITIVE direction. See ./pod-substring-near-miss-pass.yaml for the other one.
+# Neither fixture is hypothetical in the way it matters: both are green under the shipped policy
+# and red under a resynced-from-upstream one, so together they are the tripwire that stops this
+# file being "fixed" back to upstream's form.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: regex-metachar-near-miss
+  namespace: default
+spec:
+  containers:
+  - name: agent
+    image: registry.internal/agent:v1.4.0
+  volumes:
+  - name: not-a-socket
+    hostPath:
+      path: /var/run/dockerXsock
+      type: File

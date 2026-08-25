@@ -1,0 +1,29 @@
+---
+# EXPECTED: `skip`.
+#
+# Name-glob exemption 1 of 4: `cert-manager-cainjector*` in `cert-manager`. Its non-vacuous twin
+# is ./deployment-cert-manager-webhook-fail.yaml -- same namespace, same unprobed container, a
+# name the glob does not cover -- which fails. Without that pair, a `matchCondition` that
+# accidentally exempted the whole `cert-manager` namespace would look identical here.
+#
+# Note what the name now refers to: after the redesign this expression evaluates against the
+# CONTROLLER name, never a pod name. `cert-manager-cainjector` is the Deployment; the pods it
+# used to be matched against were `cert-manager-cainjector-<hash>-<hash>`. A prefix glob covers
+# both shapes, which is why this exemption survives the redesign unchanged.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-manager-cainjector
+  namespace: cert-manager
+spec:
+  selector:
+    matchLabels:
+      app: cert-manager-cainjector
+  template:
+    metadata:
+      labels:
+        app: cert-manager-cainjector
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

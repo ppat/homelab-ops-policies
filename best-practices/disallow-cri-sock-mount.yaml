@@ -1,15 +1,45 @@
 ---
-# yamllint disable rule:indentation
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: hand-ported from this repo's own legacy
+# best-practices/disallow-cri-sock-mount.yaml (`kyverno.io/v1 ClusterPolicy`, four
+# `validate.pattern` rules using the negated-value form `path: "!/var/run/docker.sock"`).
+# Upstream kyverno/policies best-practices-vpol/disallow-cri-sock-mount/ was read at commit
+# ef9843f0 and deliberately NOT copied: its four expressions use `.matches(<path>)`, which is a
+# correctness bug, not a style difference -- see the DEVIATION note on `validations` below.
+#
+# House style for a `best-practices`-group `ValidatingPolicy` is set by ./restrict-node-port.yaml;
+# read that file first. Its five numbered conventions apply here unrestated, except that
+# convention 5 (`spec.autogen` absent) has a DIFFERENT reason here -- see the autogen note below,
+# which is why that file says "do not copy the absence to a Pod-matching policy; copy the
+# reasoning".
+#
+# WHY THIS POLICY EXISTS SEPARATELY FROM `disallow-host-path` (design doc
+# phase2.0-policy-migration-design-v3.md §3.3, keep-rationale; ported verbatim because it is the
+# load-bearing context for a future reader who notices the overlap and reaches for the delete key):
+#
+#   PSS `disallow-host-path` subsumes it *except* in every namespace where `disallow-host-path`
+#   carries an exemption (`kube-system`, `longhorn-system`, `csi-driver-nfs`, `system-upgrade`,
+#   plus the globs in `monitoring`/`logging`/`intel-device-plugins`/`kubevirt`). This policy has
+#   no exemptions of its own, so precisely there -- the namespaces where a socket mount is most
+#   plausible -- it is the only objection left. Keep, with a comment explaining the overlap so it
+#   isn't deleted as redundant.
+#
+# The corollary is a maintenance rule: this policy must stay exemption-free. Adding a
+# `matchConditions` entry here for one of those namespaces would leave the socket mount objected
+# to by nothing at all, which is the exact hole the paragraph above says this file plugs.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
-  name: disallow-container-sock-mounts
+  # RENAMED from the legacy `disallow-container-sock-mounts` to equal the file basename
+  # (restrict-node-port.yaml convention 1: ci/scripts/build-policies.sh names its split output
+  # after `metadata.name`, so a mismatch means a test file referencing
+  # `.build/best-practices/disallow-cri-sock-mount.yaml` silently finds nothing). Costs one
+  # PolicyReport key, which nothing consumes programmatically.
+  name: disallow-cri-sock-mount
   annotations:
     policies.kyverno.io/title: Disallow CRI socket mounts
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    policies.kyverno.io/minversion: 1.6.0
     policies.kyverno.io/description: >-
       Container daemon socket bind mounts allows access to the container engine on the
       node. This access can be used for privilege escalation and to manage containers
@@ -18,58 +48,89 @@ metadata:
       to or replacement of this policy, preventing users from mounting the parent directories
       (/var/run and /var) may be necessary to completely prevent socket bind mounts.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: validate-docker-sock-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Use of the Docker Unix socket is not allowed."
-      pattern:
-        spec:
-          =(volumes):
-            - =(hostPath):
-                path: "!/var/run/docker.sock"
-  - name: validate-containerd-sock-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Use of the Containerd Unix socket is not allowed."
-      pattern:
-        spec:
-          =(volumes):
-            - =(hostPath):
-                path: "!/var/run/containerd/containerd.sock"
-  - name: validate-crio-sock-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Use of the CRI-O Unix socket is not allowed."
-      pattern:
-        spec:
-          =(volumes):
-            - =(hostPath):
-                path: "!/var/run/crio/crio.sock"
-  - name: validate-dockerd-sock-mount
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Use of the Docker CRI socket is not allowed."
-      pattern:
-        spec:
-          =(volumes):
-            - =(hostPath):
-                path: "!/var/run/cri-dockerd.sock"
+  # `spec.autogen` is intentionally not set, so autogen stays at its default (ON) and Kyverno
+  # synthesises the pod-controller variants of this policy. That is deliberate and is NOT the
+  # same reasoning as ./restrict-node-port.yaml's absence (which matches Services, where autogen
+  # is inert). This policy matches `pods`, so autogen is live:
+  #
+  #   * It reproduces existing behaviour. The legacy `ClusterPolicy` this replaces carried no
+  #     `pod-policies.kyverno.io/autogen-controllers` annotation either, which for that kind also
+  #     means "all pod controllers", so a Deployment mounting a CRI socket is flagged at the
+  #     Deployment today and still is here.
+  #   * Design §2.4's hazard -- autogen rewriting `object.` to `object.spec.template.` INSIDE
+  #     `matchConditions`, silently breaking metadata-based exemptions -- cannot occur in a policy
+  #     that has no `matchConditions`. This one has none and, per the keep-rationale above, must
+  #     never acquire any. The rewrite of `spec.volumes` in `spec.variables` below is the correct
+  #     rewrite, and ci/policy-tests/kyverno/best-practices/disallow-cri-sock-mount/ carries a
+  #     DaemonSet fixture that fails, which is what proves autogen is actually running.
+  #
+  # Turning autogen off here would be a silent coverage regression, not a safety measure.
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # DEVIATION from upstream kyverno/policies, whose vpol writes each of these four as
+  # `!volume.hostPath.path.matches('/var/run/docker.sock')`. `.matches()` is CEL's RE2 SEARCH: the
+  # argument is an UNANCHORED regular expression, not a literal, so upstream's form is wrong in
+  # both directions at once.
+  #
+  #   * FALSE POSITIVES, because it is a search: `/var/lib/backups/var/run/docker.sock.bak` is
+  #     flagged, and so is any parent-directory mount whose path merely CONTAINS the socket path
+  #     as a substring. In this policy every finding is an Audit row a human has to triage, so a
+  #     false positive is not free.
+  #   * FALSE NEGATIVES, because `.` is a regex metaclass and `/` is not escaped in a path this
+  #     policy treats as literal: `/var/run/dockerXsock` matches the "docker.sock" pattern, so a
+  #     path that is not the socket is reported as if it were, while the converse trick (a
+  #     symlinked or `//`-doubled path that IS the socket) still slips past -- the pattern is
+  #     neither a superset nor a subset of the thing it means to describe.
+  #
+  # The legacy `ClusterPolicy` this replaces used `path: "!/var/run/docker.sock"`, a Kyverno
+  # negated-value pattern with NO wildcard in it, i.e. an exact string inequality. Exact
+  # comparison is therefore both the correct semantics and preservation of existing behaviour;
+  # design §3.3 instructs it explicitly ("replace upstream's unanchored `.matches()` regexes with
+  # exact comparison").
+  #
+  # Kept as FOUR separate `validations[]` entries rather than one `in [...]` check, matching both
+  # the legacy rule count and design §3.3's "4 `validations[]`": each carries its own `message`,
+  # so a PolicyReport row still names WHICH runtime's socket was mounted. Collapsing them would
+  # trade that for nothing.
+  - expression: >-
+      !variables.hostPathVolumePaths.exists(path, path == '/var/run/docker.sock')
+    message: Use of the Docker Unix socket is not allowed.
+  - expression: >-
+      !variables.hostPathVolumePaths.exists(path, path == '/var/run/containerd/containerd.sock')
+    message: Use of the Containerd Unix socket is not allowed.
+  - expression: >-
+      !variables.hostPathVolumePaths.exists(path, path == '/var/run/crio/crio.sock')
+    message: Use of the CRI-O Unix socket is not allowed.
+  - expression: >-
+      !variables.hostPathVolumePaths.exists(path, path == '/var/run/cri-dockerd.sock')
+    message: Use of the Docker CRI socket is not allowed.
+  variables:
+  # `spec.volumes` is optional (a Pod may legitimately declare none), and a volume entry may carry
+  # any one of ~30 source types, so `.?hostPath.?path.orValue('')` is doing two jobs: it tolerates
+  # the absent-`volumes` case via `.orValue([])` on the outside, and maps every NON-hostPath
+  # volume to the empty string, which no socket path above can equal. Upstream instead keeps three
+  # variables (`hasVolumes` -- which actually holds `!has(volumes)`, inverted from its name --
+  # plus `volumes` and `volumesWithHostPath`) and guards each expression with a leading
+  # `variables.hasVolumes ||`; one null-safe projection replaces all of that.
+  #
+  # `variables` are visible here inside `validations` but NOT inside `matchConditions` (design
+  # §4.1) -- irrelevant for this policy, which has neither, but the reason the two places are not
+  # interchangeable if one is ever added.
+  - name: hostPathVolumePaths
+    expression: >-
+      object.spec.?volumes.orValue([]).map(volume, volume.?hostPath.?path.orValue(''))

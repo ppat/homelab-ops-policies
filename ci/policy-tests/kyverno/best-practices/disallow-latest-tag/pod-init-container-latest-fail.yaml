@@ -1,0 +1,24 @@
+---
+# EXPECTED: `fail` ("Using a mutable image tag e.g. 'latest' is not allowed.").
+#
+# THE REGRESSION FIXTURE, half one of two. The pod's `containers` entry is correctly pinned; only
+# the `initContainers` entry is mutable. Upstream's vpol checks `object.spec.containers` alone,
+# so under upstream's expression this pod PASSES. It fails here because
+# ../../../../../best-practices/disallow-latest-tag.yaml keeps all three container lists, which
+# is design doc phase2.0-policy-migration-design-v3.md §3.3's explicit instruction.
+#
+# An untagged or `:latest` init container is exactly as mutable as an app container -- the
+# migration or fixture job it runs is often the thing most likely to change behaviour between
+# pulls -- so this is not a formality.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mutable-init
+  namespace: default
+spec:
+  initContainers:
+  - name: migrate
+    image: registry.internal/migrator:latest
+  containers:
+  - name: app
+    image: registry.internal/app:v2.3.0

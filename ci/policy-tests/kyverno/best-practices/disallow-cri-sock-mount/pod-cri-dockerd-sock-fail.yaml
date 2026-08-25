@@ -1,0 +1,24 @@
+---
+# EXPECTED: `fail` (rule 4 of 4 -- "Use of the Docker CRI socket is not allowed.").
+#
+# Carries a SECOND, permitted hostPath volume alongside the socket. Without it, an allow-list
+# mis-edit reading "if any volume is fine, the pod is fine" would still look correct here; with it
+# the fixture only passes if the rule is evaluated per volume.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cri-dockerd-sock-consumer
+  namespace: default
+spec:
+  containers:
+  - name: agent
+    image: registry.internal/agent:v1.4.0
+  volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+      type: Directory
+  - name: cri
+    hostPath:
+      path: /var/run/cri-dockerd.sock
+      type: Socket

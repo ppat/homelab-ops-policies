@@ -1,14 +1,68 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: this file is a REDESIGN, not a port. The legacy
+# best-practices/require-probes.yaml (`kyverno.io/v1 ClusterPolicy`, `metadata.name:
+# require-pod-probes`) matched `Pod` and relied on
+# `pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet` to reach the
+# controllers it actually cared about. Design doc phase2.0-policy-migration-design-v3.md §2.4
+# replaces that with DIRECT controller matching, and §3.3 records the one thing adopted from
+# upstream kyverno/policies (read at commit ef9843f0): its container-naming `messageExpression`.
+# Everything else in upstream's vpol is rejected -- it keeps autogen ON *and* lists pods, all
+# seven pod controllers, jobs and cronjobs in `matchConstraints`, and ships
+# `validationActions: [Deny]`.
+#
+# House style for a `best-practices`-group `ValidatingPolicy` is set by ./restrict-node-port.yaml;
+# read that file first. Its five numbered conventions apply here unrestated.
+#
+# WHAT CHANGED, AND WHY (design §2.4, quoted in substance: this policy's "rule is genuinely
+# controller-shaped ... its four name-glob exemptions then evaluate against controller metadata,
+# which is correct without any rewrite, and its Job-owned-pods precondition disappears because
+# Pods are simply not matched"):
+#
+#   1. `matchConstraints` names apps/v1 daemonsets, deployments and statefulsets. `pods` is
+#      absent, and `spec.autogen.podControllers.controllers` is `[]`, so the ONLY resources this
+#      policy sees are those three kinds. This is the substance of the change; everything below
+#      follows from it.
+#   2. Validation reads `object.spec.template.spec.containers` -- the controller's pod TEMPLATE,
+#      not a bare pod spec. Under the old design autogen produced that path by rewriting
+#      `object.` at policy-load time; here it is simply what the file says, which is the point:
+#      the expression a reader sees is the expression that runs.
+#   3. THE JOB PRECONDITION IS GONE, not translated. The legacy policy carried
+#      `{{ request.object.metadata.ownerReferences[?kind == 'Job'] | length(@) }} == 0` for one
+#      reason: it matched bare Pods, so Job-created pods (which legitimately have no probes --
+#      a batch pod's health IS its exit code) landed in the audit stream. Jobs and CronJobs are
+#      not in `matchConstraints`, so there is nothing left to precondition against. A translated
+#      version of this precondition would be dead code that reads like live logic.
+#   4. ACCEPTED COVERAGE CHANGE, stated plainly because it is a behaviour change and not only a
+#      kind migration: a BARE Pod with no probes is no longer flagged at all. The old policy did
+#      flag it (the precondition only spared Job-OWNED pods). Design §2.4 accepts this
+#      explicitly -- "Pods are simply not matched" -- and it is the right trade: a hands-on
+#      debugging pod is the normal shape of a bare pod in this estate (the same judgement §3.3
+#      makes when declining upstream's `prevent-bare-pods`), and probes on one are noise. The
+#      same applies to ReplicaSets, ReplicationControllers, Jobs and CronJobs. Deployment-owned
+#      pods lose nothing: their Deployment is matched.
+#
+# NATIVE-SIDECAR / initContainers GAP (design §5.7, which asks for it to be noted in-file):
+# this policy checks `containers` only, matching the legacy rule, which iterated
+# `request.object.spec.containers[]`. Since SidecarContainers went GA in 1.33 an
+# `initContainer` carrying `restartPolicy: Always` is a long-running process for which a probe is
+# just as meaningful, so "containers only" is now a CHOICE rather than an accident of the old
+# rule. It is left as-is here on purpose: extending it would change which workloads appear in the
+# audit stream, and design §5.7's rule is that a behaviour change must not ride on a kind
+# migration or its regressions become unattributable. Fix in a separate follow-up.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
-  name: require-pod-probes
+  # RENAMED from the legacy `require-pod-probes` to equal the file basename
+  # (./restrict-node-port.yaml convention 1). The rename is doubly appropriate here: after the
+  # redesign this policy is not about Pods at all.
+  name: require-probes
   annotations:
-    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
     policies.kyverno.io/title: Require Pod Probes
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
-    policies.kyverno.io/subject: Pod
+    # `subject` names the resource a reader should look at, and after the redesign that is the
+    # controller, not the Pod. This is the one annotation the redesign makes stale if left alone.
+    policies.kyverno.io/subject: Deployment, DaemonSet, StatefulSet
     policies.kyverno.io/description: >-
       Liveness and readiness probes need to be configured to correctly manage a Pod's
       lifecycle during deployments, restarts, and upgrades. For each Pod, a periodic
@@ -18,94 +72,144 @@ metadata:
       This policy validates that all containers have one of livenessProbe, readinessProbe,
       or startupProbe defined.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: validate-probes
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    preconditions:
-      all:
-      - key: "{{request.operation || 'BACKGROUND'}}"
-        operator: AnyIn
-        value:
-        - CREATE
-        - UPDATE
-        - BACKGROUND
-      - key: "{{ request.object.metadata.ownerReferences[?kind == 'Job'] | length(@) }}"
-        operator: Equals
-        value: 0
-    validate:
-      message: "Liveness, readiness, or startup probes are required for all containers."
-      foreach:
-      - list: request.object.spec.containers[]
-        deny:
-          conditions:
-            all:
-            - key: livenessProbe
-              operator: AllNotIn
-              value: "{{ element.keys(@)[] }}"
-            - key: startupProbe
-              operator: AllNotIn
-              value: "{{ element.keys(@)[] }}"
-            - key: readinessProbe
-              operator: AllNotIn
-              value: "{{ element.keys(@)[] }}"
-    exclude:
-      any:
-      - resources:
-          namespaces:
-          - csi-driver-nfs
-          - kube-system
-          - longhorn-system
-          - system-upgrade
-      - resources:
-          names:
-          - 'cert-manager-cainjector*'
-          namespaces:
-          - cert-manager
-      - resources:
-          names:
-          - 'intel-gpu-plugin-gpu-device*'
-          namespaces:
-          - intel-device-plugins
-      - resources:
-          names:
-          - 'metallb-speaker*'
-          namespaces:
-          - metallb-system
-      # virt-launcher's `compute` container (the one this policy checks -- it only iterates
-      # spec.containers[], not initContainers) carries no liveness/readiness/startupProbe.
-      # Verified against both VMs' live pod specs: neither defines any of the three fields.
-      # KubeVirt doesn't track VM health through kubelet probes at all -- it tracks it through
-      # the VirtualMachineInstance's own status, surfaced onto the pod via the
-      # `kubevirt.io/virtual-machine-unpaused` readiness gate (visible in both pods'
-      # spec.readinessGates, with status.conditions showing "the virtual machine is not paused"
-      # driving the pod's Ready condition). A kubelet probe would be the wrong signal here even
-      # if one were added: the guest OS runs nested inside qemu, invisible to an exec/http/tcp
-      # check against the virt-launcher container, so the only thing a probe could observe is
-      # whether virt-launcher itself is alive, which the VMI status already captures more
-      # accurately.
-      #
-      # This isn't a case of the pod being unmonitored, just monitored through a different
-      # mechanism than this policy checks for -- the readiness gate is the same contract object
-      # consumers of pod readiness (Services, Deployments, kubectl wait) rely on. What bounds
-      # the risk is exactly that substitution: if it ever failed to hold -- KubeVirt stops
-      # populating the readiness gate, a version changes the contract, a bug leaves it stale --
-      # this pod would have zero health signal of any kind, kubelet or KubeVirt's, and this
-      # exclusion means the audit stream would not say so. That silent failure mode is the
-      # residual risk this exclusion accepts; it isn't mitigated by anything else here.
-      #
-      # Name-scoped, not namespace-scoped, and limited to the same two namespaces as the other
-      # virt-launcher exclusions in this repo (./add-emptydir-sizelimit.yaml, and
-      # ../pod-security-standard/restricted/{restrict-volume-types,restrict-seccomp-strict}.yaml)
-      # rather than left open to any future VM namespace.
-      - resources:
-          names:
-          - 'virt-launcher*'
-          namespaces:
-          - sandbox-docker
-          - sandbox-talos
+  # AUTOGEN OFF, EXPLICITLY. With `pods` absent from `matchConstraints` there is nothing for
+  # autogen to rewrite, so the empty list is inert TODAY -- it is written anyway because it is the
+  # guard that keeps the redesign coherent if `pods` is ever added back. At that moment the
+  # default (autogen ON) would rewrite `object.` to `object.spec.template.` throughout, INCLUDING
+  # inside the `matchConditions` below, and every estate exemption below would silently stop
+  # matching real controllers (design §2.4, measured). Leaving the field absent would make that a
+  # one-line accident; writing `[]` makes it a deliberate edit against a comment that says why not.
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  # THE ESTATE EXEMPTIONS, INLINE. `best-practices` policies keep their exemptions in the policy
+  # file rather than in a kustomize patch layer (design §2.1: the pure-mirror/exemption split buys
+  # diffability against an external standard, and this policy has no external standard to diff
+  # against) -- unlike the PSS mirrors under ../pod-security-standard/.
+  #
+  # SHAPE: `matchConditions` entries are ANDed and select what the policy LOOKS AT, so an
+  # exemption is written as a negation -- "match unless this is the exempted thing". The legacy
+  # policy's `exclude.any` was a disjunction of exclusion clauses; De Morgan turns it into this
+  # conjunction of negated clauses, one entry per clause, same set.
+  #
+  # WHAT THE NAMES NOW REFER TO, which is the redesign's one subtle consequence: these expressions
+  # evaluate against the CONTROLLER's metadata, never a Pod's. All four globs are prefix globs and
+  # every controller name is a prefix of the pod names it generates, so three of the four cover
+  # exactly what they covered before. The fourth (virt-launcher) does not -- see its own note.
+  #
+  # `?name + ?generateName` rather than `?name` alone: a controller is normally created with a
+  # name, but `generateName` is legal on any resource and is empty-string-safe here, so the
+  # combined form costs nothing and removes a whole class of "the exemption didn't fire" bug.
+  # It is the form design §2.2 verified. `variables` are NOT visible inside `matchConditions`
+  # (design §4.1), which is why the namespace list is spelled out inline in each entry.
+  matchConditions:
+  # Infrastructure namespaces, exempt wholesale: cluster-lifecycle and storage components whose
+  # health is managed by their own operators and whose manifests this estate does not author.
+  - name: exempt-infrastructure-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in
+      ['csi-driver-nfs', 'kube-system', 'longhorn-system', 'system-upgrade'])
+  - name: exempt-cert-manager-cainjector
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'cert-manager' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('cert-manager-cainjector'))
+  - name: exempt-intel-gpu-plugin-gpu-device
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'intel-device-plugins' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('intel-gpu-plugin-gpu-device'))
+  - name: exempt-metallb-speaker
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'metallb-system' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('metallb-speaker'))
+  # virt-launcher's `compute` container (the one this policy checks -- it only iterates
+  # spec.containers[], not initContainers) carries no liveness/readiness/startupProbe.
+  # Verified against both VMs' live pod specs: neither defines any of the three fields.
+  # KubeVirt doesn't track VM health through kubelet probes at all -- it tracks it through
+  # the VirtualMachineInstance's own status, surfaced onto the pod via the
+  # `kubevirt.io/virtual-machine-unpaused` readiness gate (visible in both pods'
+  # spec.readinessGates, with status.conditions showing "the virtual machine is not paused"
+  # driving the pod's Ready condition). A kubelet probe would be the wrong signal here even
+  # if one were added: the guest OS runs nested inside qemu, invisible to an exec/http/tcp
+  # check against the virt-launcher container, so the only thing a probe could observe is
+  # whether virt-launcher itself is alive, which the VMI status already captures more
+  # accurately.
+  #
+  # This isn't a case of the pod being unmonitored, just monitored through a different
+  # mechanism than this policy checks for -- the readiness gate is the same contract object
+  # consumers of pod readiness (Services, Deployments, kubectl wait) rely on. What bounds
+  # the risk is exactly that substitution: if it ever failed to hold -- KubeVirt stops
+  # populating the readiness gate, a version changes the contract, a bug leaves it stale --
+  # this pod would have zero health signal of any kind, kubelet or KubeVirt's, and this
+  # exclusion means the audit stream would not say so. That silent failure mode is the
+  # residual risk this exclusion accepts; it isn't mitigated by anything else here.
+  #
+  # Name-scoped, not namespace-scoped, and limited to the same two namespaces as the other
+  # virt-launcher exclusions in this repo (./add-emptydir-sizelimit.yaml, and
+  # ../pod-security-standard/restricted/{restrict-volume-types,restrict-seccomp-strict}.yaml)
+  # rather than left open to any future VM namespace.
+  #
+  # NOW INERT BY CONSTRUCTION, and retained anyway. Everything above describes a POD: a
+  # virt-launcher pod is created directly by virt-controller against the VirtualMachineInstance,
+  # not by a Deployment, DaemonSet or StatefulSet, so after the redesign above there is no
+  # resource this entry can fire on in the real estate. It is kept for the same reason the
+  # knowingly-inert virt-launcher entry in
+  # ../pod-security-standard/restricted/restrict-volume-types.yaml is kept (design §3.2): the
+  # rationale is the durable part, deleting it would erase why the workload is unprobed, and
+  # re-deriving it later costs far more than the entry does. The `kyverno test` fixture that
+  # exercises it is therefore synthetic -- a StatefulSet named `virt-launcher-*` that exists
+  # nowhere but the fixture directory -- and is labelled as such there. It still proves the
+  # expression is correct, which is what the fixture is for.
+  - name: exempt-virt-launcher
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['sandbox-docker', 'sandbox-talos'] &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-launcher'))
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - apps
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - daemonsets
+      - deployments
+      - statefulsets
+  validationActions:
+  - Audit
+  validations:
+  - expression: >-
+      variables.containers.all(container,
+      has(container.livenessProbe) ||
+      has(container.readinessProbe) ||
+      has(container.startupProbe))
+    # `messageExpression` adopted from upstream's vpol (design §3.3: "adopt upstream's
+    # container-naming `messageExpression` (cheap QoL for an Audit report stream)") -- the one
+    # thing worth taking from that file. In Audit mode every finding is a PolicyReport row a human
+    # reads later with no access to the object that produced it, so naming the offending
+    # containers is the difference between a row that can be acted on and one that starts an
+    # investigation. The leading sentence keeps the legacy static message's wording so the
+    # familiar string still greps; only the container list is new. `messageExpression` is used
+    # INSTEAD OF `message`, not alongside it.
+    messageExpression: >-
+      'Liveness, readiness, or startup probes are required for all containers. Containers with no probe: ' +
+      variables.containers.filter(container,
+      !(has(container.livenessProbe) ||
+      has(container.readinessProbe) ||
+      has(container.startupProbe))).map(container, container.name).join(', ')
+  variables:
+  # The controller's pod template. Both `spec.template` and `spec.template.spec.containers` are
+  # required by the schema of all three matched kinds, so no null guard is needed or wanted -- an
+  # `.orValue()` here would silently swallow a future `matchConstraints` entry for a kind shaped
+  # differently, which is exactly the failure this redesign is trying to stop being possible.
+  # See the header for why `containers` and not all three container lists.
+  - name: containers
+    expression: object.spec.template.spec.containers
