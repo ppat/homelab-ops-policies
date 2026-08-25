@@ -1,6 +1,25 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check windowsHostProcess
+#
+# LAYER 1 PURE MIRROR (design doc phase2.0-policy-migration-design-v3.md §2.1). House style is
+# set by best-practices/restrict-node-port.yaml and ../restricted/restrict-volume-types.yaml --
+# read those headers first; this file follows their conventions without restating them.
+#
+# No estate exemptions exist for this policy (design §3.1) -- there is no
+# exemptions/disallow-host-process.yaml and no `patches:` entry for this file in
+# kustomization.yaml. `matchConditions: []` is still declared, uniformly, per the PSS-mirror
+# convention (see restrict-volume-types.yaml's header, point 1) -- it is the seam an exemption
+# would append to if one is ever needed.
+#
+# `windowsHostProcess` (pss-research.md, MinimumVersion 1.0): unchanged since k8s 1.22. Windows
+# HostProcess containers get privileged access to the Windows node; this control is
+# `windowsOptions.hostProcess` undefined or `false`, at the container/initContainer/
+# ephemeralContainer level (the legacy pattern this mirrors never checked the pod-level
+# `spec.securityContext.windowsOptions.hostProcess`, and the design's §3.1 baseline-inventory row
+# for this policy carries no content-delta instruction to add it, so this mirror keeps the same
+# scope as a mechanical port).
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-host-process
   annotations:
@@ -8,42 +27,43 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       Windows pods offer the ability to run HostProcess containers which enables privileged
       access to the Windows node. Privileged access to the host is disallowed in the baseline
       policy. HostProcess pods are an alpha feature as of Kubernetes v1.22. This policy ensures
       the `hostProcess` field, if present, is set to `false`.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: host-process-containers
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        HostProcess containers are disallowed. The fields
-        spec.securityContext.windowsOptions.hostProcess,
-        spec.containers[*].securityContext.windowsOptions.hostProcess,
-        spec.initContainers[*].securityContext.windowsOptions.hostProcess,
-        and spec.ephemeralContainers[*].securityContext.windowsOptions.hostProcess
-        must either be undefined or set to `false`.
-      pattern:
-        spec:
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(windowsOptions):
-                =(hostProcess): "false"
-          =(initContainers):
-          - =(securityContext):
-              =(windowsOptions):
-                =(hostProcess): "false"
-          containers:
-          - =(securityContext):
-              =(windowsOptions):
-                =(hostProcess): "false"
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  - expression: >-
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      !c.?securityContext.?windowsOptions.?hostProcess.orValue(false))
+    message: >-
+      HostProcess containers are disallowed. The fields
+      spec.containers[*].securityContext.windowsOptions.hostProcess,
+      spec.initContainers[*].securityContext.windowsOptions.hostProcess,
+      and spec.ephemeralContainers[*].securityContext.windowsOptions.hostProcess
+      must either be undefined or set to `false`.

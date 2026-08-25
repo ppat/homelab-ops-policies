@@ -1,0 +1,30 @@
+---
+# CLI tier for disallow-host-process. Read
+# ../../best-practices/restrict-node-port/kyverno-test.yaml first -- it is the house-style
+# reference and its five numbered conventions all apply here without restating. Single `Test`
+# document: this policy carries no estate exemptions (design §3.1), so built output and the pure
+# mirror are identical and there is nothing for a `-built`/`-pure` pair to distinguish.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-host-process
+policies:
+- ../../../.build/baseline/disallow-host-process.yaml
+resources:
+- pod-no-hostprocess-pass.yaml
+- pod-hostprocess-false-pass.yaml
+- pod-hostprocess-true-fail.yaml
+results:
+- policy: disallow-host-process
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload
+  - default/explicit-false-workload
+  result: pass
+- policy: disallow-host-process
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/hostprocess-workload
+  result: fail
