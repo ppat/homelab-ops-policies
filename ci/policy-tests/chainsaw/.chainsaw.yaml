@@ -1,0 +1,27 @@
+---
+# Shared Chainsaw configuration for every test under ci/policy-tests/chainsaw/. Values start
+# from upstream kyverno/policies' own .chainsaw.yaml (read firsthand, not assumed) rather than
+# chainsaw's own defaults -- they're sane starting points, not gospel; tune a specific timeout
+# only once a real test proves it wrong for this repo's cluster.
+#
+# `chainsaw.kyverno.io/v1alpha1` (not v1alpha2) is deliberate here, matching what upstream
+# ships and what this repo's pinned chainsaw CLI still accepts (`chainsaw lint configuration`
+# verified locally) -- this is a distinct decision from the per-Test skeletons under this
+# directory, which target `policies.kyverno.io/v1` (not Kyverno's own deprecated `v1alpha1`
+# ClusterPolicy) for the Kyverno resources they install.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Configuration
+metadata:
+  name: policy-tests
+spec:
+  parallel: 1
+  timeouts:
+    apply: 1m30s
+    assert: 1m30s
+    cleanup: 1m30s
+    delete: 1m30s
+    error: 1m30s
+    exec: 1m30s
+  fullName: true
+  forceTerminationGracePeriod: 5s
+  delayBeforeCleanup: 3s

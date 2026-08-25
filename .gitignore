@@ -31,3 +31,7 @@ node_modules/
 
 # mise vscode extension
 .vscode/mise-tools/
+
+# ci/scripts/build-policies.sh output: `kustomize build` of each profile, split per resource.
+# Regenerated on demand (locally and in CI); never the thing under review.
+ci/policy-tests/.build/

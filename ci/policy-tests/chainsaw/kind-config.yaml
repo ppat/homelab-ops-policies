@@ -1,0 +1,20 @@
+---
+# Single-node kind cluster for the Chainsaw tier (.github/workflows/e2e-tests.yaml). Pinned to
+# ONE Kubernetes minor -- the estate's actual minor, v1.36.3+k3s1 as of this writing (see
+# homelab-ops-kubernetes-clusters' clusters/*/cluster/kubernetes-version/server-upgrade.yaml) --
+# deliberately narrower than upstream kyverno/policies' own four-version test matrix: this repo
+# tests "our pinned Kyverno engine on our Kubernetes", not compatibility breadth across
+# Kubernetes minors nobody here runs.
+#
+# The `kindest/node` image reference is a plain Renovate-trackable docker image (this org's
+# shared renovate-presets already carry packageRules keyed on the "kindest/node" package name,
+# e.g. grouping/version-separation rules used by other repos in this estate), so no
+# `# renovate: datasource=...` comment is needed here the way it is for values Renovate can only
+# find via this repo's custom regex manager (see static-analysis.yaml's KYVERNO_CLI_VERSION).
+# The digest pins the exact build; bump both together when the minor changes, never the tag
+# alone.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  image: kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5

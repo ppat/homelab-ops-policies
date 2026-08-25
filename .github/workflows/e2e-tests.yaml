@@ -1,0 +1,103 @@
+---
+# yamllint disable rule:line-length
+# The Chainsaw (cluster) tier: distinct from static-analysis.yaml, which needs no live cluster.
+# Stands up a real kind cluster, installs Kyverno via the same Helm chart version the estate
+# runs, then runs `chainsaw test` against ci/policy-tests/chainsaw/ -- see design doc
+# phase2.0-policy-migration-design-v3.md §6 for the full tier-ownership rationale (what a live
+# cluster can prove that the offline CLI tier in static-analysis.yaml cannot: policy Ready
+# wiring, behaviour under a real admission webhook, mutations landing on live objects,
+# DeletingPolicy schedule firing).
+#
+# ci/policy-tests/chainsaw/{baseline,restricted,best-practices}/ are empty scaffolding today --
+# actual Chainsaw test directories land with each policy port in a later PR (design doc §6.7),
+# so a green run here today just means the cluster came up, Kyverno went Ready, and the two
+# built-in checks below (structural build sanity via build-policies.sh, and `chainsaw test`
+# finding zero test directories) both succeeded -- not that any policy has cluster-level
+# coverage yet.
+name: e2e-tests
+
+on:
+  pull_request:
+    paths:
+    - '.github/workflows/e2e-tests.yaml'
+    - 'best-practices/**/*.yaml'
+    - 'pod-security-standard/**/*.yaml'
+    - 'ci/**'
+  schedule:
+  - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  chainsaw:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Third leg of the lockstep this repo already keeps between the Kyverno CLI version
+      # (static-analysis.yaml's KYVERNO_CLI_VERSION) and the chart version actually deployed by
+      # infra-security-core in homelab-ops-kubernetes-apps -- all three should move together.
+      # renovate: datasource=helm depName=kyverno repository=https://kyverno.github.io/kyverno/
+      KYVERNO_CHART_VERSION: "3.8.2"
+    steps:
+    - name: Setup repository and tools
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@9c16506c3c527478b6314c86ca961c0011d9f94a # v2.2.0
+      with:
+        current_git_ref: ${{ github.head_ref || github.ref }}
+        current_repository: ${{ github.repository }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        mise_toml: |
+          [tools]
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kind
+          kind = "0.32.0"
+          # renovate: datasource=github-releases depName=kubernetes/kubernetes
+          kubectl = "1.36.4"
+          # renovate: datasource=github-releases depName=helm/helm
+          helm = "4.2.4"
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.*)$
+          kustomize = "5.8.1"
+          # renovate: datasource=github-releases depName=mikefarah/yq
+          yq = "4.53.6"
+          # renovate: datasource=github-releases depName=kyverno/chainsaw
+          "aqua:kyverno/chainsaw" = "0.2.15"
+
+    - name: Create kind cluster
+      working-directory: ./current
+      shell: bash
+      # kind-config.yaml pins the node image to the estate's actual Kubernetes minor (see its
+      # own header comment) -- a single version, not a matrix: this workflow tests "our pinned
+      # Kyverno engine on our Kubernetes", not compatibility breadth.
+      run: mise exec -- kind create cluster --config ci/policy-tests/chainsaw/kind-config.yaml --wait 5m
+
+    - name: Install Kyverno
+      working-directory: ./current
+      shell: bash
+      run: |
+        mise exec -- helm repo add kyverno https://kyverno.github.io/kyverno/
+        mise exec -- helm repo update kyverno
+        mise exec -- helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace --version "${KYVERNO_CHART_VERSION}"
+
+    - name: Wait for Kyverno ready
+      working-directory: ./current
+      shell: bash
+      # `--selector '!job-name'` (upstream kyverno/policies' own mechanics, read firsthand from
+      # .github/actions/setup-env/action.yaml) excludes the chart's install/upgrade hook Jobs'
+      # pods, which run to completion rather than reaching Ready -- waiting on them would either
+      # hang or race their own lifecycle. Every controller Deployment's pods lack a job-name
+      # label and are covered.
+      run: mise exec -- kubectl wait --namespace kyverno --for=condition=ready pod --selector '!job-name' --timeout=120s
+
+    - name: Build policy profiles (ci/scripts/build-policies.sh)
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- ./ci/scripts/build-policies.sh
+
+    - name: Run chainsaw
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- chainsaw test ci/policy-tests/chainsaw --config ci/policy-tests/chainsaw/.chainsaw.yaml
