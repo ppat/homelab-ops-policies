@@ -1,0 +1,19 @@
+---
+# EXPECTED: `skip`.
+#
+# Namespace exemption, first half. Non-vacuous: this Pod carries a plain, uncapped, disk-backed
+# emptyDir -- the exact shape pod-mixed-emptydirs-mutated.yaml gets patched for -- so if the
+# `kube-system` entry were dropped from the exemption list it would be mutated and this row would
+# turn red.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: emptydir-system-workload
+  namespace: kube-system
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  volumes:
+  - name: scratch
+    emptyDir: {}

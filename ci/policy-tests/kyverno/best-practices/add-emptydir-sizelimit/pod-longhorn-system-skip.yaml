@@ -1,0 +1,18 @@
+---
+# EXPECTED: `skip`.
+#
+# Namespace exemption, second half, falsifiable independently of the first. Longhorn's engine and
+# replica pods size their own scratch volumes; an externally imposed 256Mi cap on a volume backing
+# block-device replication is a data-path failure, not a tidy default.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: emptydir-longhorn-workload
+  namespace: longhorn-system
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  volumes:
+  - name: scratch
+    emptyDir: {}

@@ -1,0 +1,20 @@
+---
+# THE ASSERTION THE INCIDENT EARNED: both of virt-launcher's emptyDirs come back with NO
+# sizeLimit. `null` is the absence of the key; a subset match on `emptyDir: {}` would have been
+# satisfied by a volume that HAD been capped, which is the whole reason this file uses expression
+# assertions rather than a shape.
+#
+# Both volumes, not just `ephemeral-disks`: the exemption is deliberately WHOLE-POD rather than
+# per-volume (the policy file explains why -- every emptyDir a virt-launcher pod carries is
+# virt-controller's own bookkeeping and kubelet tears the whole pod down with the VM), so a
+# narrowing of the exemption to one volume name is a regression this fixture should catch.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-vmdocker-x9k2p
+  namespace: sandbox-docker
+spec:
+  (volumes[?name == 'ephemeral-disks'] | [0].emptyDir.sizeLimit): null
+  (volumes[?name == 'libvirt-runtime'] | [0].emptyDir.sizeLimit): null
+status:
+  phase: Running

@@ -1,0 +1,20 @@
+---
+# EXPECTED: `pass`, mutated.
+#
+# NAMESPACE-AXIS CONTROL, the twin of the name-axis fixture beside it: right name prefix, wrong
+# namespace. If the exemption were ever rewritten against the name alone -- which reads like a
+# simplification, since `virt-launcher*` looks specific enough on its own -- anything anywhere in
+# the estate could opt out of this policy by choosing its own name. This fixture is what turns
+# red instead.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-launcher-impostor
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+  volumes:
+  - name: scratch
+    emptyDir: {}
