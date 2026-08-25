@@ -1,0 +1,32 @@
+---
+# EXPECTED: `pass`, mutated -- ndots APPENDED, `edns0` and `attempts` still present.
+#
+# THE REGRESSION FIXTURE FOR THIS REPO'S OWN PHASE 1 BUG. `spec.dnsConfig.options` is declared
+# `listType: atomic` in the Kubernetes API: it has no merge key, so anything that writes it
+# writes the WHOLE list. The legacy policy's own comment records what that cost --
+#
+#     `+()` only tests field presence, so `+(options)` would skip a pod that already
+#     has sibling options (e.g. attempts, edns0) but no ndots entry, leaving it
+#     without the optimisation.
+#
+# -- and the inverse mistake, writing the list without reading it back first, deletes the
+# workload's own resolver options instead. Both failure modes live on this fixture: a policy that
+# skipped it would leave ndots absent, and a policy that replaced the list would leave `edns0`
+# and `attempts` gone. patched-resources.yaml pins all three entries and their order.
+#
+# Upstream kyverno/policies' mpol does not have this problem in this shape, but has a worse one
+# in another: it explicitly REMOVES an existing ndots option before adding its own.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-sibling-options-workload
+  namespace: default
+spec:
+  dnsConfig:
+    options:
+    - name: edns0
+    - name: attempts
+      value: "3"
+  containers:
+  - name: app
+    image: nginx:1.29

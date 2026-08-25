@@ -1,0 +1,23 @@
+---
+# THE OTHER HALF, and what makes switching autogen off admissible during a kind migration at all
+# (design §5.7: a behaviour change must not ride on one). The Pod the Deployment created DID get
+# `ndots: 1`, because it reached admission as a Pod and `matchConstraints` matches pods. The
+# runtime outcome -- what a container's /etc/resolv.conf ends up saying -- is identical with
+# autogen on or off. Only the controller object's bookkeeping differs, and under autogen ON that
+# bookkeeping was wrong.
+#
+# Selected by label, because the Pod's name is generated. Chainsaw's resource-shaped assertions
+# are satisfied by ANY matching object of the kind, which is the right semantics here: there is
+# exactly one replica.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: ndots-autogen-probe
+spec:
+  dnsConfig:
+    options:
+    - name: ndots
+      value: "1"
+status:
+  phase: Running

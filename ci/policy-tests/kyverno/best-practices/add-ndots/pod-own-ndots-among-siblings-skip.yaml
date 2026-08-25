@@ -1,0 +1,24 @@
+---
+# EXPECTED: `skip`.
+#
+# The guard again, with the ndots entry NOT FIRST in the list. `exists(o, o.name == 'ndots')` is
+# a search; a guard mis-written as an index check (`options[0].name == 'ndots'`, the shape a
+# careless JSONPath-to-CEL translation produces) would miss this Pod and overwrite a declared
+# value. Its twin above has ndots alone, so the pair distinguishes "finds it" from "finds it only
+# when it is the whole list".
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-declared-among-siblings-workload
+  namespace: default
+spec:
+  dnsConfig:
+    options:
+    - name: edns0
+    - name: ndots
+      value: "2"
+    - name: attempts
+      value: "3"
+  containers:
+  - name: app
+    image: nginx:1.29
