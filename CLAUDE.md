@@ -226,7 +226,18 @@ Each remaining CI concern gets its own workflow file rather than sharing one
   particular way. It never trusts `kyverno apply`'s exit code — a malformed
   policy is silently *dropped* and still exits 0; the job reads the reported
   rule count and greps for `^Error:` instead.
-- `.github/workflows/policy-cli-tests.yaml` — the `kyverno test` tier.
+- `.github/workflows/policy-cli-tests.yaml` — the `kyverno test` tier. Runs
+  `ci/scripts/audit-fixture-collisions.sh` first: `kyverno test`'s
+  `results[].resources` selector is `<namespace>/<name>`, resolved against
+  whatever a single `Test` document's own `resources:` list loads, and two
+  ways that can go wrong are both silent to the CLI itself — two fixture
+  files sharing a `<namespace>/<name>` (only one gets tested; the CLI logs a
+  warning but still exits clean) and a selector that matches no loaded
+  fixture (it silently broadens to every loaded resource instead of
+  failing). The script fails CI on either, scoped per `Test` document (reuse
+  of a `<namespace>/<name>` pair *across* documents is normal and common,
+  not flagged). See the script's own header for how this was verified
+  against the pinned CLI.
 - `.github/workflows/e2e-tests.yaml` — the Chainsaw cluster tier.
 
 The Kyverno CLI version, the kind node image, and the Kyverno Helm chart

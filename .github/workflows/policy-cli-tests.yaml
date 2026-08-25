@@ -75,6 +75,18 @@ jobs:
       # nothing about why -- hence this comment.
       run: mise exec -- ./ci/scripts/build-policies.sh
 
+    - name: Audit fixture collisions (ci/scripts/audit-fixture-collisions.sh)
+      working-directory: ./current
+      shell: bash
+      # Runs BEFORE `kyverno test` on purpose. Both failure modes this catches (a
+      # `<namespace>/<name>` collision between two fixture files under one Test document's
+      # `resources:` list, or a `results[].resources` selector that matches none of them) are
+      # silent to `kyverno test` itself -- the suite still reports green, just having asserted
+      # something other than what it claims. Promoted from Wave E's one-off manual audit (PR #11)
+      # into a real CI check; see the script's own header for the full mechanism and how it was
+      # verified against the pinned CLI.
+      run: mise exec -- ./ci/scripts/audit-fixture-collisions.sh
+
     - name: Run kyverno test
       working-directory: ./current
       shell: bash
