@@ -1,0 +1,32 @@
+---
+# EXPECTED: `fail`.
+#
+# THE AUTOGEN FIXTURE. ../../../../../best-practices/disallow-cri-sock-mount.yaml deliberately
+# leaves `spec.autogen` unset so autogen stays ON, reproducing the legacy `ClusterPolicy`'s
+# controller-level coverage. That claim is only worth the comment it is written in if something
+# proves autogen is actually running: this DaemonSet's socket mount is under
+# `spec.template.spec.volumes`, a path the policy's own `spec.variables` expression never
+# mentions, so a `fail` here is reachable ONLY through autogen's `object.` ->
+# `object.spec.template.` rewrite. Turn autogen off and this row flips to "Not found".
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-agent
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: node-agent
+  template:
+    metadata:
+      labels:
+        app: node-agent
+    spec:
+      containers:
+      - name: agent
+        image: registry.internal/agent:v1.4.0
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+          type: Socket

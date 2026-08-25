@@ -1,0 +1,22 @@
+---
+# EXPECTED: `pass`.
+#
+# Volumes present, but none of them a hostPath. Covers the second half of the policy's projection:
+# `volume.?hostPath.?path.orValue('')` maps a non-hostPath volume to the empty string rather than
+# erroring on the missing key. Dropping the inner `.?hostPath` guard turns this row into an error,
+# not a fail, which is why it is a distinct fixture from ./pod-no-volumes-pass.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: config-consumer
+  namespace: default
+spec:
+  containers:
+  - name: api
+    image: registry.internal/api:v3.0.1
+  volumes:
+  - name: config
+    configMap:
+      name: api-config
+  - name: scratch
+    emptyDir: {}

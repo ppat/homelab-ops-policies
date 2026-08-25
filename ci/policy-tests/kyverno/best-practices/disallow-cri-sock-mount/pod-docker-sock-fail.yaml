@@ -1,0 +1,23 @@
+---
+# EXPECTED: `fail` (rule 1 of 4 -- "Use of the Docker Unix socket is not allowed.").
+#
+# The canonical violation: the dockerd socket bind-mounted straight into a container. Anything
+# with this mount can create privileged containers on the node, which is the escalation the whole
+# policy exists to object to.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: docker-sock-consumer
+  namespace: kube-system
+spec:
+  containers:
+  - name: agent
+    image: registry.internal/agent:v1.4.0
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+      type: Socket

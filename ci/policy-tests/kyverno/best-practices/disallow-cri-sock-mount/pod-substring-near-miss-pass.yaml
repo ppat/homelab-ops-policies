@@ -1,0 +1,30 @@
+---
+# EXPECTED: `pass`.
+#
+# THE FIXTURE THE `.matches()` DEVIATION EXISTS FOR, half two of two.
+#
+# `.matches()` is a SEARCH, not a full-string match: no `^`/`$` anchors are implied. Upstream's
+# expression therefore flags any path that merely CONTAINS one of the four socket paths as a
+# substring -- including this backup file, whose two volumes are a superstring on the right
+# (`.bak` suffix) and on the left (a `/var/lib/backups` prefix). Exact comparison passes both.
+#
+# Included as two volumes on one pod rather than two pods because the interesting property is
+# that neither end is anchored; splitting them would let one half rot unnoticed.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: substring-near-miss
+  namespace: default
+spec:
+  containers:
+  - name: agent
+    image: registry.internal/agent:v1.4.0
+  volumes:
+  - name: suffixed
+    hostPath:
+      path: /var/run/docker.sock.bak
+      type: File
+  - name: prefixed
+    hostPath:
+      path: /var/lib/backups/var/run/crio/crio.sock
+      type: File
