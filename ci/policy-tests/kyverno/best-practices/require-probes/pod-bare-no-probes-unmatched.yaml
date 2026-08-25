@@ -1,0 +1,23 @@
+---
+# EXPECTED: NO RESULT AT ALL -- and that is why this file is NOT listed in kyverno-test.yaml's
+# `resources:`. Read the "THE ONE ASSERTION THIS TIER CANNOT MAKE" section of that file first;
+# this fixture exists to serve the manual command it documents, and for no other reason.
+#
+# An unprobed bare Pod, unmatched by the policy -- the ACCEPTED SCOPE decision the policy header
+# sets out, and this is the only place it is checked. The assertion is made by hand:
+#
+#   kyverno apply ci/policy-tests/.build/best-practices/require-probes.yaml \
+#     --resource ci/policy-tests/kyverno/best-practices/require-probes/pod-bare-no-probes-unmatched.yaml \
+#     --detailed-results
+#
+# Expected output: `pass: 0, fail: 0, warn: 0, error: 0, skip: 0`. A non-zero count in ANY column
+# means the policy is matching Pods again.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-shell
+  namespace: default
+spec:
+  containers:
+  - name: shell
+    image: registry.internal/debug-tools:v0.4.1

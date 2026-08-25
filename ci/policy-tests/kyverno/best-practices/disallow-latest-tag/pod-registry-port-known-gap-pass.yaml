@@ -1,0 +1,20 @@
+---
+# EXPECTED: `pass` -- and this row documents a KNOWN GAP rather than desired behaviour.
+#
+# `registry.internal:5000/app` is UNTAGGED, but the colon in the registry port satisfies the
+# first rule's `contains(':')`, so nothing flags it. Closing that hole means changing which
+# workloads appear in the audit stream, which is its own change to argue for and measure.
+#
+# The fixture exists so the gap is VISIBLE and attributable: whoever tightens the rule later will
+# find this row flipping to `fail`, read this comment, and know the flip is the intended effect of
+# their change rather than a fixture they broke. Move it to a `fail` row at that point; do not
+# delete it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: registry-port-untagged
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.internal:5000/app

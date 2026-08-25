@@ -1,0 +1,23 @@
+---
+# EXPECTED: `fail`.
+#
+# THE NON-VACUITY TWIN of ./deployment-cert-manager-cainjector-skip.yaml. Right namespace, wrong
+# name, identical unprobed container. Proves the cainjector exemption is scoped by NAME and has
+# not silently become a namespace-wide one.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-manager-webhook
+  namespace: cert-manager
+spec:
+  selector:
+    matchLabels:
+      app: cert-manager-webhook
+  template:
+    metadata:
+      labels:
+        app: cert-manager-webhook
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0

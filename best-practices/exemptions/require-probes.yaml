@@ -1,0 +1,84 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../require-probes.yaml, applied by the `patches:` entry in
+# ../kustomization.yaml. A JSON6902 patch document, NOT a manifest: it must never appear in
+# `resources:`.
+#
+# HOUSE-STYLE REFERENCE for an exemption patch is
+# ../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml. Its numbered
+# conventions govern this file too -- how the predicates are written, and what an entry owes its
+# next reader -- and are not restated here.
+#
+# ONE THING DIFFERS from every PSS exemption patch, and it changes what the names below match:
+# ../require-probes.yaml matches Deployments, DaemonSets and StatefulSets rather than Pods, so
+# `object.metadata` is the CONTROLLER's metadata. These are controller names carrying no generated
+# pod suffix.
+
+# Infrastructure namespaces, exempt wholesale: cluster-lifecycle and storage components whose
+# health is managed by their own operators and whose manifests this estate does not author.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-infrastructure-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in
+      ['csi-driver-nfs', 'kube-system', 'longhorn-system', 'system-upgrade'])
+
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-cert-manager-cainjector
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'cert-manager' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('cert-manager-cainjector'))
+
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-intel-gpu-plugin-gpu-device
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'intel-device-plugins' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('intel-gpu-plugin-gpu-device'))
+
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-metallb-speaker
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'metallb-system' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('metallb-speaker'))
+
+# THIS ENTRY DECIDES NOTHING, BY CONSTRUCTION, and is retained deliberately. A virt-launcher pod is
+# created directly by virt-controller against the VirtualMachineInstance, not by any of the three
+# kinds ../require-probes.yaml matches, so nothing in the estate can reach it. What is durable is
+# the reason the workload is unprobed -- expensive to re-derive, and lost the moment the entry
+# goes:
+#
+#   virt-launcher's `compute` container carries no liveness/readiness/startupProbe (verified
+#   against both VMs' live pod specs), and adding one would be the wrong signal. The guest OS runs
+#   nested inside qemu, invisible to an exec/http/tcp check against the virt-launcher container, so
+#   a kubelet probe could only observe whether virt-launcher itself is alive. KubeVirt tracks VM
+#   health through the VirtualMachineInstance's own status instead, surfaced onto the pod by the
+#   `kubevirt.io/virtual-machine-unpaused` readiness gate -- the same contract object every
+#   consumer of pod readiness (Services, Deployments, `kubectl wait`) already reads.
+#
+# COST: that substitution is load-bearing and nothing here watches it. If the readiness gate
+# stopped being populated -- contract change, stale condition, bug -- the pod would have no health
+# signal at all, kubelet's or KubeVirt's, and no audit row would say so.
+#
+# Scoped to the same two namespaces as every other virt-launcher exclusion in this repo
+# (../add-emptydir-sizelimit.yaml and
+# ../../pod-security-standard/restricted/exemptions/{restrict-volume-types,restrict-seccomp-strict}.yaml)
+# rather than left open to any future VM namespace; a new VM namespace needs all of them updated
+# together. Its `kyverno test` fixture is necessarily synthetic and labelled as such -- it still
+# proves the expression is spelled correctly, which is what keeps a never-firing exemption honest.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-launcher
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in ['sandbox-docker', 'sandbox-talos'] &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('virt-launcher'))

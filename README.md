@@ -103,8 +103,9 @@ Each policy exempts the system namespaces and workloads that legitimately
 need the behavior it otherwise disallows (e.g. `require-probes` doesn't apply
 to a handful of infra DaemonSets that have none) — the exact list is a
 policy-tuning detail that should be read from the policy itself rather than
-restated here. `best-practices` policies carry theirs inline; Pod Security
-Standards policies carry theirs in the profile's `exemptions/` directory.
+restated here. Exemptions live in the group directory's `exemptions/`
+subdirectory, one file per policy, applied as a kustomize patch; a policy file
+with no matching file there has no exemptions.
 
 ## Consuming this repo
 

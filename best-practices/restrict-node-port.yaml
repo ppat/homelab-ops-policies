@@ -62,9 +62,9 @@ spec:
       - UPDATE
       resources:
       - services
-  # No `matchConditions`: no estate exemption applies here. `best-practices` policies keep any
-  # exemptions they do have INLINE, unlike the PSS mirrors -- the pure-mirror/exemption split
-  # exists to buy diffability against an external standard, and these have none.
+  # No `matchConditions`: no estate exemption applies here, and no exemptions/ patch targets this
+  # policy. Where one does -- ./require-probes.yaml -- the policy file declares
+  # `matchConditions: []` as the seam the patch appends to.
   validationActions:
   - Audit
   validations:

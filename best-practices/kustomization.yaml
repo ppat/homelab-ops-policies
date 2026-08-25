@@ -12,3 +12,25 @@ resources:
 - disallow-latest-tag.yaml
 - require-probes.yaml
 - restrict-node-port.yaml
+
+# LAYER 2 -- estate exemptions. Each entry attaches one file from exemptions/ to the policy of the
+# same basename. The files under exemptions/ are JSON6902 patch documents, NOT manifests, so they
+# must never appear in `resources:` above. The `target:` block's `version: v1` tracks the
+# apiVersion the policy file itself declares, not whichever version Kyverno uses for storage.
+#
+# A patch whose target matches nothing is a SILENT NO-OP in kustomize: it does not fail the build.
+# What catches a mistyped target is the CLI-tier test asserting `skip` on each exemption's firing
+# fixture against the built output and `fail` on the same fixture against the pure policy file
+# (ci/policy-tests/kyverno/best-practices/require-probes/). Do not add an entry here without one.
+#
+# No other policy here has an entry. The remaining `ValidatingPolicy` files carry no estate
+# exemption and declare no `matchConditions` seam, so exempting one means adding both. The
+# `ClusterPolicy` files are out of this layer's reach entirely: their exclusions live in each
+# rule's own `exclude:` block, which is per-rule and has no policy-wide seam to append to.
+patches:
+- path: exemptions/require-probes.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: require-probes

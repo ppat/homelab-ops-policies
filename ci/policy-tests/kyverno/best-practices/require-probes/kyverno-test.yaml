@@ -1,0 +1,213 @@
+---
+# CLI tier for require-probes. Read ../restrict-node-port/kyverno-test.yaml first -- it is the
+# house-style reference and its numbered conventions all apply here without restating.
+#
+# TWO `Test` documents, because this policy carries a Layer-2 estate-exemption patch and there are
+# two artifacts worth asserting against:
+#
+#   * `require-probes-built` runs the fixtures against
+#     ../../../.build/best-practices/require-probes.yaml -- `kustomize build` output, i.e. the
+#     exemption-free policy plus best-practices/exemptions/require-probes.yaml. This is what a
+#     consumer actually applies, so it is the authority on shipped behaviour.
+#   * `require-probes-pure` runs THE SAME fixtures against the exemption-free policy file in the
+#     shipped tree, with the exemption layer absent.
+#
+# ../../restricted/restrict-volume-types/kyverno-test.yaml carries the full argument for why the
+# pair is what makes an exemption falsifiable, and why the two documents cannot be merged into one.
+# It is not repeated here.
+#
+# The policy under test is controller-shaped: it matches Deployments, DaemonSets and StatefulSets
+# directly and matches no Pods at all. That makes this suite responsible for three claims the rule
+# itself cannot demonstrate:
+#
+#   1. THE THREE KINDS ARE MATCHED DIRECTLY. ./deployment-no-probes-fail.yaml,
+#      ./daemonset-no-probes-fail.yaml and ./statefulset-no-probes-fail.yaml are one fixture per
+#      `matchConstraints` resource entry: deleting a resource entry leaves the other two rows
+#      green, which is why they are three fixtures.
+#   2. EVERY EXEMPTION FIRES, AND NONE OF THEM FIRES TOO WIDE. Each exemption clause gets a `skip`
+#      fixture that is a genuine violation -- an unprobed container -- and the `pure` document is
+#      what proves it is one: the same fixture reports `fail` there. That pairing cannot see an
+#      exemption that is too WIDE, though, because widening one also turns `fail` into `skip`.
+#      NEAR-MISS TWINS are what catch that: ./deployment-cert-manager-webhook-fail.yaml and
+#      ./deployment-metallb-controller-fail.yaml (right namespace, wrong name) and
+#      ./daemonset-metallb-speaker-wrong-namespace-fail.yaml (right name, wrong namespace) are
+#      identically-shaped violations that must fail under BOTH documents.
+#   3. THE `generateName` TERM IS LIVE. ./generatename-only-deployment-skip.yaml carries
+#      `generateName` and no `name`, so it is reachable only through the `+ ?generateName` half of
+#      each exemption expression.
+#
+# THE ONE ASSERTION THIS TIER CANNOT MAKE, stated here because its absence would otherwise read as
+# an oversight in the suite that matters most:
+#
+#   That a bare Pod is NOT MATCHED has no spelling in `kyverno test`. A `results[]` row naming a
+#   resource that produced no result is reported "Not found" and FAILS, and every result value the
+#   CLI accepts (`pass`/`fail`/`skip`/`warn`/`error`) presupposes a result exists. `notfound`,
+#   `notFound`, `nomatch` and an omitted `resources:` selector were all measured against CLI
+#   v1.18.2 and all fail. This is outside the tier's vocabulary, not merely unwritten here.
+#
+#   So ./pod-bare-no-probes-unmatched.yaml is deliberately absent from `resources:` below and
+#   carries the `kyverno apply` command that asserts it by hand, with its expected output. The
+#   durable home for the assertion is the Chainsaw tier -- an unprobed bare Pod ADMITTED while the
+#   policy runs under `[Deny]` -- worth adding when that tier next grows.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-probes-built
+policies:
+- ../../../.build/best-practices/require-probes.yaml
+resources:
+- deployment-no-probes-fail.yaml
+- daemonset-no-probes-fail.yaml
+- statefulset-no-probes-fail.yaml
+- deployment-all-probe-kinds-pass.yaml
+- deployment-ns-csi-driver-nfs-skip.yaml
+- daemonset-ns-kube-system-skip.yaml
+- statefulset-ns-longhorn-system-skip.yaml
+- deployment-ns-system-upgrade-skip.yaml
+- deployment-cert-manager-cainjector-skip.yaml
+- deployment-cert-manager-webhook-fail.yaml
+- daemonset-intel-gpu-plugin-skip.yaml
+- daemonset-metallb-speaker-skip.yaml
+- deployment-metallb-controller-fail.yaml
+- daemonset-metallb-speaker-wrong-namespace-fail.yaml
+- statefulset-virt-launcher-sandbox-talos-skip.yaml
+- deployment-virt-launcher-sandbox-docker-skip.yaml
+- generatename-only-deployment-skip.yaml
+results:
+# ------------------------------------------------------------------------------------------
+# Point 1: each of the three matched kinds, flagged by the direct match. Plus the two near-miss
+# Deployments from point 2, which share this row because the assertion is identical.
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: Deployment
+  resources:
+  - default/api-server
+  - cert-manager/cert-manager-webhook
+  - metallb-system/metallb-controller
+  result: fail
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: DaemonSet
+  resources:
+  - default/log-collector
+  - default/metallb-speaker
+  result: fail
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: StatefulSet
+  resources:
+  - default/postgres
+  result: fail
+# ------------------------------------------------------------------------------------------
+# The compliant controller. Three containers, one per probe kind, so dropping any disjunct from
+# the policy turns this row red.
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: Deployment
+  resources:
+  - default/well-probed
+  result: pass
+# ------------------------------------------------------------------------------------------
+# Point 2: every exemption clause firing, split by kind only because `kind:` is part of the row.
+# Declaring `pass` on one of these rows makes the suite fail with "Want pass, got skip", which is
+# what makes the skip/pass distinction observable in this tier at all.
+#
+# `metallb-system/` -- namespace, slash, EMPTY name -- addresses the generateName-only fixture
+# (point 3). It is the only selector form that reaches a resource with no `metadata.name`.
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: Deployment
+  resources:
+  - csi-driver-nfs/nfs-node-driver
+  - system-upgrade/system-upgrade-controller
+  - cert-manager/cert-manager-cainjector
+  - sandbox-docker/virt-launcher-docker-vm
+  - metallb-system/
+  result: skip
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: DaemonSet
+  resources:
+  - kube-system/kube-proxy-shim
+  - intel-device-plugins/intel-gpu-plugin-gpu-device-plugin
+  - metallb-system/metallb-speaker
+  result: skip
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: StatefulSet
+  resources:
+  - longhorn-system/longhorn-engine-manager
+  - sandbox-talos/virt-launcher-talos-vm
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-probes-pure
+policies:
+- ../../../../../best-practices/require-probes.yaml
+resources:
+- deployment-no-probes-fail.yaml
+- daemonset-no-probes-fail.yaml
+- statefulset-no-probes-fail.yaml
+- deployment-all-probe-kinds-pass.yaml
+- deployment-ns-csi-driver-nfs-skip.yaml
+- daemonset-ns-kube-system-skip.yaml
+- statefulset-ns-longhorn-system-skip.yaml
+- deployment-ns-system-upgrade-skip.yaml
+- deployment-cert-manager-cainjector-skip.yaml
+- deployment-cert-manager-webhook-fail.yaml
+- daemonset-intel-gpu-plugin-skip.yaml
+- daemonset-metallb-speaker-skip.yaml
+- deployment-metallb-controller-fail.yaml
+- daemonset-metallb-speaker-wrong-namespace-fail.yaml
+- statefulset-virt-launcher-sandbox-talos-skip.yaml
+- deployment-virt-launcher-sandbox-docker-skip.yaml
+- generatename-only-deployment-skip.yaml
+results:
+# Unchanged by the exemption layer: the probe rule itself is what passes this controller. If it
+# ever needed an exemption to pass, the rule would be flagging a compliant workload.
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: Deployment
+  resources:
+  - default/well-probed
+  result: pass
+# THE FIRING ASSERTION. Every controller the built policy skips is a real violation of the
+# exemption-free policy -- so each `skip` above is attributable to its exemption and to nothing
+# else. The near-miss twins and the three matched-kind fixtures are listed here too, so this
+# document is not merely "the same rows with skip rewritten to fail": under the exemption-free
+# policy there is no `skip` result at all, and a `matchConditions` entry leaking back into the
+# policy file would turn one of these rows red.
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: Deployment
+  resources:
+  - default/api-server
+  - cert-manager/cert-manager-webhook
+  - metallb-system/metallb-controller
+  - csi-driver-nfs/nfs-node-driver
+  - system-upgrade/system-upgrade-controller
+  - cert-manager/cert-manager-cainjector
+  - sandbox-docker/virt-launcher-docker-vm
+  - metallb-system/
+  result: fail
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: DaemonSet
+  resources:
+  - default/log-collector
+  - default/metallb-speaker
+  - kube-system/kube-proxy-shim
+  - intel-device-plugins/intel-gpu-plugin-gpu-device-plugin
+  - metallb-system/metallb-speaker
+  result: fail
+- policy: require-probes
+  isValidatingPolicy: true
+  kind: StatefulSet
+  resources:
+  - default/postgres
+  - longhorn-system/longhorn-engine-manager
+  - sandbox-talos/virt-launcher-talos-vm
+  result: fail

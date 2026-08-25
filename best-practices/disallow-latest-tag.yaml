@@ -1,12 +1,24 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: hand-authored. Upstream kyverno/policies ships a
+# best-practices-vpol/disallow-latest-tag/ (read at commit ef9843f0) that is NOT the source for
+# this file: its CEL form checks `object.spec.containers` ONLY, having dropped `initContainers`
+# and `ephemeralContainers` somewhere in its own translation. An untagged or `:latest`
+# initContainer is exactly as mutable as an app container -- and the migration or fixture job it
+# runs is often the likeliest thing to change behaviour between pulls -- so this file keeps all
+# three lists and a resync from upstream would be a coverage regression. Pinned by the
+# initContainer and ephemeralContainer fixtures in
+# ci/policy-tests/kyverno/best-practices/disallow-latest-tag/.
+#
+# House style for a `best-practices`-group `ValidatingPolicy` is set by ./restrict-node-port.yaml;
+# read that file first. Its numbered conventions apply here unrestated, including
+# `spec.autogen.podControllers.controllers: []`.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-latest-tag
   annotations:
     policies.kyverno.io/title: Disallow Latest Tag
     policies.kyverno.io/category: Best Practices
-    policies.kyverno.io/minversion: 1.6.0
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
     policies.kyverno.io/description: >-
@@ -15,42 +27,53 @@ metadata:
       a specific version of an application Pod. This policy validates that the image
       specifies a tag and that it is not called `latest`.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: require-image-tag
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "An image tag is required."
-      foreach:
-      - list: "request.object.spec.containers"
-        pattern:
-          image: "*:*"
-      - list: "request.object.spec.initContainers"
-        pattern:
-          image: "*:*"
-      - list: "request.object.spec.ephemeralContainers"
-        pattern:
-          image: "*:*"
-  - name: validate-image-tag
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: "Using a mutable image tag e.g. 'latest' is not allowed."
-      foreach:
-      - list: "request.object.spec.containers"
-        pattern:
-          image: "!*:latest"
-      - list: "request.object.spec.initContainers"
-        pattern:
-          image: "!*:latest"
-      - list: "request.object.spec.ephemeralContainers"
-        pattern:
-          image: "!*:latest"
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  # TWO entries, not one, because "no tag at all" and "the tag is `latest`" are different mistakes
+  # with different fixes and each needs its own `message`: a PolicyReport row that says which one
+  # it is can be acted on. Both message strings are held stable rather than reworded, for the
+  # reason ./restrict-node-port.yaml gives under DEVIATION 2 -- they are what this estate's
+  # PolicyReports already carry.
+  #
+  # KNOWN GAP, deliberately not closed here: `contains(':')` treats a registry port as a tag, so
+  # `registry.internal:5000/app` satisfies the first check while being untagged. Tightening it
+  # changes which workloads appear in the audit stream, which is its own change to argue for and
+  # measure; it is kept visible instead by
+  # ci/policy-tests/kyverno/best-practices/disallow-latest-tag/pod-registry-port-known-gap-pass.yaml,
+  # whose row flips to `fail` the moment anyone does close it.
+  - expression: >-
+      variables.allContainers.all(container, container.image.contains(':'))
+    message: An image tag is required.
+  # `endsWith(':latest')` rather than a `.matches()` regex, for the reason spelled out at length in
+  # ./disallow-cri-sock-mount.yaml. `endsWith` is anchored by construction, and it correctly leaves
+  # `app:latest@sha256:...` alone -- a digest-pinned reference is immutable whatever the tag says.
+  - expression: >-
+      variables.allContainers.all(container, !container.image.endsWith(':latest'))
+    message: Using a mutable image tag e.g. 'latest' is not allowed.
+  variables:
+  # ALL THREE container lists, which is the whole point of not copying upstream (see the header).
+  # `spec.containers` is required by the Pod schema so it needs no null guard; the other two are
+  # optional.
+  - name: allContainers
+    expression: >-
+      object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])

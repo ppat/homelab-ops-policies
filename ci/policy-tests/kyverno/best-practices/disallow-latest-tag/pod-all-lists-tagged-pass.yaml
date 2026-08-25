@@ -1,0 +1,21 @@
+---
+# EXPECTED: `pass`.
+#
+# The compliant shape, with all three container lists populated and every reference carrying an
+# immutable tag. This is the row that keeps the three `fail` fixtures honest: without it, a policy
+# that flagged EVERY pod would look identical in this suite.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pinned-app
+  namespace: default
+spec:
+  initContainers:
+  - name: migrate
+    image: registry.internal/migrator:v1.9.2
+  containers:
+  - name: app
+    image: registry.internal/app:v2.3.0
+  ephemeralContainers:
+  - name: debugger
+    image: registry.internal/debug-tools:v0.4.1

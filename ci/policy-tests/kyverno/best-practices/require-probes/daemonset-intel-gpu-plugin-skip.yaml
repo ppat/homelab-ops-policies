@@ -1,0 +1,23 @@
+---
+# EXPECTED: `skip`.
+#
+# The `intel-gpu-plugin-gpu-device*` exemption, in `intel-device-plugins`. The real DaemonSet name
+# is longer than the glob, which is the case worth fixturing -- a `==` comparison instead of
+# `startsWith` would leave this row failing.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-gpu-plugin-gpu-device-plugin
+  namespace: intel-device-plugins
+spec:
+  selector:
+    matchLabels:
+      app: intel-gpu-plugin-gpu-device-plugin
+  template:
+    metadata:
+      labels:
+        app: intel-gpu-plugin-gpu-device-plugin
+    spec:
+      containers:
+      - name: main
+        image: registry.internal/app:v2.3.0
