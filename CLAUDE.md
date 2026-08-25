@@ -251,9 +251,11 @@ commitlint checks locally via `pre-commit run --all-files`; it does not
 include the Kubernetes-manifest or Kyverno-CLI validation above, which are
 CI-only.
 
-One CI-fidelity gap worth knowing: the e2e kind cluster installs the Kyverno
-chart with default values, whose `resourceFilters` exclude ReplicaSets from
-every policy engine. Production overrides that in the apps repo's Kyverno
-`HelmRelease`; the Chainsaw suite works around it with a per-test script
-(`ci/policy-tests/chainsaw/scripts/allow-replicaset-cleanup.sh`). Aligning the
-harness with production would be a fidelity improvement, not a correctness fix.
+The e2e kind cluster's `helm install kyverno` step sets `resourceFiltersExclude`
+to the same three entries the real Kyverno `HelmRelease` does (apps repo,
+infrastructure/subsystems/security-core/kyverno), so the chart's chart-default
+`resourceFilters` — which otherwise exclude ReplicaSets from every policy
+engine — matches production here too. `cleanup-empty-replicasets`' Chainsaw
+test used to patch the `kyverno` ConfigMap itself to work around this (a
+per-test script, reverted after); that workaround is gone now that the
+cluster-level default already matches production.

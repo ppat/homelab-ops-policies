@@ -31,8 +31,17 @@
 # excludes ReplicaSets from every policy engine, admission and background alike -- upstream of
 # and unrelated to this policy's own CEL. Without removing those entries, the policy under test
 # would never even see a ReplicaSet, and "the fresh one survives" would again be vacuously true
-# for the wrong reason. See allow-replicaset-cleanup.sh's header for the full writeup and the
-# cross-repo pointer to where the estate's real deployment needs the same override.
+# for the wrong reason.
+#
+# FIXED AT THE CLUSTER LEVEL, not per-test, as of the phase2.2 CI-fidelity pass: .github/
+# workflows/e2e-tests.yaml's `helm install kyverno` step now sets `resourceFiltersExclude` to the
+# same three entries the real Kyverno HelmRelease does (homelab-ops-kubernetes-apps,
+# infrastructure/subsystems/security-core/kyverno/helm-release-kyverno.yaml), so this cluster's
+# default `resourceFilters` already omits ReplicaSet the way production's does -- this test no
+# longer needs to patch the ConfigMap itself. It previously did, via a `script:` step running
+# `../../scripts/allow-replicaset-cleanup.sh` (removed, along with its
+# `restore-replicaset-cleanup-filter.sh` pair, once this test ran clean without them against a
+# live cluster carrying the fix).
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -41,24 +50,10 @@ spec:
   # `template: false` repo-wide -- see ../../restricted/restrict-volume-types/chainsaw-test.yaml.
   template: false
   steps:
-  - name: grant-permissions-and-allow-replicaset-processing
+  - name: grant-permissions
     try:
     - apply:
         file: cluster-role.yaml
-    - script:
-        content: ../../scripts/allow-replicaset-cleanup.sh
-        check:
-          ($error == null): true
-    finally:
-    # Reverts the ConfigMap patch regardless of how the rest of this test goes -- it is a
-    # cluster-wide change to a chart-installed object Chainsaw did not create, so Chainsaw's own
-    # cleanup will not undo it (see restore-replicaset-cleanup-filter.sh's header). The
-    # ClusterRole applied above IS reverted automatically, by contrast, because Chainsaw tracks
-    # and deletes what it applied.
-    - script:
-        content: ../../scripts/restore-replicaset-cleanup-filter.sh
-        check:
-          ($error == null): true
 
   - name: install-policies-and-speed-up-their-schedules
     try:

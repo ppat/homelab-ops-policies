@@ -81,10 +81,23 @@ jobs:
     - name: Install Kyverno
       working-directory: ./current
       shell: bash
+      # `resourceFiltersExclude` mirrors the real Kyverno HelmRelease
+      # (homelab-ops-kubernetes-apps infrastructure/subsystems/security-core/kyverno,
+      # helm-release-kyverno.yaml) verbatim. The chart's own chart-default `resourceFilters`
+      # excludes ReplicaSets from every policy engine, admission and background alike; production
+      # overrides that, so this cluster's default behaviour should too -- otherwise this harness
+      # tests a Kyverno config that does not match what the estate actually runs. Wave F-delete
+      # discovered the gap and worked around it per-test (patching the `kyverno` ConfigMap inside
+      # cleanup-empty-replicasets' own Chainsaw test, reverted in a `finally:` block); fixing it
+      # here, at the source, made that workaround redundant -- removed once the test ran clean
+      # without it against a live cluster carrying this override (phase2.2).
       run: |
         mise exec -- helm repo add kyverno https://kyverno.github.io/kyverno/
         mise exec -- helm repo update kyverno
-        mise exec -- helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace --version "${KYVERNO_CHART_VERSION}"
+        mise exec -- helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace --version "${KYVERNO_CHART_VERSION}" \
+        --set 'config.resourceFiltersExclude[0]=[ReplicaSet\,*\,*]' \
+        --set 'config.resourceFiltersExclude[1]=[ReplicaSet/*\,*\,*]' \
+        --set 'config.resourceFiltersExclude[2]=[ReplicaSet/?*\,*\,*]'
 
     - name: Wait for Kyverno ready
       working-directory: ./current
