@@ -9,6 +9,15 @@
 # verified locally) -- this is a distinct decision from the per-Test skeletons under this
 # directory, which target `policies.kyverno.io/v1` (not Kyverno's own deprecated `v1alpha1`
 # ClusterPolicy) for the Kyverno resources they install.
+#
+# Note for a reader coming from homelab-ops-kubernetes-apps: that repo's own `.chainsaw.yaml`
+# files use `v1alpha2` (a different Configuration shape -- `spec.execution.parallel` instead of
+# a bare `spec.parallel`, no `fullName`/`forceTerminationGracePeriod`/`delayBeforeCleanup`).
+# That's their convention for a heavier, Flux-module test harness, not a rule this repo
+# inherited or is expected to match -- this repo's design doc (§6, "modeled on upstream, not
+# on our own prior Chainsaw usage") explicitly starts from upstream kyverno/policies' shape and
+# values instead. Both API versions are valid input to the pinned chainsaw CLI; this isn't a
+# stale-version bug.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Configuration
 metadata:
