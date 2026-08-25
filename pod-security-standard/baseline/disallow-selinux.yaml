@@ -1,6 +1,27 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PSS-SNAPSHOT: k8s 1.36 / pod-security-admission policy version v1.35 / check seLinuxOptions
+#
+# LAYER 1 PURE MIRROR (design doc phase2.0-policy-migration-design-v3.md §2.1). House style is
+# set by best-practices/restrict-node-port.yaml and ../restricted/restrict-volume-types.yaml --
+# read those headers first; this file follows their conventions without restating them.
+#
+# No estate exemptions exist for this policy (design §3.1) -- there is no
+# exemptions/disallow-selinux.yaml and no `patches:` entry for this file in kustomization.yaml.
+# `matchConditions: []` is still declared, uniformly, per the PSS-mirror convention (see
+# restrict-volume-types.yaml's header, point 1).
+#
+# check_seLinuxOptions.go: `seLinuxOptions.type`, if set, must be one of the allowed types (pod
+# and every container/initContainer/ephemeralContainer level); `seLinuxOptions.user`/`.role` must
+# be empty at every level, unconditionally, at every policy version.
+#
+# CONTENT DELTA (design §5.6): `container_engine_t` added to the allow-list, on top of the
+# structural kind-migration commit that ported this file with the legacy three-entry list
+# unchanged. Allowed since PSS policy v1.31 (`selinuxAllowedTypes1_31`, pss-research.md, commit
+# 840e4a82d "PSA: allow container_engine_t selinux type", 2024-07-17). Confirmed unchanged by this
+# addition: `seLinuxOptions.user`/`.role` must still be empty at every level -- the second
+# `validations[]` entry below is untouched.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-selinux
   annotations:
@@ -8,83 +29,65 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.6.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    policies.kyverno.io/minversion: 1.17.0
+    kyverno.io/kubernetes-version: "1.36"
     policies.kyverno.io/description: >-
       SELinux options can be used to escalate privileges and should not be allowed. This policy
       ensures that the `seLinuxOptions` field is undefined.
 spec:
-  validationFailureAction: Audit
-  background: true
-  rules:
-  - name: selinux-type
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Setting the SELinux type is restricted. The fields
-        spec.securityContext.seLinuxOptions.type,
-        spec.containers[*].securityContext.seLinuxOptions.type,
-        spec.initContainers[*].securityContext.seLinuxOptions, and
-        spec.ephemeralContainers[*].securityContext.seLinuxOptions.type
-        must either be unset or set to one of the allowed values
-        (container_t, container_init_t, or container_kvm_t).
-      pattern:
-        spec:
-          =(securityContext):
-            =(seLinuxOptions):
-              =(type): "container_t | container_init_t | container_kvm_t"
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(seLinuxOptions):
-                =(type): "container_t | container_init_t | container_kvm_t"
-          =(initContainers):
-          - =(securityContext):
-              =(seLinuxOptions):
-                =(type): "container_t | container_init_t | container_kvm_t"
-          containers:
-          - =(securityContext):
-              =(seLinuxOptions):
-                =(type): "container_t | container_init_t | container_kvm_t"
-  - name: selinux-user-role
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    validate:
-      message: >-
-        Setting the SELinux user or role is forbidden. The fields
-        spec.securityContext.seLinuxOptions.user,
-        spec.securityContext.seLinuxOptions.role,
-        spec.containers[*].securityContext.seLinuxOptions.user,
-        spec.containers[*].securityContext.seLinuxOptions.role,
-        spec.initContainers[*].securityContext.seLinuxOptions.user,
-        spec.initContainers[*].securityContext.seLinuxOptions.role,
-        spec.ephemeralContainers[*].securityContext.seLinuxOptions.user, and
-        spec.ephemeralContainers[*].securityContext.seLinuxOptions.role
-        must be unset.
-      pattern:
-        spec:
-          =(securityContext):
-            =(seLinuxOptions):
-              X(user): "null"
-              X(role): "null"
-          =(ephemeralContainers):
-          - =(securityContext):
-              =(seLinuxOptions):
-                X(user): "null"
-                X(role): "null"
-          =(initContainers):
-          - =(securityContext):
-              =(seLinuxOptions):
-                X(user): "null"
-                X(role): "null"
-          containers:
-          - =(securityContext):
-              =(seLinuxOptions):
-                X(user): "null"
-                X(role): "null"
+  autogen:
+    podControllers:
+      controllers: []
+  evaluation:
+    background:
+      enabled: true
+  matchConditions: []
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  validationActions:
+  - Audit
+  validations:
+  - expression: >-
+      object.spec.?securityContext.?seLinuxOptions.?type.orValue('container_t') in
+      ['container_t', 'container_init_t', 'container_kvm_t', 'container_engine_t'] &&
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?seLinuxOptions.?type.orValue('container_t') in
+      ['container_t', 'container_init_t', 'container_kvm_t', 'container_engine_t'])
+    message: >-
+      Setting the SELinux type is restricted. The fields
+      spec.securityContext.seLinuxOptions.type,
+      spec.containers[*].securityContext.seLinuxOptions.type,
+      spec.initContainers[*].securityContext.seLinuxOptions.type, and
+      spec.ephemeralContainers[*].securityContext.seLinuxOptions.type
+      must either be unset or set to one of the allowed values
+      (container_t, container_init_t, container_kvm_t, or container_engine_t).
+  - expression: >-
+      object.spec.?securityContext.?seLinuxOptions.?user.orValue('') == '' &&
+      object.spec.?securityContext.?seLinuxOptions.?role.orValue('') == '' &&
+      (object.spec.containers +
+      object.spec.?initContainers.orValue([]) +
+      object.spec.?ephemeralContainers.orValue([])).all(c,
+      c.?securityContext.?seLinuxOptions.?user.orValue('') == '' &&
+      c.?securityContext.?seLinuxOptions.?role.orValue('') == '')
+    message: >-
+      Setting the SELinux user or role is forbidden. The fields
+      spec.securityContext.seLinuxOptions.user,
+      spec.securityContext.seLinuxOptions.role,
+      spec.containers[*].securityContext.seLinuxOptions.user,
+      spec.containers[*].securityContext.seLinuxOptions.role,
+      spec.initContainers[*].securityContext.seLinuxOptions.user,
+      spec.initContainers[*].securityContext.seLinuxOptions.role,
+      spec.ephemeralContainers[*].securityContext.seLinuxOptions.user, and
+      spec.ephemeralContainers[*].securityContext.seLinuxOptions.role
+      must be unset.

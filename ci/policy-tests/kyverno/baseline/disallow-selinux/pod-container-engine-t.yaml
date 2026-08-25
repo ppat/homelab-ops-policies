@@ -1,0 +1,20 @@
+---
+# CONTENT-DELTA FIXTURE (design doc phase2.0-policy-migration-design-v3.md §5.6). `container_engine_t`
+# is allowed since PSS policy v1.31 (pss-research.md: check_seLinuxOptions.go's
+# `selinuxAllowedTypes1_31`). This pod now asserts `pass`: the content-delta commit added
+# `container_engine_t` to ../../../../../pod-security-standard/baseline/disallow-selinux.yaml's
+# allow-list. The prior (structural kind-migration only) commit asserted `fail` here -- see that
+# commit's kyverno-test.yaml for the pre-delta expectation.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: container-engine-workload
+  namespace: default
+spec:
+  restartPolicy: Always
+  containers:
+  - name: app
+    image: ghcr.io/example/app:1.0.0
+    securityContext:
+      seLinuxOptions:
+        type: container_engine_t

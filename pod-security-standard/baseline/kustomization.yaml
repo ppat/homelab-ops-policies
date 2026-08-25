@@ -14,3 +14,22 @@ resources:
 - restrict-apparmor-profiles.yaml
 - restrict-seccomp.yaml
 - restrict-sysctls.yaml
+
+# LAYER 2 -- estate exemptions (design doc phase2.0-policy-migration-design-v3.md §2.2). Each
+# entry attaches one file from exemptions/ to the policy of the same basename. The files under
+# exemptions/ are JSON6902 patch documents, NOT manifests, so they must never appear in
+# `resources:` above. See ../restricted/kustomization.yaml for the full convention notes (target
+# matching, the silent-no-op hazard, why `version: v1` must track the policy's own apiVersion).
+patches:
+- path: exemptions/disallow-capabilities.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-capabilities
+- path: exemptions/disallow-host-ports.yaml
+  target:
+    group: policies.kyverno.io
+    version: v1
+    kind: ValidatingPolicy
+    name: disallow-host-ports

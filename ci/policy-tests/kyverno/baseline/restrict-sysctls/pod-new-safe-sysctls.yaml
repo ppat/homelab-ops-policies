@@ -1,0 +1,38 @@
+---
+# CONTENT-DELTA FIXTURE (design doc phase2.0-policy-migration-design-v3.md §5.3). All seven
+# sysctls below are confirmed present in check_sysctls.go by pss-research.md (re-checked directly
+# against that primary-source file, not the design doc's own summary table, per this unit's
+# instruction): net.ipv4.ip_local_reserved_ports (policy 1.27); net.ipv4.tcp_keepalive_time,
+# net.ipv4.tcp_fin_timeout, net.ipv4.tcp_keepalive_intvl, net.ipv4.tcp_keepalive_probes (policy
+# 1.29); net.ipv4.tcp_rmem, net.ipv4.tcp_wmem (policy 1.32).
+#
+# This pod now asserts `pass`: the content-delta commit expanded
+# ../../../../../pod-security-standard/baseline/restrict-sysctls.yaml's allow-list to twelve
+# entries. The prior (structural kind-migration only) commit asserted `fail` here -- see that
+# commit's kyverno-test.yaml for the pre-delta expectation.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: new-safe-sysctls-workload
+  namespace: default
+spec:
+  restartPolicy: Always
+  securityContext:
+    sysctls:
+    - name: net.ipv4.ip_local_reserved_ports
+      value: "8080-8090"
+    - name: net.ipv4.tcp_keepalive_time
+      value: "600"
+    - name: net.ipv4.tcp_fin_timeout
+      value: "30"
+    - name: net.ipv4.tcp_keepalive_intvl
+      value: "60"
+    - name: net.ipv4.tcp_keepalive_probes
+      value: "5"
+    - name: net.ipv4.tcp_rmem
+      value: "4096 87380 6291456"
+    - name: net.ipv4.tcp_wmem
+      value: "4096 16384 4194304"
+  containers:
+  - name: app
+    image: ghcr.io/example/app:1.0.0

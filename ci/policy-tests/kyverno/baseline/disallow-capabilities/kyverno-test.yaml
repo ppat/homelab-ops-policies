@@ -1,0 +1,65 @@
+---
+# CLI tier for disallow-capabilities. Read
+# ../../restricted/restrict-volume-types/kyverno-test.yaml first -- it is the house-style
+# reference for the two-document (`-built`/`-pure`) shape and its rationale; this file follows it
+# without restating.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-capabilities-built
+policies:
+- ../../../.build/baseline/disallow-capabilities.yaml
+resources:
+- pod-allowed-caps-pass.yaml
+- pod-disallowed-cap-fail.yaml
+- pod-ns-exempt-disallowed-cap-skip.yaml
+- pod-virt-handler-disallowed-cap-skip.yaml
+results:
+- policy: disallow-capabilities
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload
+  result: pass
+- policy: disallow-capabilities
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/disallowed-cap-workload
+  result: fail
+- policy: disallow-capabilities
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - csi-driver-nfs/csi-nfs-controller-6f9b8d5c7-abcde
+  - kubevirt/virt-handler-54dpv
+  result: skip
+---
+# The exemption layer removed. Same fixtures; only `policies:` differs, and the two exemption
+# fixtures assert `fail` instead of `skip` -- the firing assertion (§2.5).
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-capabilities-pure
+policies:
+- ../../../../../pod-security-standard/baseline/disallow-capabilities.yaml
+resources:
+- pod-allowed-caps-pass.yaml
+- pod-disallowed-cap-fail.yaml
+- pod-ns-exempt-disallowed-cap-skip.yaml
+- pod-virt-handler-disallowed-cap-skip.yaml
+results:
+- policy: disallow-capabilities
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload
+  result: pass
+- policy: disallow-capabilities
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/disallowed-cap-workload
+  - csi-driver-nfs/csi-nfs-controller-6f9b8d5c7-abcde
+  - kubevirt/virt-handler-54dpv
+  result: fail

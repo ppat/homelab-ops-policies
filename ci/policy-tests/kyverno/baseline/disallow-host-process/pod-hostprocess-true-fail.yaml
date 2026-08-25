@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostprocess-workload
+  namespace: default
+spec:
+  restartPolicy: Always
+  containers:
+  - name: app
+    image: ghcr.io/example/app:1.0.0
+    securityContext:
+      windowsOptions:
+        hostProcess: true

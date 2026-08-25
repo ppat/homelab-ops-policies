@@ -1,0 +1,37 @@
+---
+# CLI tier for disallow-selinux. Read
+# ../../best-practices/restrict-node-port/kyverno-test.yaml first -- it is the house-style
+# reference and its five numbered conventions all apply here without restating. Single `Test`
+# document: this policy carries no estate exemptions (design §3.1), so built output and the pure
+# mirror are identical.
+#
+# pod-container-engine-t.yaml now asserts `pass` -- the content-delta commit added
+# container_engine_t to the mirror's allow-list. See that fixture's own header.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-selinux
+policies:
+- ../../../.build/baseline/disallow-selinux.yaml
+resources:
+- pod-unset-pass.yaml
+- pod-allowed-type-pass.yaml
+- pod-disallowed-type-fail.yaml
+- pod-container-engine-t.yaml
+- pod-user-role-set-fail.yaml
+results:
+- policy: disallow-selinux
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ordinary-workload
+  - default/allowed-type-workload
+  - default/container-engine-workload
+  result: pass
+- policy: disallow-selinux
+  isValidatingPolicy: true
+  kind: Pod
+  resources:
+  - default/disallowed-type-workload
+  - default/user-role-set-workload
+  result: fail

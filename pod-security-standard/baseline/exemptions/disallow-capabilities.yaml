@@ -1,0 +1,29 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../disallow-capabilities.yaml (design doc
+# phase2.0-policy-migration-design-v3.md §2.2). Applied by the `patches:` entry in
+# ../kustomization.yaml; this file is NOT a Kubernetes manifest and is not in `resources:`. House
+# style is set by ../../restricted/exemptions/restrict-volume-types.yaml -- read its header first
+# for the seven numbered conventions; they all apply here without restating.
+
+# ns exclusions: csi-driver-nfs, longhorn-system, metallb-system, system-upgrade, tailscale.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in
+      ['csi-driver-nfs', 'longhorn-system', 'metallb-system', 'system-upgrade', 'tailscale'])
+
+# virt-handler sets no explicit capabilities.add list at all -- Privileged: true (see
+# ../disallow-privileged-containers.yaml) already grants everything it needs, so this rule
+# shouldn't trip in practice. Kept as a low-cost safety margin on the one component in this repo
+# that runs privileged, rather than removed on that analysis alone. virt-launcher's default
+# (non-root) capabilities are NET_BIND_SERVICE only, already inside this policy's allowed set, so
+# it isn't excluded here or anywhere else in this file.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-virt-handler
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'kubevirt' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue('')).startsWith('virt-handler'))
