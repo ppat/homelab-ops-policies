@@ -1,0 +1,23 @@
+---
+# EXPECTED: `skip`, for the gate's reason rather than the exemption's -- see
+# pod-declared-requests-skip.yaml, whose header carries the argument.
+#
+# THE MIRROR IMAGE OF THAT FIXTURE, ON THE OTHER RESOURCE AXIS: `requests.memory` declared,
+# `requests.cpu` absent, no `limits` at all. It exists because the suite was mutation-tested and
+# found vacuous on this axis: with only the cpu-declaring fixture present, a policy that defaulted
+# cpu into any container missing it left the whole suite green.
+#
+# 512Mi is deliberately far from 32Mi and not a multiple of it, so a diff of the output cannot be
+# misread.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-sized-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+    resources:
+      requests:
+        memory: 512Mi

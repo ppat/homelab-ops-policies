@@ -1,0 +1,20 @@
+---
+# EXPECTED: `skip`.
+#
+# The degenerate case, and not a throwaway: `spec.volumes` is optional, so the great majority of
+# Pods in this estate reach this policy with the field absent entirely. If the policy patched
+# them it would be rewriting nearly every Pod admitted to the cluster in order to do nothing --
+# measured behaviour without the `matchConditions` gate, which injected `volumes: []`.
+#
+# This fixture is also the one that would notice `object.spec.volumes` being dereferenced without
+# `.?` in the GATE. (The mutation expression deliberately does dereference it unguarded, which is
+# safe only because the gate has already established the field exists; the two are a pair.)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volumeless-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29

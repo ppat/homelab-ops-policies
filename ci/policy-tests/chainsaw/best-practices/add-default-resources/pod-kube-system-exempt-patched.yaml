@@ -1,0 +1,12 @@
+---
+# No `resources` at all. `null` is the absence of the key; a subset match on `resources: {}`
+# would have been satisfied by a container that HAD been given requests.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: exempt-system-workload
+  namespace: kube-system
+spec:
+  (containers[?name == 'pause'] | [0].resources.requests): null
+status:
+  phase: Running

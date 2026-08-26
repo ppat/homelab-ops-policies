@@ -1,0 +1,14 @@
+---
+# EXPECTED: `skip`.
+#
+# The infrastructure-namespace exemption firing on `kube-system`; see ./pod-dns-skip.yaml for why
+# each namespace gets its own fixture and why this one cannot pass vacuously.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-kube-workload
+  namespace: kube-system
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29

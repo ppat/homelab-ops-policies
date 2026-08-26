@@ -1,0 +1,15 @@
+---
+# The virt-launcher exemption is scoped by REAL namespace name, so the test has to create that
+# namespace rather than use chainsaw's generated per-test one. Same reasoning (and the same
+# reason every test in this repo sets `template: false` and hardcodes names) as
+# ../../restricted/restrict-volume-types/namespace-kubevirt.yaml.
+#
+# `sandbox-docker` and not `kubevirt`: virt-launcher pods run in the VM's OWN namespace, so a
+# `kubevirt`-scoped exclusion would exclude nothing. See
+# ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml.
+#
+# Chainsaw deletes what it applied, so this namespace is torn down with the test.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sandbox-docker

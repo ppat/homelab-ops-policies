@@ -1,0 +1,119 @@
+---
+# CLI-tier test for add-ndots. Conventions: ../restrict-node-port/kyverno-test.yaml (1-5) and
+# ../add-default-resources/kyverno-test.yaml (6-10, the MutatingPolicy additions, including why
+# there are no pod-controller fixtures and why there are two `Test` documents).
+#
+# THE CLAIM THIS SUITE DEFENDS: `add-ndots` sets ndots to 1 for workloads that did not choose a
+# value, and NEVER changes one that did. This repo has already had one real bug in that exact area,
+# and upstream kyverno/policies' own mpol deliberately does the wrong thing here -- it removes the
+# workload's entry before adding its own -- so "someone syncs with upstream" is a live, concrete
+# way for the guarantee to be lost. Two `skip` fixtures with a declared ndots, and one `pass`
+# fixture whose sibling options must survive, are what make that loud.
+#
+# For THIS policy the "models pod controllers wrongly" half of convention 9 is sharper than for its
+# siblings: with autogen on, the simulated rewrite leaves the JSON-Pointer patch path untranslated
+# and produces a top-level `Deployment.spec.dnsConfig`, a field apps/v1 does not have. The cluster
+# tier carries it -- ../../../chainsaw/best-practices/add-ndots/ applies a real Deployment and
+# asserts the controller object was NOT rewritten while its Pod WAS.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-ndots-built
+policies:
+- ../../../.build/best-practices/add-ndots.yaml
+resources:
+- pod-no-dnsconfig-mutated.yaml
+- pod-dnsconfig-without-options-mutated.yaml
+- pod-sibling-options-preserved-mutated.yaml
+- pod-own-ndots-skip.yaml
+- pod-own-ndots-among-siblings-skip.yaml
+- pod-dns-skip.yaml
+- pod-kube-system-skip.yaml
+- pod-longhorn-system-skip.yaml
+- pod-metallb-system-skip.yaml
+results:
+# The three shapes the mutation has to handle: no dnsConfig, dnsConfig without options, and
+# dnsConfig with other people's options. Which arm of the conditional each one takes, and what
+# survives, is entirely in patched-resources.yaml.
+- policy: add-ndots
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ndots-plain-workload
+  - default/ndots-nameservers-workload
+  - default/ndots-sibling-options-workload
+  patchedResources: patched-resources.yaml
+  failOnMissingResources: true
+  result: pass
+# The idempotence guard, both positions. `skip`, not `pass`: the Pod must be filtered out before
+# the mutation runs, not patched to the same bytes.
+- policy: add-ndots
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ndots-declared-workload
+  - default/ndots-declared-among-siblings-workload
+  result: skip
+# All four exempt namespaces, one fixture each so any single one can be dropped from the exemption
+# patch and noticed. Each fixture declares no dnsConfig, so each is a real target of the rule.
+- policy: add-ndots
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - dns/ndots-dns-workload
+  - kube-system/ndots-kube-workload
+  - longhorn-system/ndots-longhorn-workload
+  - metallb-system/ndots-metallb-workload
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-ndots-pure
+policies:
+- ../../../../../best-practices/add-ndots.yaml
+resources:
+- pod-no-dnsconfig-mutated.yaml
+- pod-dnsconfig-without-options-mutated.yaml
+- pod-sibling-options-preserved-mutated.yaml
+- pod-own-ndots-skip.yaml
+- pod-own-ndots-among-siblings-skip.yaml
+- pod-dns-skip.yaml
+- pod-kube-system-skip.yaml
+- pod-longhorn-system-skip.yaml
+- pod-metallb-system-skip.yaml
+results:
+# Unchanged by the exemption layer: the rule is what mutates these three.
+- policy: add-ndots
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ndots-plain-workload
+  - default/ndots-nameservers-workload
+  - default/ndots-sibling-options-workload
+  patchedResources: patched-resources.yaml
+  failOnMissingResources: true
+  result: pass
+# STILL `skip` WITHOUT THE EXEMPTION LAYER, and that is the assertion: the idempotence guard is
+# rule semantics and lives in the policy file. A consumer that dropped the exemption patch would
+# still not have a workload's declared ndots overwritten. If either of these turned into a `pass`
+# here, the guard had been moved out of the policy.
+- policy: add-ndots
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/ndots-declared-workload
+  - default/ndots-declared-among-siblings-workload
+  result: skip
+# THE FIRING ASSERTION. All four exempt-namespace fixtures are mutated without the patch, so each
+# `skip` above is caused by its exemption entry rather than by a fixture that was never a target.
+- policy: add-ndots
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - dns/ndots-dns-workload
+  - kube-system/ndots-kube-workload
+  - longhorn-system/ndots-longhorn-workload
+  - metallb-system/ndots-metallb-workload
+  result: pass

@@ -1,0 +1,15 @@
+---
+# The controller object itself: template volume still uncapped.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emptydir-autogen-probe
+spec:
+  template:
+    spec:
+      (volumes[?name == 'scratch'] | [0].emptyDir.sizeLimit): null
+status:
+  # Non-vacuity: without this the assertion above would be satisfied by a Deployment whose pods
+  # were never admitted at all -- which is exactly what a badly-broken policy would produce, and
+  # is the opposite of the conclusion the reader would draw.
+  readyReplicas: 1

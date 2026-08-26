@@ -1,0 +1,25 @@
+---
+# EXPECTED: `skip`.
+#
+# The second VM namespace, and the `generateName`-ONLY object shape -- no `metadata.name` at all.
+# Two things at once, deliberately:
+#
+#   * `sandbox-talos` falsifies the second half of
+#     `namespace in ['sandbox-docker', 'sandbox-talos']` independently of the first.
+#   * This tier is the ONLY place the name-less shape can be tested. A live API server generates
+#     the name before admission runs, so a cluster-tier test can never construct this object;
+#     `kyverno test` evaluates fixture YAML with no defaulting step at all. That is why the
+#     exemption is written as `(name + generateName).startsWith(...)` rather than against `name`
+#     alone, and this fixture is what keeps the concatenation honest.
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: virt-launcher-vmtalos-
+  namespace: sandbox-talos
+spec:
+  containers:
+  - name: compute
+    image: quay.io/kubevirt/virt-launcher:v1.9.0
+  volumes:
+  - name: ephemeral-disks
+    emptyDir: {}

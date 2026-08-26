@@ -1,0 +1,17 @@
+---
+# EXPECTED: `pass`, mutated -- `spec.dnsConfig` created from nothing.
+#
+# The common case in this estate: a Pod with no `dnsConfig` at all. It exercises the SECOND arm
+# of the mutation's conditional, the one that has to create the whole object because JSON Patch
+# `add` requires its target's parent to exist. Without this fixture the policy could be reduced
+# to its first arm and would then silently fail on the majority of Pods -- JSON Patch `add` to
+# `/spec/dnsConfig/options` against an absent `dnsConfig` is an error, not a no-op.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-plain-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29

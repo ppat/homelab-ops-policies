@@ -1,0 +1,42 @@
+---
+# EXPECTED: the Deployment's own template is NOT rewritten, and neither is the Deployment's own
+# `spec`; the Pod it creates IS mutated. Asserted by deployment-autogen-off-patched.yaml and
+# pod-from-autogen-probe-patched.yaml.
+#
+# TWO SEPARATE MEASUREMENTS MEET HERE, and they answer different questions. Both are recorded in
+# full in ../../../../best-practices/add-ndots.yaml; the short forms:
+#
+#   * AT ADMISSION the autogen setting is currently inert for every `MutatingPolicy`. Measured on
+#     the pinned stack (kind v1.36.1, Kyverno chart 3.8.2 / v1.18.2): an mpol registers a webhook
+#     covering `pods` and nothing else whether `spec.autogen.podControllers.controllers` is absent
+#     or lists five controller kinds; a `ValidatingPolicy` on the same cluster registers all
+#     seven pod-controller kinds. So no mutate policy in this repo reaches a pod controller
+#     directly, regardless of what this field says.
+#   * IN THE OFFLINE TIER, which DOES simulate the rewrite, autogen ON is actively wrong for this
+#     policy: autogen rewrites CEL field paths but not JSON-Pointer strings, so the patch path
+#     `/spec/dnsConfig/options` is emitted verbatim and a Deployment comes back carrying a
+#     top-level `Deployment.spec.dnsConfig` -- a field apps/v1 does not have -- while
+#     `spec.template.spec` never gets the option.
+#
+# HONEST LIMITATION: because the setting is inert at admission today, this fixture does NOT
+# discriminate `controllers: []` from the default on a live cluster; it passes under both. What
+# it pins is the OUTCOME, which is what an engine release wiring the generated configs up would
+# change -- and for this policy that change would be silently wrong rather than merely wider.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ndots-autogen-probe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ndots-autogen-probe
+  template:
+    metadata:
+      labels:
+        app: ndots-autogen-probe
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: pause
+        image: registry.k8s.io/pause:3.10

@@ -1,0 +1,40 @@
+---
+# LAYER 2 -- ESTATE EXEMPTIONS for ../add-ndots.yaml, applied by the `patches:` entry in
+# ../kustomization.yaml. A JSON6902 patch document, NOT a manifest: it must never appear in
+# `resources:`.
+#
+# HOUSE-STYLE REFERENCE for an exemption patch is
+# ../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml. Its numbered
+# conventions govern this file too and are not restated here.
+#
+# WHAT MAKES A WRONG ENTRY HERE HARDER TO NOTICE THAN ON THE OTHER TWO MUTATE POLICIES: a wrong
+# ndots does not fail loudly. It changes which of the search-domain permutations a lookup tries
+# first, so the symptom is latency or an intermittently wrong answer, not an error -- on top of a
+# mutate policy already having no Audit backstop (../exemptions/add-emptydir-sizelimit.yaml).
+
+# These ARE the cluster DNS servers. Lowering their own resolver's ndots is at best meaningless and
+# at worst circular. No manifest change makes them compliant, because compliance is not the
+# question -- the optimisation simply does not apply to them.
+#
+# COST: an ordinary workload deployed into `dns` keeps the default ndots of 5. Wrong if `dns` ever
+# becomes a namespace where arbitrary workloads are created.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-cluster-dns-namespace
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'dns')
+
+# Node-level infrastructure whose resolver behaviour is its own chart's business, not this
+# estate's -- none of these components are authored in this repo, so no manifest change here makes
+# them compliant.
+#
+# COST: an ordinary workload deployed into any of the three keeps the default ndots of 5. Wrong if
+# any of them becomes a place ordinary workloads are deployed.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-infrastructure-namespaces
+    expression: >-
+      !(object.metadata.?namespace.orValue('') in
+      ['kube-system', 'longhorn-system', 'metallb-system'])

@@ -1,0 +1,31 @@
+---
+# EXPECTED: `skip` -- in BOTH `Test` documents, because it is the policy's own gate that filters
+# this Pod, not the estate exemption. It is the only fixture in this directory that skips for that
+# reason, and the pairing is what says so: the exempt-namespace fixtures skip in the built document
+# and pass in the `-pure` one.
+#
+# THE FIXTURE THAT FALSIFIES THE GATE. `app` declares `requests.cpu: 500m` and `limits.memory: 1Gi`
+# and no memory request, so under an add-if-absent reading of this policy it would come back
+# carrying `requests.memory: 32Mi`. It must come back untouched instead: a container that has
+# declared any resources is not this policy's business at all.
+#
+# WHAT IT CATCHES THAT NOTHING ELSE DOES. Replace the mutation's `filter()` predicate with a
+# read-back -- `c.?resources.?requests.?memory.orValue('32Mi')` over an unfiltered `map()`, which
+# is how this policy was once written -- and the object still comes back correct, because writing a
+# value back unchanged is a no-op for the merge. The VERDICT is what differs: `pass` with a patch
+# instead of `skip`. That is why the row for this fixture asserts a verdict and no
+# `patchedResources`.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: partially-sized-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+    resources:
+      requests:
+        cpu: 500m
+      limits:
+        memory: 1Gi

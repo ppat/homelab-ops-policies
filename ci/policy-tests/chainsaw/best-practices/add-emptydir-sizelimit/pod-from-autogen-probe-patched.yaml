@@ -1,0 +1,18 @@
+---
+# THE OTHER HALF, and what makes the loss of pod-controller coverage a bookkeeping change rather
+# than a functional one: the Pod the Deployment created DID get capped, because it reached
+# admission as a Pod and `matchConstraints` matches pods. What a running container actually sees
+# is unchanged; only the controller object differs.
+#
+# Selected by label rather than by name, because the Pod's name is generated. Chainsaw's
+# resource-shaped assertions are satisfied by ANY matching object of the kind, which is the
+# correct semantics here: there is exactly one replica.
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: emptydir-autogen-probe
+spec:
+  (volumes[?name == 'scratch'] | [0].emptyDir.sizeLimit): 256Mi
+status:
+  phase: Running

@@ -1,0 +1,26 @@
+---
+# EXPECTED: `pass`, mutated -- in ONE of its two containers. See patched-resources.yaml.
+#
+# THE GATE IS PER CONTAINER, NOT PER POD, and this is the fixture that proves it. The three
+# skip fixtures beside it would all still skip if the whole gate lived only in
+# `spec.matchConditions`; this Pod passes that condition (because `unsized` qualifies) and then
+# depends entirely on the `filter()` inside the mutation to leave `sized` alone.
+#
+# `sized` declares BOTH requests, so a mutation that reached it would overwrite two deliberately
+# chosen values at once -- 500m to 32m and 512Mi to 32Mi, both downward, both silent, since a
+# mutate policy files no report.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-container-workload
+  namespace: default
+spec:
+  containers:
+  - name: sized
+    image: nginx:1.29
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+  - name: unsized
+    image: nginx:1.29

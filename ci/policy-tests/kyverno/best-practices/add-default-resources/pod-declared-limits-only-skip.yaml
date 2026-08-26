@@ -1,0 +1,27 @@
+---
+# EXPECTED: `skip`. The gate again, on the conjunct its two siblings cannot reach.
+#
+# `app` declares `limits` and NO `requests`. Drop `&& !has(c.resources.limits)` from the gate --
+# leaving it testing only for absent requests, which is the narrower thing this policy used to do
+# -- and nothing else in this directory turns red: pod-declared-requests-skip.yaml and
+# pod-declared-memory-skip.yaml both declare requests, so both still skip. This fixture is the
+# only one that notices.
+#
+# NOT AN ACADEMIC SHAPE. On a live cluster the API server derives `requests.memory: 1Gi` from this
+# limit before admission, so the container is already Burstable and needs nothing from this policy;
+# what it would otherwise be given is a 32m cpu request its author did not ask for. The cluster
+# tier pins that directly --
+# ../../../chainsaw/best-practices/add-default-resources/pod-mixed-resources-patched.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: limits-only-workload
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.29
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi

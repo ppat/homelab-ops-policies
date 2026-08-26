@@ -1,13 +1,30 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: this repo's own legacy `kyverno.io/v1 ClusterPolicy`, translated in place. Upstream
+# kyverno/policies carries a `MutatingPolicy` form at other-mpol/add-ndots/ (read at commit
+# 12a68789) whose JSONPatch shape is adopted and whose central behaviour is REJECTED.
+#
+# Upstream pairs every add with a preceding `op: remove` that deletes any ndots option the workload
+# declared, and its description says so out loud: it sets ndots "replacing any existing value".
+# This repo does the opposite and always has -- a workload that declares its own ndots is left
+# alone. This file has already had one real bug in exactly that area, fixed once; "someone syncs
+# with upstream" is the concrete way to reintroduce it.
+#
+# LAYER 1: this file is exemption-free. The `matchConditions` entry below is RULE SEMANTICS, not an
+# exemption -- every exemption this policy has in production lives in ./exemptions/add-ndots.yaml,
+# appended to `spec.matchConditions` by the `patches:` entry in ./kustomization.yaml. Read the two
+# together.
+#
+# House style is set by ./restrict-node-port.yaml; see ./add-default-resources.yaml for what a
+# mutate policy adds on top of it, and ./exemptions/add-emptydir-sizelimit.yaml for this repo's
+# canonical statement of why a wrong mutate policy is worse than a wrong validate policy.
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: add-ndots
   annotations:
     policies.kyverno.io/title: Add ndots
     policies.kyverno.io/category: Mutations
     policies.kyverno.io/subject: Pod
-    policies.kyverno.io/minversion: 1.6.0
     policies.kyverno.io/description: >-
       The ndots value controls where DNS lookups are first performed in a cluster
       and needs to be set to a lower value than the default of 5 in some cases.
@@ -15,35 +32,89 @@ metadata:
       except those in core/system namespaces, and does not override a workload
       that already declares its own ndots option.
 spec:
-  rules:
-  - name: add-ndots
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    # spec.dnsConfig.options has no patchMergeKey in the k8s API, so it's an atomic
-    # list under strategic merge: patchStrategicMerge below always replaces the whole
-    # array. The precondition (not a `+()` anchor) is what makes this idempotent —
-    # `+()` only tests field presence, so `+(options)` would skip a pod that already
-    # has sibling options (e.g. attempts, edns0) but no ndots entry, leaving it
-    # without the optimisation.
-    preconditions:
-      all:
-      - key: "{{ request.object.spec.dnsConfig.options[?name=='ndots'] || `[]` }}"
-        operator: Equals
-        value: []
-    mutate:
-      patchStrategicMerge:
-        spec:
-          dnsConfig:
-            options:
-            - name: ndots
-              value: "1"
-    exclude:
+  autogen:
+    podControllers:
+      # `[]` on every Pod-matching policy in this repo; ./add-default-resources.yaml records the
+      # measurement behind it once -- at admission the field is inert for every `MutatingPolicy` at
+      # this engine version, so pod-controller coverage is lost to the kind regardless of what is
+      # written here.
+      #
+      # WHAT MAKES IT LOAD-BEARING FOR THIS POLICY SPECIFICALLY: AUTOGEN REWRITES CEL FIELD PATHS
+      # BUT NOT JSON-POINTER STRINGS. Measured on the pinned CLI v1.18.2, which unlike the
+      # admission path DOES simulate the rewrite, with autogen at its default: the
+      # `matchConditions` guard below was rewritten correctly (a Deployment whose template already
+      # declared ndots was skipped), while the patch path `/spec/dnsConfig/options` was emitted
+      # verbatim -- so the Deployment came back carrying a top-level `Deployment.spec.dnsConfig`, a
+      # field apps/v1 does not have, and `spec.template.spec` never got the option. That is a
+      # silently wrong patch at the level that does not matter and no patch at the level that does.
+      # Upstream reached the same conclusion independently: its mpol enumerates five controller
+      # kinds in `matchConstraints` and hand-writes a JSONPatch arm per kind rather than relying on
+      # autogen.
+      #
+      # Converting this policy to `ApplyConfiguration` would make that hazard go away, since an
+      # apply configuration IS re-rooted correctly. It is blocked for an unrelated reason -- see
+      # the mutation's own comment.
+      controllers: []
+  evaluation:
+    background:
+      # OFF ON EVERY MUTATE POLICY IN THIS REPO -- ./add-default-resources.yaml states the reasoning
+      # once. For this policy a background re-scan would rewrite `dnsConfig` on Pods that are
+      # already running, and a Pod's resolver configuration is read at container start: the object
+      # would disagree with the resolv.conf the processes inside it are using until they restart.
+      enabled: false
+    mutateExisting:
+      enabled: false
+  matchConditions:
+  # THE IDEMPOTENCE GUARD, and the single most important line in this file: it is what makes this
+  # policy leave a workload's own ndots alone. It tests for an ndots ENTRY, not for the presence of
+  # the `options` list, so a Pod carrying `edns0` and `attempts` but no ndots is still mutated and
+  # its existing options survive. Both halves have a fixture in
+  # ci/policy-tests/kyverno/best-practices/add-ndots/ and a live case in the Chainsaw test, because
+  # "does not clobber" is a claim only a fixture keeps true.
+  #
+  # `o.?name.orValue('')` rather than `o.name`: `PodDNSConfigOption.name` is optional in the API,
+  # and the offline tier evaluates fixture YAML with no defaulting, so this is a shape the
+  # expression can genuinely meet.
+  - name: skip-when-the-workload-declares-its-own-ndots
+    expression: >-
+      !object.spec.?dnsConfig.?options.orValue([]).exists(o, o.?name.orValue('') == 'ndots')
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
       resources:
-        namespaces:
-        - dns
-        - kube-system
-        - longhorn-system
-        - metallb-system
+      - pods
+  mutations:
+  - patchType: JSONPatch
+    jsonPatch:
+      # `JSONPatch`, not `ApplyConfiguration`, and unlike the sibling ./add-emptydir-sizelimit.yaml
+      # the choice is forced rather than chosen. `PodDNSConfig.options` is `listType: atomic`:
+      # structured merge diff cannot merge into it, only replace it wholesale, and the
+      # `MutatingPolicy` CRD documents apply configurations as unable to modify atomic lists "due
+      # to the risk of accidental deletion of values not included in the apply configuration". An
+      # ApplyConfiguration port would have to re-emit every existing option to avoid deleting it --
+      # the clobbering failure this policy exists to prevent, reintroduced as an implementation
+      # detail.
+      #
+      # TWO ARMS, because JSON Patch `add` requires the parent of its target to exist:
+      #   1. `spec.dnsConfig` present -> replace `options` with (existing options + ndots). The
+      #      `.orValue([])` covers a dnsConfig that sets only `nameservers`/`searches`.
+      #   2. `spec.dnsConfig` absent -> create the whole object.
+      # Upstream splits arm 1 further, using `/options/-` when `options` already exists; that third
+      # arm buys nothing here, since concatenating in CEL and writing the list once is one fewer
+      # path through the same behaviour.
+      #
+      # ndots is concatenated LAST rather than first so a human diffing a mutated Pod against its
+      # source sees an appended line rather than a reordered block. Order is not significant to the
+      # resolver; it is significant to the fixtures, which pin it.
+      expression: >-
+        has(object.spec.dnsConfig)
+        ? [JSONPatch{op: 'add', path: '/spec/dnsConfig/options',
+        value: object.spec.dnsConfig.?options.orValue([]) + [{'name': 'ndots', 'value': '1'}]}]
+        : [JSONPatch{op: 'add', path: '/spec/dnsConfig',
+        value: {'options': [{'name': 'ndots', 'value': '1'}]}}]

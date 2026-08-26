@@ -1,0 +1,27 @@
+---
+# EXPECTED: admitted, mutated -- ndots APPENDED to the workload's own options, none of them lost.
+# Asserted by pod-sibling-options-patched.yaml.
+#
+# THE FIXTURE THIS TEST EXISTS FOR. `spec.dnsConfig.options` is declared `listType: atomic`: it has
+# no merge key, so anything that writes it writes the WHOLE list. That property is what caused this
+# repo's own ndots clobbering bug, and it is a property of the LIVE SCHEMA -- the offline engine
+# models it, but only a real API server decides it. If the atomic-list handling were wrong, this
+# Pod would come back with one option instead of three.
+#
+# `edns0` and `attempts: 3` are real resolver options a workload might set, chosen so the
+# assertion reads as a workload's own configuration surviving rather than as filler.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-sibling-options-workload
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  dnsConfig:
+    options:
+    - name: edns0
+    - name: attempts
+      value: "3"
+  containers:
+  - name: pause
+    image: registry.k8s.io/pause:3.10

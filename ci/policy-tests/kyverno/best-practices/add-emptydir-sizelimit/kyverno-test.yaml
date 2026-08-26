@@ -1,0 +1,131 @@
+---
+# CLI-tier test for add-emptydir-sizelimit. Conventions: ../restrict-node-port/kyverno-test.yaml
+# (1-5) and ../add-default-resources/kyverno-test.yaml (6-10, what a MutatingPolicy adds, including
+# why there are no pod-controller fixtures and why there are two `Test` documents). Nothing new is
+# introduced here.
+#
+# WHAT THIS SUITE IS FOR, stated plainly because this is the policy behind the estate's one real
+# mutate incident: it must be impossible to delete any one of this policy's four guards -- the two
+# rule-semantic ones (`medium: Memory`, existing `sizeLimit`) and the two estate exemptions
+# (infrastructure namespaces, virt-launcher in VM namespaces) -- without a row here turning red.
+# Every `skip` fixture is a REAL target of the rule (each carries a plain, uncapped, disk-backed
+# emptyDir, or is the flagship's mixed Pod), so no guard can pass vacuously, and the two `-mutated`
+# control fixtures falsify the virt-launcher conjunction one conjunct at a time.
+#
+# The cluster tier (../../../chainsaw/best-practices/add-emptydir-sizelimit/) does NOT repeat any
+# of this. It exists for the one thing offline evaluation cannot show: the patch landing, or not
+# landing, on an object a real API server has admitted.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-emptydir-sizelimit-built
+policies:
+- ../../../.build/best-practices/add-emptydir-sizelimit.yaml
+resources:
+- pod-mixed-emptydirs-mutated.yaml
+- pod-only-memory-emptydir-skip.yaml
+- pod-only-author-sized-emptydir-skip.yaml
+- pod-no-volumes-skip.yaml
+- pod-kube-system-skip.yaml
+- pod-longhorn-system-skip.yaml
+- pod-virt-launcher-sandbox-docker-skip.yaml
+- pod-virt-launcher-sandbox-talos-generatename-skip.yaml
+- pod-non-virt-launcher-in-vm-namespace-mutated.yaml
+- pod-virt-launcher-name-outside-vm-namespace-mutated.yaml
+results:
+# The rule doing its job, plus both non-vacuity controls on the virt-launcher exemption. All three
+# are asserted against patched-resources.yaml, which is where the per-volume discrimination lives.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/mixed-volume-workload
+  - sandbox-docker/sandbox-helper
+  - default/virt-launcher-impostor
+  patchedResources: patched-resources.yaml
+  failOnMissingResources: true
+  result: pass
+# The two RULE-SEMANTIC guards and the nothing-to-do case, as `skip`: filtered by `matchConditions`
+# before the mutation ran, so no patch is emitted at all. `pass` here would mean the policy rewrote
+# the object and happened to produce the same bytes -- a weaker claim, and not the one this policy
+# makes.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/tmpfs-only-workload
+  - default/author-sized-only-workload
+  - default/volumeless-workload
+  result: skip
+# The two ESTATE EXEMPTIONS. Listed in one row because they share a verdict; each namespace and
+# each axis of the virt-launcher conjunction has its own fixture so any single one can be falsified
+# alone.
+#
+# The talos fixture has NO `metadata.name`, so its selector is `sandbox-talos/` -- the
+# `<namespace>/<name>` form with an empty name. That is the only object shape in either test tier
+# that exercises the `generateName`-only branch of the name glob.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/emptydir-system-workload
+  - longhorn-system/emptydir-longhorn-workload
+  - sandbox-docker/virt-launcher-vmdocker-x9k2p
+  - sandbox-talos/
+  result: skip
+---
+# The exemption layer removed. Same fixtures, same selectors; only `policies:` differs.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-emptydir-sizelimit-pure
+policies:
+- ../../../../../best-practices/add-emptydir-sizelimit.yaml
+resources:
+- pod-mixed-emptydirs-mutated.yaml
+- pod-only-memory-emptydir-skip.yaml
+- pod-only-author-sized-emptydir-skip.yaml
+- pod-no-volumes-skip.yaml
+- pod-kube-system-skip.yaml
+- pod-longhorn-system-skip.yaml
+- pod-virt-launcher-sandbox-docker-skip.yaml
+- pod-virt-launcher-sandbox-talos-generatename-skip.yaml
+- pod-non-virt-launcher-in-vm-namespace-mutated.yaml
+- pod-virt-launcher-name-outside-vm-namespace-mutated.yaml
+results:
+# Unchanged by the exemption layer, and this row is the reason the two documents cannot be merged:
+# it pins that the RULE is what mutates these three, not the absence of an exemption.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/mixed-volume-workload
+  - sandbox-docker/sandbox-helper
+  - default/virt-launcher-impostor
+  patchedResources: patched-resources.yaml
+  failOnMissingResources: true
+  result: pass
+# STILL `skip` WITHOUT THE EXEMPTION LAYER. These three are held out by the policy's own
+# `matchConditions` rule-semantics entry, which lives in the policy file and must stay there. If
+# one of them ever turned into a `pass` here, a guard had been moved into the exemption patch,
+# where a consumer dropping the patch would lose it.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - default/tmpfs-only-workload
+  - default/author-sized-only-workload
+  - default/volumeless-workload
+  result: skip
+# THE FIRING ASSERTION. Every Pod the built policy skips is mutated here, so each `skip` above is
+# attributable to its exemption and to nothing else -- including the eviction-loop fixture, whose
+# whole point is that the policy would otherwise cap virt-launcher's ephemeral-disks volume.
+- policy: add-emptydir-sizelimit
+  isMutatingPolicy: true
+  kind: Pod
+  resources:
+  - kube-system/emptydir-system-workload
+  - longhorn-system/emptydir-longhorn-workload
+  - sandbox-docker/virt-launcher-vmdocker-x9k2p
+  - sandbox-talos/
+  result: pass

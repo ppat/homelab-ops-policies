@@ -1,52 +1,157 @@
 ---
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# PROVENANCE: this repo's own legacy `kyverno.io/v1 ClusterPolicy`, translated in place. Upstream
+# kyverno/policies carries a `MutatingPolicy` form at other-mpol/add-default-resources/ (read at
+# commit d84f18c9) whose `ApplyConfiguration` skeleton is adopted and whose CONTENT is not:
+# upstream defaults 100Mi/100m, this estate defaults 32Mi/32m, and that difference is the whole
+# reason this policy is here rather than consumed from upstream. Do not "sync with upstream"; the
+# numbers below are the policy.
+#
+# READ THIS BEFORE EDITING ANY MUTATE POLICY IN THIS REPO. A wrong validate policy is noticed: it
+# ships in `Audit`, so a bad expression surfaces as a PolicyReport row a human reads. A patch has
+# no such mode. What that cost this estate is written up in ./add-emptydir-sizelimit.yaml's
+# eviction-loop comment; read it before changing anything here.
+#
+# LAYER 1: this file is exemption-free. The `matchConditions` entry below is RULE SEMANTICS, not an
+# exemption -- every exemption this policy has in production lives in
+# ./exemptions/add-default-resources.yaml, appended to `spec.matchConditions` by the `patches:`
+# entry in ./kustomization.yaml. Read the two together before concluding this policy has none.
+#
+# House style is set by ./restrict-node-port.yaml; read its header first. Its numbered conventions
+# apply here unrestated.
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: add-default-resources
   annotations:
     policies.kyverno.io/title: Add Default Resources
     policies.kyverno.io/category: Mutations
     policies.kyverno.io/severity: medium
-    kyverno.io/kyverno-version: 1.10.0-alpha.2
-    policies.kyverno.io/minversion: 1.7.0
-    kyverno.io/kubernetes-version: "1.26"
     policies.kyverno.io/subject: Pod
     policies.kyverno.io/description: >-
       Pods which don't specify at least resource requests are assigned a QoS class
       of BestEffort which can hog resources for other Pods on Nodes. At a minimum,
       all Pods should specify resource requests in order to be labeled as the QoS
-      class Burstable. This sample mutates any container in a Pod which doesn't
-      specify memory or cpu requests to apply some sane defaults.
+      class Burstable. This policy adds default memory and cpu requests to any
+      container in a Pod that declares no resource requests or limits at all,
+      and leaves every container that declares any of its own untouched.
 spec:
-  background: false
-  rules:
-  - name: add-default-requests
-    match:
-      any:
-      - resources:
-          kinds:
-          - Pod
-    preconditions:
-      any:
-      - key: "{{request.operation || 'BACKGROUND'}}"
-        operator: AnyIn
-        value:
-        - CREATE
-        - UPDATE
-    mutate:
-      foreach:
-      - list: "request.object.spec.[ephemeralContainers, initContainers, containers][]"
-        patchStrategicMerge:
-          spec:
-            containers:
-            - (name): "{{element.name}}"
-              resources:
-                requests:
-                  +(memory): "32Mi"
-                  +(cpu): "32m"
-    exclude:
-      any:
-      - resources:
-          namespaces:
-          - kube-system
-          - longhorn-system
+  autogen:
+    podControllers:
+      # MEASURED on the pinned stack (kind v1.36.1, Kyverno chart 3.8.2): a `MutatingPolicy`
+      # matching `pods` registers a webhook covering `pods` AND NOTHING ELSE, whether this field is
+      # absent or lists five controller kinds. Kyverno computes the rewrite into
+      # `status.autogen.configs` -- the `spec.template.spec.` and `spec.jobTemplate.spec.template.
+      # spec.` variants are visibly correct -- but nothing wires them to a webhook and no
+      # `MutatingAdmissionPolicy` is generated. A `ValidatingPolicy` on the same cluster registers
+      # all seven pod-controller kinds, so this is specific to the mutate kind at this engine
+      # version, not a cluster misconfiguration.
+      #
+      # CONSEQUENCE, and `[]` does not cause it -- the kind does: pod controllers no longer carry
+      # the injected defaults in their own templates. Every RUNNING container still gets them,
+      # because a controller's Pods reach admission as Pods, so QoS class and eviction order are
+      # unchanged; only what `kubectl get deploy -o yaml` shows differs.
+      #
+      # `[]` is therefore inert today, and is written anyway. If a release ever wires those
+      # generated configs to a webhook, a policy left on the default starts mutating every pod
+      # controller in the estate on an engine upgrade, with no commit to attribute it to. It also
+      # keeps the offline tier honest: `kyverno test` DOES simulate the autogen rewrite, so under
+      # the default the CLI suite would assert a Deployment mutation the cluster never performs.
+      controllers: []
+  evaluation:
+    background:
+      # OFF ON EVERY MUTATE POLICY IN THIS REPO, and this is the file that states why once; the
+      # other two point here. Background evaluation puts objects that ALREADY EXIST in scope, on a
+      # schedule, outside any admission request -- for a patch that means rewriting running Pods
+      # with no API call to attribute the change to and no PolicyReport row either, since a mutate
+      # policy does not report. Admission is the only moment a mutation in this repo is allowed to
+      # happen. The field defaults to TRUE, so leaving it out is not the same as writing it.
+      enabled: false
+    mutateExisting:
+      # `spec.evaluation` HAS A SECOND FIELD IN THIS AREA and knowing only about this one is a way
+      # to be wrong about the blast radius. Read from the pinned chart's own CRD (3.8.2,
+      # mutatingpolicies.policies.kyverno.io v1): `mutateExisting.enabled` -- "enables mutation of
+      # existing resources" -- is the switch that turns matched existing objects into patch
+      # targets, and it is absent from `ValidatingPolicy` entirely; there is no equivalent field to
+      # carry over when copying a ValidatingPolicy pattern here. Its default is already FALSE, same
+      # as `background.enabled` above, and it is pinned here for the same reason as
+      # `autogen.podControllers.controllers: []`: this repo does not rely on an engine's implicit
+      # default for anything consequential.
+      enabled: false
+  matchConditions:
+  # RULE SEMANTICS, not an exemption, and the policy-wide half of a pair: this answers "is there
+  # anything here to do at all", while the `filter()` inside the mutation decides WHICH containers.
+  # Both are needed and they must be edited together. This list is also the append seam for
+  # ./exemptions/add-default-resources.yaml -- a JSON6902 `op: add` onto `/spec/matchConditions/-`
+  # lands after this entry, and since entries are ANDed it can only narrow further.
+  #
+  # Measured on the pinned CLI without this condition: a Pod whose containers all declare resources
+  # comes back `pass` with an empty patch instead of `skip`. The emitted `containers: []` merges to
+  # nothing, because `spec.containers` is `listType: map` and an empty list of map entries cannot
+  # create anything -- unlike ./add-emptydir-sizelimit.yaml, where the same shape materialised
+  # `volumes: []` on a Pod that had none. So the object is safe either way; what the condition buys
+  # is that a Pod this policy has nothing to do to is not recorded as mutated by it.
+  - name: only-when-a-container-declares-no-resources-at-all
+    expression: >-
+      object.spec.containers.exists(c, !has(c.resources) ||
+      (!has(c.resources.requests) && !has(c.resources.limits)))
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - pods
+  mutations:
+  - patchType: ApplyConfiguration
+    applyConfiguration:
+      # THE `filter()` IS WHAT MAKES THIS ADD-ONLY. A container is in the emitted apply
+      # configuration only if it declares NO resources at all -- neither `requests` nor `limits` --
+      # so a container that declares any is not named in the patch and cannot be rewritten by it.
+      # That is why the values below are literals: no container carrying a declared value ever
+      # reaches the map. Do not reintroduce a `c.?resources.?requests.?memory.orValue('32Mi')`
+      # read-back to "protect" them; it would make the filter untestable by masking its removal.
+      #
+      # BOTH ARMS OF THE PREDICATE ARE LOAD-BEARING, and neither tier exercises both. `kyverno test`
+      # evaluates fixture YAML with no defaulting, so a container declaring nothing has no
+      # `resources` key at all and only `!has(c.resources)` reaches it. The API server materialises
+      # `resources: {}` on every container before any webhook runs, so on a live cluster the key is
+      # always present and only the requests/limits pair discriminates. Measured on the pinned CLI:
+      # with `!has(c.resources)` alone the policy compiles and then never fires on a cluster; with
+      # the pair alone it fails evaluation outright -- `no such key: resources` -- on any container
+      # that omits the field. The offline stand-in for what a cluster really sends is
+      # ../ci/policy-tests/kyverno/best-practices/add-default-resources/pod-empty-resources-mutated.yaml.
+      #
+      # WHAT EMITTING PER CONTAINER BUYS. `spec.containers` is `listType: map` keyed on `name` and
+      # `resources.requests` is a map, so `{name: <c.name>, resources: {requests: {...}}}` merges
+      # into that container by name and leaves image, ports, volumeMounts and securityContext
+      # untouched. Containers absent from the list are not addressed at all.
+      #
+      # DELIBERATE NARROWING RELATIVE TO THE LEGACY `+(memory)` ANCHOR: a container declaring only
+      # `limits.memory` now gets no cpu request from this policy. It is Burstable anyway -- the API
+      # server derives `requests.memory` from that limit before admission -- and the gate is what
+      # keeps a 32m cpu request off a container whose author sized it. The cluster tier pins that
+      # line specifically, in
+      # ../ci/policy-tests/chainsaw/best-practices/add-default-resources/pod-mixed-resources-patched.yaml.
+      #
+      # 32Mi / 32m ARE THE POLICY, not a default inherited from anywhere. A resync that "fixes"
+      # them to upstream's 100Mi/100m is a regression.
+      #
+      # KNOWN GAP, DELIBERATELY NOT CLOSED HERE -- NATIVE SIDECARS. This mutation reaches
+      # `spec.containers` and nothing else, so an `initContainers` entry with
+      # `restartPolicy: Always` gets no default request even though it runs for the Pod's whole
+      # lifetime and counts toward its QoS class exactly as a regular container does. Plain init
+      # containers and ephemeral containers are equally untouched. Closing the gap puts a request
+      # on every init container in the estate, which changes QoS class and eviction ordering for
+      # workloads nobody is currently thinking about -- it needs its own change, its own fixtures
+      # and its own blast-radius review. Both test tiers assert the gap so that closing it in
+      # passing turns something red.
+      expression: >-
+        Object{spec: Object.spec{containers: object.spec.containers.filter(c,
+        !has(c.resources) || (!has(c.resources.requests) && !has(c.resources.limits)))
+        .map(c, Object.spec.containers{name: c.name,
+        resources: Object.spec.containers.resources{requests: {
+        'memory': '32Mi', 'cpu': '32m'}}})}}

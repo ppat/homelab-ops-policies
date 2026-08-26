@@ -1,0 +1,32 @@
+---
+# THE ASSERTION. Written as an exact list rather than as `(...)` expressions, because here the
+# claim genuinely IS about the whole list and its order: chainsaw matches arrays index-wise AND
+# requires equal length, so a three-element expectation cannot be satisfied by a one-element
+# actual. That is exactly the discrimination needed -- a policy that replaced the atomic list
+# instead of concatenating would produce `[ndots]`, length 1, and this fails.
+#
+# (Contrast ../add-emptydir-sizelimit/, where the claims are about individual volumes and about
+# the ABSENCE of a field, which array-and-subset matching cannot express and which therefore
+# needs JMESPath expressions.)
+#
+# ndots LAST, after the workload's own entries: the mutation concatenates rather than prepending,
+# so a human diffing a mutated Pod against its source sees an appended line. Order is not
+# semantically significant to the resolver, but it is significant to this assertion, and pinning
+# it is free.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ndots-sibling-options-workload
+spec:
+  dnsConfig:
+    options:
+    - name: edns0
+    - name: attempts
+      value: "3"
+    - name: ndots
+      value: "1"
+status:
+  # Non-vacuity: a Pod the kubelet refused to start would satisfy the shape above just as well.
+  # It also pins something real -- a malformed `dnsConfig` is one of the few things that makes a
+  # Pod admissible but unstartable.
+  phase: Running

@@ -1,0 +1,92 @@
+---
+# Cluster-tier test for add-emptydir-sizelimit. The house-style reference for a per-policy
+# Chainsaw test is ../../restricted/restrict-volume-types/chainsaw-test.yaml; read its header for
+# the bar a test has to clear to earn cluster time at all. A MutatingPolicy test differs from
+# that ValidatingPolicy skeleton in two structural ways:
+#
+#   * THERE IS NO `[Deny]` PATCH STEP. `validationActions` is a field on `ValidatingPolicy` and
+#     does not exist on this kind. A mutate policy has exactly one mode and it is always on --
+#     the reason these policies get the most fixture coverage in the repo, stated at length in
+#     ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml.
+#   * THERE IS NO READINESS-GATE SCRIPT. ../../scripts/wait-for-webhook-deny.sh polls until
+#     admission REJECTS a known-bad object; nothing is ever rejected here, so there is nothing to
+#     poll. Chainsaw `assert` polls until timeout on its own, so the mutation assertions ARE the
+#     gate: a Pod applied before the webhook was live simply comes back unpatched and the assert
+#     retries. That is only sound because every assertion below is a positive statement about the
+#     patched shape, or is paired with one -- see the non-vacuity note on the exemption step.
+#
+# WHAT THIS TEST IS FOR, since the CLI tier already covers which volumes get capped and why
+# (../../../kyverno/best-practices/add-emptydir-sizelimit/, cheaper and more thorough about the
+# guards themselves). Four things, each invisible offline:
+#
+#   1. The policy reaches Ready against the real webhook -- policy-ready.yaml.
+#   2. The patch survives a real API server. An apply configuration is applied by structured merge
+#      diff against the LIVE SCHEMA; `spec.volumes` being `listType: map` keyed on `name` is a
+#      property of that schema, not of the offline engine's model of it.
+#   3. THE EVICTION-LOOP REGRESSION, executed rather than asserted in the abstract. A
+#      virt-launcher-shaped Pod in `sandbox-docker` is admitted by a real webhook and read back
+#      from real cluster storage with its emptyDirs uncapped.
+#   4. WHAT ACTUALLY HAPPENS TO A POD CONTROLLER -- the one thing about this policy the CLI tier
+#      provably cannot assert, and the thing the offline tier gets WRONG. See
+#      deployment-autogen-off.yaml for the measurement.
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: add-emptydir-sizelimit
+spec:
+  # `template: false` repo-wide -- see ../../restricted/restrict-volume-types/chainsaw-test.yaml.
+  template: false
+  steps:
+  - name: install-policy
+    try:
+    # Built output, never the file in the shipped tree: what a consumer applies is
+    # `kustomize build best-practices`, i.e. the pure policy WITH
+    # ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml applied. Applying the pure
+    # file would leave the exemption layer -- the subject of the eviction-loop step below --
+    # untested. See ci/scripts/build-policies.sh.
+    - apply:
+        file: ../../../.build/best-practices/add-emptydir-sizelimit.yaml
+    - assert:
+        file: policy-ready.yaml
+
+  - name: cap-an-uncapped-emptydir-and-leave-the-other-three-alone
+    try:
+    - apply:
+        file: pod-mixed-emptydirs.yaml
+    - assert:
+        file: pod-mixed-emptydirs-patched.yaml
+
+  - name: eviction-loop-regression
+    try:
+    - apply:
+        file: namespace-sandbox-docker.yaml
+    # The exempted Pod and its control are applied together and asserted together. Neither half
+    # means anything alone: "virt-launcher's volumes have no sizeLimit" is equally true of a
+    # policy that was never installed, and "an ordinary Pod in the same namespace IS capped" is
+    # what rules that out. They differ in exactly one axis -- the name -- so the control also
+    # falsifies the namespace conjunct of the exemption on its own.
+    - apply:
+        file: pod-virt-launcher.yaml
+    - apply:
+        file: pod-non-virt-launcher-in-vm-namespace.yaml
+    - assert:
+        file: pod-non-virt-launcher-in-vm-namespace-patched.yaml
+    - assert:
+        file: pod-virt-launcher-patched.yaml
+
+  - name: pod-controllers-are-not-mutated-but-their-pods-are
+    try:
+    - apply:
+        file: deployment-autogen-off.yaml
+    - assert:
+        file: deployment-autogen-off-patched.yaml
+    - assert:
+        file: pod-from-autogen-probe-patched.yaml
+    # NO forced-cleanup step, though this is the one step that creates a pod controller and a
+    # controller's pods can outlive namespace-deletion grace. Measured on the pinned stack:
+    # chainsaw's own resource tracking deletes the Deployment and the whole test tears down in
+    # seconds, because every Pod template here sets `terminationGracePeriodSeconds: 0`, so there is
+    # no grace window to outlive. An explicit `finally: delete` was tried first and only added a
+    # spurious `=== ERROR ... not found` line when chainsaw's cleanup deleted the same object a
+    # second time. The grace period is what makes the omission safe; keep it if this fixture is
+    # ever given a real image.

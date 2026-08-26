@@ -1,0 +1,42 @@
+---
+# THE ASSERTION. Written as JMESPath expressions rather than as a shape, because several of the
+# claims are about a field NOT being present and chainsaw's subset matching cannot express that
+# (a subset match on `resources: {}` is satisfied by a container that gained requests).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mixed-resources-workload
+spec:
+  # The rule fired on a container that declared nothing. What the webhook received for it was
+  # `resources: {}` rather than an absent key -- the API server materialises that on every
+  # container -- so this line is also the live proof that the gate's requests/limits arm works, not
+  # only its `!has(c.resources)` arm.
+  (containers[?name == 'app'] | [0].resources.requests.memory): 32Mi
+  (containers[?name == 'app'] | [0].resources.requests.cpu): 32m
+  # Untouched: every declared field survives, including the limit.
+  (containers[?name == 'sized'] | [0].resources.requests.cpu): 500m
+  (containers[?name == 'sized'] | [0].resources.limits.memory): 1Gi
+  # 1Gi, not 32Mi: the API server derived this request from the declared limit before the policy
+  # saw the Pod. `kyverno test` does no defaulting, so this line has no offline equivalent.
+  (containers[?name == 'sized'] | [0].resources.requests.memory): 1Gi
+  # THE LINE WHERE THE GATE IS THE ONLY THING PRODUCING THE RESULT. `limits-only` declared a limit
+  # and no requests; the API server filled in `requests.memory` and left `requests.cpu` absent. An
+  # add-if-absent policy -- one relying on a read-back and a merge instead of a gate -- would put
+  # `32m` here, on a container whose author had already sized it. The gate skips the container
+  # entirely, so the field stays absent.
+  (containers[?name == 'limits-only'] | [0].resources.requests.memory): 1Gi
+  (containers[?name == 'limits-only'] | [0].resources.requests.cpu): null
+  (containers[?name == 'limits-only'] | [0].resources.limits.memory): 1Gi
+  # THE DOCUMENTED GAP, asserted live rather than described. `logs` is an initContainer with
+  # `restartPolicy: Always` -- a native sidecar -- so it runs for the Pod's whole lifetime and
+  # counts toward its QoS class exactly as `app` does, and it gets NO default request because the
+  # mutation reaches `spec.containers` only. Not a bug report for whoever reads it next: closing
+  # the gap changes QoS class and eviction ordering across the estate and needs its own change.
+  # When that lands, this line changes from `null` to `32Mi`.
+  (initContainers[?name == 'logs'] | [0].resources.requests): null
+  # The plain init container is the same non-target, asserted separately so that a follow-up
+  # extending the mutation to `initContainers` has to decide about BOTH lists explicitly.
+  (initContainers[?name == 'setup'] | [0].resources.requests): null
+status:
+  # Non-vacuity: ten null-or-value checks would be satisfied by a Pod that never started.
+  phase: Running
