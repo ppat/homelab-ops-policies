@@ -18,16 +18,6 @@
 # The cost, recorded once here: two PolicyReport policy names where PSS reports one check. Nothing
 # consumes those names programmatically and this repo is Audit-mode -- see
 # ../baseline/disallow-host-network.yaml's header for the same trade taken three ways.
-#
-# ONE KNOWN FIDELITY DELTA, STATED SO IT IS NOT REDISCOVERED AS A SURPRISE. PSS at policy version
-# v1.25 exempts `spec.os.name == "windows"` pods from the WHOLE `capabilities_restricted` check --
-# `capabilitiesRestricted_1_25()` returns early before either half runs. This file does not carry
-# that disjunct; ./disallow-capabilities-strict.yaml does. The delta is inert on this estate (no
-# Windows nodes, nothing sets `spec.os.name`) and costs at most one Audit row on a hypothetical
-# Windows pod that omits `drop: [ALL]`. If a Windows workload ever lands, add the same leading
-# disjunct the sibling carries; do not instead delete it from there.
-# ci/policy-tests/kyverno/restricted/require-drop-all/pod-windows-no-drop-all-fail.yaml asserts
-# the delta, so closing it turns that row red rather than passing unnoticed.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -68,6 +58,11 @@ spec:
   validationActions:
   - Audit
   validations:
+  # THE LEADING WINDOWS DISJUNCT -- see ./disallow-capabilities-strict.yaml's validation comment
+  # for the reasoning, which is not repeated here. Linux capabilities do not exist on a Windows
+  # node, so requiring them dropped is meaningless there and `capabilitiesRestricted_1_25()`
+  # returns `Allowed: true` before evaluating either half.
+  #
   # All three container lists concatenated, mirroring pod-security-admission's own
   # `visitContainers()`.
   #
@@ -77,6 +72,7 @@ spec:
   # ci/policy-tests/kyverno/restricted/require-drop-all/pod-drop-lowercase-all-fail.yaml holds
   # that line against a future editor who assumes the comparison is case-insensitive.
   - expression: >-
+      object.spec.?os.?name.orValue('') == 'windows' ||
       (object.spec.containers +
       object.spec.?initContainers.orValue([]) +
       object.spec.?ephemeralContainers.orValue([])).all(c,

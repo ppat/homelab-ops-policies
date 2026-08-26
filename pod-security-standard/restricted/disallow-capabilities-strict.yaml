@@ -54,10 +54,11 @@ spec:
   validationActions:
   - Audit
   validations:
-  # THE LEADING WINDOWS DISJUNCT, THE REFERENCE INSTANCE OF THREE IN THIS REPO -- the others are
-  # on ./disallow-privilege-escalation.yaml and ./restrict-seccomp-strict.yaml, and they cite this
-  # comment rather than restating it. PSS at policy version v1.25 exempts `spec.os.name ==
-  # "windows"` pods from the Restricted capabilities, allowPrivilegeEscalation and seccomp checks:
+  # THE LEADING WINDOWS DISJUNCT, THE REFERENCE INSTANCE OF FOUR IN THIS REPO -- the others are
+  # on ./require-drop-all.yaml, ./disallow-privilege-escalation.yaml and
+  # ./restrict-seccomp-strict.yaml, and they cite this comment rather than restating it. PSS at
+  # policy version v1.25 exempts `spec.os.name == "windows"` pods from the Restricted
+  # capabilities, allowPrivilegeEscalation and seccomp checks:
   # all three constrain Linux kernel primitives that do not exist on a Windows node, so enforcing
   # them there would flag a pod for not setting a field that has no meaning. PSS implements each
   # as an early `return CheckResult{Allowed: true}` -- an ALLOW, not a decision to skip the check,
