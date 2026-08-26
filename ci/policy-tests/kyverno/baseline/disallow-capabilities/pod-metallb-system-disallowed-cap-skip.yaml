@@ -1,0 +1,19 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# One of five fixtures, one per namespace in the `exempt-namespaces` list -- without a fixture of
+# its own a namespace can be dropped from that list and this suite stays green.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: metallb-speaker-7d4c8bf95-kx7mn
+  namespace: metallb-system
+spec:
+  restartPolicy: Always
+  containers:
+  - name: speaker
+    image: ghcr.io/example/metallb-speaker:1.0.0
+    securityContext:
+      capabilities:
+        add:
+        - SYS_ADMIN

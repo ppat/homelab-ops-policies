@@ -1,0 +1,19 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# One of five fixtures, one per namespace in the `exempt-namespaces` list -- without a fixture of
+# its own a namespace can be dropped from that list and this suite stays green.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: apply-k3s-server-on-node-abc12
+  namespace: system-upgrade
+spec:
+  restartPolicy: Always
+  containers:
+  - name: upgrade
+    image: ghcr.io/example/system-upgrade:1.0.0
+    securityContext:
+      capabilities:
+        add:
+        - SYS_ADMIN

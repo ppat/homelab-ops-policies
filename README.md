@@ -1,119 +1,144 @@
 # homelab-ops-policies
 
-Cluster-agnostic [Kyverno](https://kyverno.io/) policy definitions. This repo
-holds policy content only — no Flux wiring, no
-cluster-specific configuration, no awareness of what's consuming it. It's
-released independently and referenced by tag from wherever it's applied,
-the same way [`homelab-ops-kubernetes-apps`](https://github.com/ppat/homelab-ops-kubernetes-apps)
+Cluster-agnostic [Kyverno](https://kyverno.io/) policy definitions and their
+tests. No Flux wiring, no cluster-specific configuration, no awareness of what
+consumes it — this repo is released on its own and referenced by tag from
+wherever it is applied, the same way
+[`homelab-ops-kubernetes-apps`](https://github.com/ppat/homelab-ops-kubernetes-apps)
 modules are referenced from the cluster-wiring repo.
 
-> **Two policy kinds are in the tree.** Kyverno's `ClusterPolicy` and
-> `ClusterCleanupPolicy` are deprecated, and policies are being ported one at
-> a time to the CEL-based `policies.kyverno.io/v1` kinds. Ported so far:
-> `best-practices/restrict-node-port.yaml`,
-> `pod-security-standard/restricted/restrict-volume-types.yaml`, and these
-> Baseline policies — `disallow-capabilities`, `disallow-host-ports`,
-> `disallow-host-process`, `disallow-selinux`, `restrict-seccomp`,
-> `restrict-sysctls`. The `kind:` line in a policy file is the authority.
->
-> This matters to a consumer in one place: a `Kustomization` patch that
-> targets a policy by kind must target the kind that policy actually uses, so
-> a patch written against `kind: ClusterPolicy` silently matches nothing for
-> a ported policy. Pinning a released tag insulates you until you move to a
-> tag containing ported policies; that cutover is a coordinated change on
-> both sides.
+Every policy here is one of the CEL-based `policies.kyverno.io/v1` kinds:
+`ValidatingPolicy`, `MutatingPolicy` or `DeletingPolicy`. Kyverno's
+`ClusterPolicy` and `ClusterCleanupPolicy` do not appear in this tree. That
+matters to a consumer in exactly one place: a `Kustomization` patch selects its
+target by kind, and a patch naming a kind nothing uses matches nothing *and
+still builds green*.
 
 ## Groups
 
-| Group | Path | What it is |
+| Group | Path | Contents |
 | --- | --- | --- |
-| Pod Security Standards — Baseline | [`pod-security-standard/baseline`](./pod-security-standard/baseline) | Minimally restrictive PSS profile |
-| Pod Security Standards — Restricted | [`pod-security-standard/restricted`](./pod-security-standard/restricted) | Hardened PSS profile; extends Baseline (its `kustomization.yaml` lists `../baseline` as a resource) |
-| Best Practices | [`best-practices`](./best-practices) | Validate/Mutate/Cleanup policies unrelated to Pod Security Standards |
+| Pod Security Standards — Baseline | [`pod-security-standard/baseline`](./pod-security-standard/baseline) | 14 `ValidatingPolicy` |
+| Pod Security Standards — Restricted | [`pod-security-standard/restricted`](./pod-security-standard/restricted) | 8 `ValidatingPolicy`, plus all of Baseline |
+| Best Practices | [`best-practices`](./best-practices) | 4 `ValidatingPolicy`, 3 `MutatingPolicy`, 2 `DeletingPolicy` |
 
-Baseline and Restricted are both provided, rather than shipping Restricted
-alone, because the two profiles are meaningfully different in strictness and
-not every consumer wants the stricter one — a consumer picks whichever
-profile fits by pointing at that directory (Restricted pulls in Baseline
-automatically via its `kustomization.yaml`).
-
-```mermaid
-flowchart LR
-    baseline["Pod Security Standards\nBaseline"]
-    restricted["Pod Security Standards\nRestricted\n(extends Baseline)"]
-    bp["Best Practices"]
-
-    baseline --> restricted
-
-    classDef pol fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
-    class baseline,restricted,bp pol
-```
+A consumer picks a profile by pointing at one directory. Restricted's
+`kustomization.yaml` lists `../baseline` as a resource, so it composes Baseline
+by inclusion — a Baseline fix reaches both profiles without being duplicated.
+Both profiles ship because the estate subscribes to both; see
+[DESIGN.md](./DESIGN.md) for why that is not just an unfinished migration to
+Restricted.
 
 ## Pod Security Standards
 
-Ports the upstream [Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
-to Kyverno validation rules. A ported policy file is an exemption-free mirror
-of the upstream standard, so it stays diffable against it; this estate's own
-exemptions sit beside it as kustomize patches in
-`pod-security-standard/<profile>/exemptions/` and build into the shipped
-result.
+These files mirror the Kubernetes
+[Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
+as implemented in `pod-security-admission` — not as re-implemented by
+`kyverno/policies`, which this repo repeatedly found to lag. Each file's
+`PSS-SNAPSHOT` header line names the Kubernetes minor and PSS policy version it
+is synced to, so a resync has a fixed diff point.
 
-| Policy | What it disallows/requires |
+A mirror file contains no estate content whatsoever. This estate's own
+exemptions live beside it under `exemptions/` and are attached by kustomize; see
+[Exemptions](#exemptions).
+
+**Baseline:**
+
+| Policy | Disallows |
 | --- | --- |
-| `disallow-capabilities` | Capabilities beyond a default-safe set |
-| `disallow-host-namespaces` | Host PID/IPC/network namespaces |
+| `disallow-capabilities` | Capabilities beyond the Baseline allow-list |
+| `disallow-host-ipc` | `hostIPC` |
+| `disallow-host-network` | `hostNetwork` |
 | `disallow-host-path` | `hostPath` volumes |
+| `disallow-host-pid` | `hostPID` |
 | `disallow-host-ports` | `hostPort` |
+| `disallow-host-probes-and-lifecycle` | A `host` field on any probe or lifecycle hook |
 | `disallow-host-process` | Windows HostProcess containers |
 | `disallow-privileged-containers` | `privileged: true` |
-| `disallow-proc-mount` | Non-default `procMount` |
-| `disallow-selinux` | Custom `seLinuxOptions` |
-| `restrict-apparmor-profiles` | Non-default AppArmor profiles |
-| `restrict-seccomp` | `seccompProfile: Unconfined` |
-| `restrict-sysctls` | Unsafe sysctls |
+| `disallow-proc-mount` | Non-default `procMount` (relaxed for user-namespaced Pods) |
+| `disallow-selinux` | `seLinuxOptions` outside the allowed set |
+| `restrict-apparmor-profiles` | Non-default AppArmor profiles, on both the field and the deprecated annotation |
+| `restrict-seccomp` | `seccompProfile.type: Unconfined` |
+| `restrict-sysctls` | Sysctls outside PSS's safe list |
 
-Restricted adds on top of all of the above:
+PSS's single `hostNamespaces` check is three files here, one per field, because
+the three fields carry different exemption sets and `matchConditions` is
+policy-wide.
 
-| Policy | What it disallows/requires |
+**Restricted** adds, on top of all of the above:
+
+| Policy | Disallows / requires |
 | --- | --- |
-| `disallow-capabilities-strict` | Any capability except `NET_BIND_SERVICE` |
+| `disallow-capabilities-strict` | Adding any capability except `NET_BIND_SERVICE` |
 | `disallow-privilege-escalation` | `allowPrivilegeEscalation: true` |
-| `require-run-as-non-root-user` | `runAsUser` unset or 0 |
-| `require-run-as-nonroot` | `runAsNonRoot` unset/false |
-| `restrict-seccomp-strict` | Missing seccomp profile (not just `Unconfined`) |
-| `restrict-volume-types` | Volume types beyond a safe allow-list |
+| `disallow-proc-mount-strict` | Non-default `procMount`, re-tightened for user-namespaced Pods |
+| `require-drop-all` | `capabilities.drop` must contain `ALL` |
+| `require-run-as-non-root-user` | `runAsUser: 0` |
+| `require-run-as-nonroot` | `runAsNonRoot` unset or false |
+| `restrict-seccomp-strict` | Any seccomp profile other than `RuntimeDefault`/`Localhost`, including none |
+| `restrict-volume-types` | Volume types outside the Restricted allow-list |
+
+PSS's `capabilities_restricted` check is split into `require-drop-all` and
+`disallow-capabilities-strict` for the same policy-wide-`matchConditions`
+reason: only the drop-`ALL` half carries an exemption.
 
 ## Best Practices
 
-Mixes validation, mutation, and scheduled cleanup:
+House rules, mirroring no external standard.
 
-| Policy | Type | What it does |
+| Policy | Kind | What it does |
 | --- | --- | --- |
-| `add-default-resources` | Mutate | Adds default CPU/memory requests to containers missing them |
-| `add-emptydir-sizelimit` | Mutate | Adds a `sizeLimit` to `emptyDir` volumes missing one |
-| `add-ndots` | Mutate | Sets DNS `ndots: 1` on Pods, avoiding an extra DNS lookup per query |
 | `disallow-cri-sock-mount` | Validate | Blocks mounting the container runtime socket |
-| `disallow-latest-tag` | Validate | Requires an explicit, non-`latest` image tag |
-| `require-probes` | Validate | Requires a liveness, readiness, or startup probe on every container |
+| `disallow-latest-tag` | Validate | Requires an explicit, non-`latest` image tag on all three container lists |
+| `require-probes` | Validate | Requires a liveness, readiness or startup probe on every container of a Deployment, DaemonSet or StatefulSet |
 | `restrict-node-port` | Validate | Blocks `Service` type `NodePort` |
-| `cleanup-bare-pods` | Cleanup | Deletes unowned (controller-less) Pods on a daily schedule |
-| `cleanup-empty-replicasets` | Cleanup | Deletes empty `ReplicaSet`s on a recurring schedule |
+| `add-default-resources` | Mutate | Adds default CPU/memory requests to containers declaring no resources at all |
+| `add-emptydir-sizelimit` | Mutate | Adds a `sizeLimit` to `emptyDir` volumes that have none |
+| `add-ndots` | Mutate | Sets DNS `ndots: 1`, leaving a workload's own `ndots` alone |
+| `cleanup-bare-pods` | Delete | Deletes controller-less Pods, daily |
+| `cleanup-empty-replicasets` | Delete | Deletes empty ReplicaSets older than 24h, hourly |
 
-Each policy exempts the system namespaces and workloads that legitimately
-need the behavior it otherwise disallows (e.g. `require-probes` doesn't apply
-to a handful of infra DaemonSets that have none) — the exact list is a
-policy-tuning detail that should be read from the policy itself rather than
-restated here. Exemptions live in the group directory's `exemptions/`
-subdirectory, one file per policy, applied as a kustomize patch; a policy file
-with no matching file there has no exemptions.
+`cleanup-empty-replicasets` deletes nothing unless the consuming cluster's
+Kyverno values override the chart's default `resourceFilters`, which exclude
+ReplicaSets from every Kyverno engine. The policy file carries the detail.
+
+## Exemptions
+
+Any policy with estate-specific exemptions is shipped as two files: the policy
+itself, carrying none, and `exemptions/<policy>.yaml` beside it — a JSON6902
+patch appending to `spec.matchConditions`, attached by a `patches:` entry in
+that directory's `kustomization.yaml`. Both PSS groups and `best-practices` use
+this shape.
+
+```text
+pod-security-standard/baseline/
+├── disallow-host-path.yaml          # the rule, no estate content
+├── exemptions/
+│   └── disallow-host-path.yaml      # this estate's carve-outs, with rationale
+└── kustomization.yaml               # resources: + patches:
+```
+
+Consequences for anyone reading or consuming this repo:
+
+- **Apply the `kustomize build` output of a group directory, never a single
+  file.** A file under `exemptions/` is a patch document, not a manifest; on its
+  own it is not valid Kyverno YAML, and a policy file on its own is missing this
+  estate's exemptions.
+- **A policy file with no `exemptions/` sibling has no estate exemptions.** The
+  one exclusion baked directly into a policy is
+  `cleanup-empty-replicasets`' `kube-system` `namespaceSelector`, which every
+  consumer needs and which its kind gives no append seam for.
+- **Each exemption carries its own rationale** in the patch file: what the
+  workload does, why no manifest change makes it compliant, what the exemption
+  costs, and what would make it wrong. Read those rather than any summary.
+- **Relocating an exemption to the consumer side is a file move.** The same
+  patch content works verbatim from a consumer's own
+  `Kustomization.spec.patches`.
 
 ## Consuming this repo
 
-This repo produces no running system by itself — it's a source of policy
-manifests for something else to apply. A consumer pins a released tag via a
-Flux `GitRepository` and points a `Kustomization.spec.path` at one of the
-group directories above, the same shape used to pull in a versioned module
-from `homelab-ops-kubernetes-apps`:
+This repo produces no running system by itself. A consumer pins a released tag
+and points at one of the group directories:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -142,22 +167,20 @@ spec:
     namespace: flux-system
 ```
 
-Every validating policy here ships with whatever enforcement mode its
-manifest sets — this repo doesn't know whether a given consumer wants
-violations to just report or to actually block admission. A consumer wanting
-a different mode overrides it with a patch on its own `Kustomization`, rather
-than this repo forking policy content per desired mode. The field is
-`validationFailureAction` (`Audit`/`Enforce`) on `ClusterPolicy` and
-`validationActions` (`Audit`/`Deny`) on `ValidatingPolicy`, so the patch must
-target the kind the policy in question actually uses.
+Every `ValidatingPolicy` here ships `validationActions: [Audit]`. This repo does
+not know whether a given consumer wants findings reported or admission blocked,
+so a consumer wanting `[Deny]` patches the field from its own `Kustomization`
+rather than this repo forking policy content per mode. `MutatingPolicy` and
+`DeletingPolicy` have no such field: a mutation always applies and a deletion
+always deletes.
 
 ## Versioning and releases
 
-Releases are cut with [release-please](https://github.com/googleapis/release-please)
-from [Conventional Commits](https://www.conventionalcommits.org/), enforced
-on every PR via commitlint (`commitlint.config.js` is the source of truth for
-allowed commit types/scopes). Merging to `main` accumulates a release PR;
-merging that PR tags and publishes the next version for consumers to pin.
-The example tag above is kept in sync automatically: release-please rewrites
-any `# x-release-please-version` marker in this file to the latest released
-tag as part of cutting a release.
+Releases are cut with
+[release-please](https://github.com/googleapis/release-please) from
+[Conventional Commits](https://www.conventionalcommits.org/), enforced on every
+PR by commitlint — `commitlint.config.js` is the source of truth for allowed
+types and scopes. Merging to `main` accumulates a release PR; merging that PR
+tags a version for consumers to pin. The tag in the example above is rewritten
+by release-please via its `# x-release-please-version` marker, so it always
+names the latest release.
