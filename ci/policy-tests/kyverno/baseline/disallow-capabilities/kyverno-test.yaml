@@ -3,6 +3,12 @@
 # ../../restricted/restrict-volume-types/kyverno-test.yaml first -- it is the house-style
 # reference for the two-document (`-built`/`-pure`) shape and for why either half alone is
 # vacuous.
+#
+# ONE `skip` ROW PER EXEMPTION MEMBER, so every namespace in `exempt-namespaces`' `in [...]` list
+# has its own fixture rather than one standing in for the set. The list is the widest exemption
+# in the repo and a member deleted from it changes what ships; without a fixture apiece that
+# deletion is invisible here. Same discipline as ../disallow-host-path/ and
+# ../disallow-privileged-containers/.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -12,7 +18,11 @@ policies:
 resources:
 - pod-allowed-caps-pass.yaml
 - pod-disallowed-cap-fail.yaml
-- pod-ns-exempt-disallowed-cap-skip.yaml
+- pod-csi-driver-nfs-disallowed-cap-skip.yaml
+- pod-longhorn-system-disallowed-cap-skip.yaml
+- pod-metallb-system-disallowed-cap-skip.yaml
+- pod-system-upgrade-disallowed-cap-skip.yaml
+- pod-tailscale-disallowed-cap-skip.yaml
 - pod-virt-handler-disallowed-cap-skip.yaml
 results:
 - policy: disallow-capabilities
@@ -32,11 +42,15 @@ results:
   kind: Pod
   resources:
   - csi-driver-nfs/csi-nfs-controller-6f9b8d5c7-abcde
+  - longhorn-system/longhorn-manager-rg2fl
+  - metallb-system/metallb-speaker-7d4c8bf95-kx7mn
+  - system-upgrade/apply-k3s-server-on-node-abc12
+  - tailscale/ts-subnet-router-0
   - kubevirt/virt-handler-54dpv
   result: skip
 ---
-# The exemption layer removed. Same fixtures; only `policies:` differs, and the two exemption
-# fixtures assert `fail` instead of `skip` -- the firing assertion.
+# The exemption layer removed. Same fixtures; only `policies:` differs, and every exemption
+# fixture asserts `fail` instead of `skip` -- the firing assertion.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -46,7 +60,11 @@ policies:
 resources:
 - pod-allowed-caps-pass.yaml
 - pod-disallowed-cap-fail.yaml
-- pod-ns-exempt-disallowed-cap-skip.yaml
+- pod-csi-driver-nfs-disallowed-cap-skip.yaml
+- pod-longhorn-system-disallowed-cap-skip.yaml
+- pod-metallb-system-disallowed-cap-skip.yaml
+- pod-system-upgrade-disallowed-cap-skip.yaml
+- pod-tailscale-disallowed-cap-skip.yaml
 - pod-virt-handler-disallowed-cap-skip.yaml
 results:
 - policy: disallow-capabilities
@@ -61,5 +79,9 @@ results:
   resources:
   - default/disallowed-cap-workload
   - csi-driver-nfs/csi-nfs-controller-6f9b8d5c7-abcde
+  - longhorn-system/longhorn-manager-rg2fl
+  - metallb-system/metallb-speaker-7d4c8bf95-kx7mn
+  - system-upgrade/apply-k3s-server-on-node-abc12
+  - tailscale/ts-subnet-router-0
   - kubevirt/virt-handler-54dpv
   result: fail

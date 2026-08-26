@@ -1,9 +1,9 @@
 ---
 # EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
 #
-# FIRING FIXTURE for the exempt-namespaces matchCondition, standing in for all five namespaces in
-# that set. SYS_ADMIN is off the mirror's allow-list, so the `fail` half establishes that this pod
-# is a genuine violation and the `skip` half can then only be coming from the exemption patch.
+# One of five fixtures, one per namespace in the `exempt-namespaces` list. SYS_ADMIN is off the
+# mirror's allow-list, so the `fail` half establishes that this pod is a genuine violation and
+# the `skip` half can then only be coming from the exemption patch.
 apiVersion: v1
 kind: Pod
 metadata:

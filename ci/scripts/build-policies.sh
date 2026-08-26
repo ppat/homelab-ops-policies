@@ -13,12 +13,11 @@
 #
 # Output files are named after each resource's `metadata.name`, not its source file's basename:
 # `kustomize build` hands back only the built stream, never which source file a given resource
-# came from, and the two do not reliably match (e.g. best-practices/restrict-node-port.yaml
-# declares `metadata.name: restrict-nodeport`). `metadata.name` is the one identifier that
-# survives the build and is guaranteed stable and unique within a profile -- kustomize itself
-# would refuse to build a profile with two resources sharing a name+kind -- so it's what test
-# files should reference. Even where a policy's name and filename do agree, this script never
-# assumes it.
+# came from. `metadata.name` is the one identifier that survives the build and is guaranteed
+# stable and unique within a profile -- kustomize itself would refuse to build a profile with two
+# resources sharing a name+kind -- so it's what test files should reference. Every policy in this
+# repo currently keeps its name equal to its basename (best-practices/restrict-node-port.yaml
+# states that as a house convention), so the two agree; this script never assumes they will.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

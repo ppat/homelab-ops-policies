@@ -1,0 +1,19 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# One of five fixtures, one per namespace in the `exempt-namespaces` list -- without a fixture of
+# its own a namespace can be dropped from that list and this suite stays green.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ts-subnet-router-0
+  namespace: tailscale
+spec:
+  restartPolicy: Always
+  containers:
+  - name: tailscale
+    image: ghcr.io/example/tailscale:1.0.0
+    securityContext:
+      capabilities:
+        add:
+        - SYS_ADMIN
