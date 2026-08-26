@@ -16,10 +16,12 @@
 # Pod's disappearance is proof that a cycle for that schedule has already run by the time the
 # ReplicaSet is checked -- which is what turns "still exists" into "survived".
 #
-# WITHOUT allow-replicaset-cleanup.sh THIS TEST WOULD BE VACUOUS THE OTHER WAY TOO: the Kyverno
-# chart's default `resourceFilters` hides ReplicaSets from the engine entirely, so the policy
-# would never see the fixture and "it survived" would again be true for the wrong reason. That
-# script's header carries the measurement and the cross-repo pointer.
+# THE SUITE'S CLUSTER MUST NOT RUN THE CHART'S DEFAULT `resourceFilters`, or this test is vacuous
+# the other way too: those defaults hide ReplicaSets from the engine entirely, so the policy would
+# never see the fixture and "it survived" would again be true for the wrong reason. The override
+# lives in .github/workflows/e2e-tests.yaml's Kyverno install, matching the estate's own values,
+# rather than in this test -- the ConfigMap holding it is chart-installed, so a test that patched
+# it would be mutating cluster-wide state Chainsaw's cleanup does not track.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -28,22 +30,27 @@ spec:
   # `template: false` repo-wide -- see ../../restricted/restrict-volume-types/chainsaw-test.yaml.
   template: false
   steps:
-  - name: grant-permissions-and-allow-replicaset-processing
+  - name: precondition-replicasets-reach-the-engine
+    # Fails loudly rather than letting everything below pass vacuously, which is what it would do
+    # on a cluster left on the chart's defaults. The short timeout suits a static install-time
+    # property; the suite-wide default would spend 90s re-reading a ConfigMap nothing is going to
+    # change.
+    try:
+    - assert:
+        timeout: 10s
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: kyverno
+            namespace: kyverno
+          data:
+            (contains(resourceFilters, '[ReplicaSet')): false
+
+  - name: grant-permissions
     try:
     - apply:
         file: cluster-role.yaml
-    - script:
-        content: ../../scripts/allow-replicaset-cleanup.sh
-        check:
-          ($error == null): true
-    finally:
-    # The ConfigMap this reverts is chart-installed, not created by the test, so Chainsaw's own
-    # cleanup -- which only reverses what a test applied -- will not undo it. Un-reverted it
-    # leaks a cluster-wide config change into whatever test runs next.
-    - script:
-        content: ../../scripts/restore-replicaset-cleanup-filter.sh
-        check:
-          ($error == null): true
 
   - name: install-policies-and-speed-up-their-schedules
     try:

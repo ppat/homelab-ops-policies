@@ -187,6 +187,8 @@ Rules for the CLI tier:
 - **A selector matching nothing broadens rather than fails.** This tier cannot
   assert that a resource went unmatched: unasserted extras pass silently. Use
   `failOnMissingResources: true` on rows carrying `patchedResources`.
+- **`ci/scripts/audit-test-fixtures.sh` enforces the two rules above**, per
+  `Test` document, and runs ahead of `kyverno test` in CI.
 - **For a mutate policy, `result: pass` means only "a mutation was produced
   without error".** The assertion lives in `patchedResources`.
 
@@ -194,6 +196,7 @@ Local runs:
 
 ```bash
 ./ci/scripts/build-policies.sh
+./ci/scripts/audit-test-fixtures.sh
 kyverno test ci/policy-tests/kyverno --detailed-results --remove-color
 pre-commit run --all-files
 ```
@@ -210,8 +213,8 @@ wrong thing.
 | --- | --- |
 | `lint.yaml` | commitlint, GitHub Actions linting, markdownlint, yamllint, `zizmor`, Renovate config validation, the full `pre-commit` set, and kubeconform-based manifest validation of both policy trees (`ci/validation/`) — gated on changed paths except `pre-commit`, which always runs |
 | `policy-smoke-check.yaml` | Every policy, pure and built, against one unremarkable Pod: does it parse, pass Kyverno's CRD schema, and compile its CEL |
-| `policy-cli-tests.yaml` | The `kyverno test` tier |
-| `e2e-tests.yaml` | The Chainsaw tier on a kind cluster with the estate's pinned Kyverno chart |
+| `policy-cli-tests.yaml` | `ci/scripts/audit-test-fixtures.sh`, then the `kyverno test` tier |
+| `e2e-tests.yaml` | The Chainsaw tier on a kind cluster running the estate's pinned Kyverno chart with the estate's own `resourceFiltersExclude` |
 | `release.yaml` | release-please, on pushes to `main` |
 | `renovate.yaml` | Dependency-update PRs |
 

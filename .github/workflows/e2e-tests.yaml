@@ -77,10 +77,20 @@ jobs:
     - name: Install Kyverno
       working-directory: ./current
       shell: bash
+      # `resourceFiltersExclude` mirrors the estate's Kyverno `HelmRelease`
+      # (homelab-ops-kubernetes-apps, infrastructure/subsystems/security-core/kyverno) verbatim.
+      # The chart's default `resourceFilters` hide ReplicaSets from every Kyverno engine,
+      # admission and background alike, so on a stock install `cleanup-empty-replicasets` cannot
+      # be observed doing anything at all -- this tier would be proving things about an engine
+      # configuration nobody runs. Commas inside a filter expression are `--set`'s own list
+      # separator and have to be escaped.
       run: |
         mise exec -- helm repo add kyverno https://kyverno.github.io/kyverno/
         mise exec -- helm repo update kyverno
-        mise exec -- helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace --version "${KYVERNO_CHART_VERSION}"
+        mise exec -- helm install kyverno kyverno/kyverno --namespace kyverno --create-namespace --version "${KYVERNO_CHART_VERSION}" \
+        --set 'config.resourceFiltersExclude[0]=[ReplicaSet\,*\,*]' \
+        --set 'config.resourceFiltersExclude[1]=[ReplicaSet/*\,*\,*]' \
+        --set 'config.resourceFiltersExclude[2]=[ReplicaSet/?*\,*\,*]'
 
     - name: Wait for Kyverno ready
       working-directory: ./current
