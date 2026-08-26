@@ -24,6 +24,7 @@ resources:
 - pod-system-upgrade-disallowed-cap-skip.yaml
 - pod-tailscale-disallowed-cap-skip.yaml
 - pod-virt-handler-disallowed-cap-skip.yaml
+- pod-not-virt-handler-in-kubevirt-disallowed-cap-fail.yaml
 results:
 - policy: disallow-capabilities
   isValidatingPolicy: true
@@ -31,11 +32,15 @@ results:
   resources:
   - default/ordinary-workload
   result: pass
+# The second resource is the NAME-axis control for exempt-virt-handler: same namespace as
+# pod-virt-handler-disallowed-cap-skip.yaml, a name the exemption's prefix does not match. See
+# pod-not-virt-handler-in-kubevirt-disallowed-cap-fail.yaml.
 - policy: disallow-capabilities
   isValidatingPolicy: true
   kind: Pod
   resources:
   - default/disallowed-cap-workload
+  - kubevirt/virt-controller-7d4c8bf95-tz9wc
   result: fail
 - policy: disallow-capabilities
   isValidatingPolicy: true
@@ -66,6 +71,7 @@ resources:
 - pod-system-upgrade-disallowed-cap-skip.yaml
 - pod-tailscale-disallowed-cap-skip.yaml
 - pod-virt-handler-disallowed-cap-skip.yaml
+- pod-not-virt-handler-in-kubevirt-disallowed-cap-fail.yaml
 results:
 - policy: disallow-capabilities
   isValidatingPolicy: true
@@ -73,6 +79,9 @@ results:
   resources:
   - default/ordinary-workload
   result: pass
+# THE FIRING ASSERTION for exempt-virt-handler: kubevirt/virt-handler-54dpv is skipped by the
+# built policy above and fails here, and its NAME-axis control (virt-controller) fails under
+# both -- the exemption, and only the exemption, accounts for the difference.
 - policy: disallow-capabilities
   isValidatingPolicy: true
   kind: Pod
@@ -84,4 +93,5 @@ results:
   - system-upgrade/apply-k3s-server-on-node-abc12
   - tailscale/ts-subnet-router-0
   - kubevirt/virt-handler-54dpv
+  - kubevirt/virt-controller-7d4c8bf95-tz9wc
   result: fail
