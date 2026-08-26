@@ -6,7 +6,7 @@
 # policies here: see disallow-host-network.yaml's header.
 #
 # Of the three this is the one with NO exemptions: no exemptions/disallow-host-ipc.yaml, no
-# `patches:` entry in ../kustomization.yaml. Its two siblings each carry a different set, and that
+# `patches:` entry in ./kustomization.yaml. Its two siblings each carry a different set, and that
 # is what the separate files buy -- a joined policy would grant this field both of theirs.
 # `matchConditions: []` is declared anyway: it is the seam an exemption would append to, and a
 # JSON6902 append to an absent parent fails the kustomize build.

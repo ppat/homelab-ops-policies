@@ -6,7 +6,7 @@
 #
 # `sandbox-docker` and not `kubevirt`: virt-launcher pods run in the VM's OWN namespace, so a
 # `kubevirt`-scoped exclusion would exclude nothing. See
-# ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml.
+# ../../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml.
 #
 # Chainsaw deletes what it applied, so this namespace is torn down with the test.
 apiVersion: v1

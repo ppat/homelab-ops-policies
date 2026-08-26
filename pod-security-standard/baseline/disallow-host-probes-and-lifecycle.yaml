@@ -28,7 +28,7 @@
 # free, the cost being accurate rows saying those pods deviate from PSS Baseline, which they do.
 # Quietening the stream is a deliberate decision, not a default: it takes an
 # exemptions/disallow-host-probes-and-lifecycle.yaml plus a `patches:` entry in
-# ../kustomization.yaml, scoped and carrying its own rationale. Hence no exemption here.
+# ./kustomization.yaml, scoped and carrying its own rationale. Hence no exemption here.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:

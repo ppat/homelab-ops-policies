@@ -14,7 +14,7 @@
 # REQUIRE AppArmor, it forbids a pod OPTING OUT of confinement. That intent is host-OS-agnostic.
 #
 # This policy has NO estate exemptions: no exemptions/restrict-apparmor-profiles.yaml, no
-# `patches:` entry in ../kustomization.yaml. `matchConditions: []` is declared as the seam a
+# `patches:` entry in ./kustomization.yaml. `matchConditions: []` is declared as the seam a
 # future exemption would append to.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy

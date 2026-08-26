@@ -20,7 +20,7 @@
 #
 # WHY IT MATTERS FOR THIS POLICY SPECIFICALLY: its virt-launcher exemption is metadata-based, and
 # an autogen rewrite that left such an exemption no longer matching would re-arm the eviction loop
-# ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml describes.
+# ../../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml describes.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

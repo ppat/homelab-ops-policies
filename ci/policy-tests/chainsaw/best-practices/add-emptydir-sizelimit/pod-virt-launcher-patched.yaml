@@ -5,7 +5,7 @@
 # assertions rather than a shape.
 #
 # Both volumes, not just `ephemeral-disks`: the exemption is deliberately WHOLE-POD rather than
-# per-volume (../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml explains why), so a
+# per-volume (../../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml explains why), so a
 # narrowing of the exemption to one volume name is a regression this fixture should catch.
 apiVersion: v1
 kind: Pod

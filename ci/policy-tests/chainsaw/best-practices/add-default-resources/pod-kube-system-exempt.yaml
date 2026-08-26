@@ -1,7 +1,7 @@
 ---
 # EXPECTED: admitted and NOT mutated. Asserted by pod-kube-system-exempt-patched.yaml.
 #
-# The estate exemption (../../../../best-practices/exemptions/add-default-resources.yaml, which
+# The estate exemption (../../../../../best-practices/exemptions/add-default-resources.yaml, which
 # carries the reasoning) firing at real admission, in the REAL `kube-system` namespace rather than
 # in chainsaw's generated one -- which is why this test sets `template: false` and hardcodes the
 # name. kube-system already exists on any cluster, so unlike ../../add-emptydir-sizelimit/'s

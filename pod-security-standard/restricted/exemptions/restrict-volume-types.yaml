@@ -31,7 +31,7 @@
 #      reader can re-judge it rather than inherit it.
 
 # virt-handler is KubeVirt's node agent: it mounts six hostPath volumes for libvirt/qemu runtime
-# state, kubelet pod dirs and node-labeller data (see ../baseline/disallow-host-path.yaml), and
+# state, kubelet pod dirs and node-labeller data (see ../../baseline/disallow-host-path.yaml), and
 # carries no `image` volumes, so this exclusion is about hostPath and only hostPath. Node-level
 # host access is inherent to the component -- no manifest change makes it compliant. Wrong if
 # KubeVirt stops needing node-level access, or if `kubevirt` becomes a namespace where arbitrary
@@ -55,7 +55,7 @@
 # COST: that tightening, foregone -- a VM in these namespaces that mounts a host path lands
 # unflagged in the audit stream, so reviewing what a new VMI mounts stays a manual discipline.
 # Scoped to the same two namespaces as the virt-launcher exclusions in
-# ../../best-practices/exemptions/add-emptydir-sizelimit.yaml and restrict-seccomp-strict.yaml,
+# ../../../best-practices/exemptions/add-emptydir-sizelimit.yaml and restrict-seccomp-strict.yaml,
 # rather than `kubevirt` (virt-launcher doesn't run there) or open to any future VM namespace.
 - op: add
   path: /spec/matchConditions/-

@@ -1,7 +1,7 @@
 ---
 # EXPECTED: `skip`.
 #
-# The estate exemption (../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml, which
+# The estate exemption (../../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml, which
 # carries the reasoning) firing on `kube-system`. Non-vacuous: this Pod carries a plain, uncapped,
 # disk-backed emptyDir -- the exact shape pod-mixed-emptydirs-mutated.yaml gets patched for -- so
 # without the exemption it would be mutated, which the `-pure` document in kyverno-test.yaml
