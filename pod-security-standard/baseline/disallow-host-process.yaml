@@ -4,13 +4,10 @@
 # LAYER 1 PURE MIRROR. The conventions are stated once, in best-practices/restrict-node-port.yaml
 # and ../restricted/restrict-volume-types.yaml; this file follows them.
 #
-# NOT A COMPLETE MIRROR: the standard also restricts pod-level
-# `spec.securityContext.windowsOptions.hostProcess`, which the expression below does not read --
-# it covers the container levels only. Closing that changes what this policy admits, so it is a
-# behaviour change to argue for on its own rather than something a snapshot resync sweeps up.
-#
 # check_windowsHostProcess.go is a single versioned check (MinimumVersion 1.0), untouched since
-# k8s 1.22.
+# k8s 1.22. Its docstring lists only the pod-level and containers/initContainers fields, but the
+# `visitContainers` helper it calls also walks ephemeralContainers -- which is why the expression
+# below covers a level the upstream docstring does not name.
 apiVersion: policies.kyverno.io/v1
 kind: ValidatingPolicy
 metadata:
@@ -50,12 +47,14 @@ spec:
   - Audit
   validations:
   - expression: >-
+      !object.spec.?securityContext.?windowsOptions.?hostProcess.orValue(false) &&
       (object.spec.containers +
       object.spec.?initContainers.orValue([]) +
       object.spec.?ephemeralContainers.orValue([])).all(c,
       !c.?securityContext.?windowsOptions.?hostProcess.orValue(false))
     message: >-
       HostProcess containers are disallowed. The fields
+      spec.securityContext.windowsOptions.hostProcess,
       spec.containers[*].securityContext.windowsOptions.hostProcess,
       spec.initContainers[*].securityContext.windowsOptions.hostProcess,
       and spec.ephemeralContainers[*].securityContext.windowsOptions.hostProcess

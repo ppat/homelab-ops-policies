@@ -14,6 +14,7 @@ resources:
 - pod-no-hostprocess-pass.yaml
 - pod-hostprocess-false-pass.yaml
 - pod-hostprocess-true-fail.yaml
+- pod-level-hostprocess-true-fail.yaml
 results:
 - policy: disallow-host-process
   isValidatingPolicy: true
@@ -22,9 +23,13 @@ results:
   - default/ordinary-workload
   - default/explicit-false-workload
   result: pass
+# Pod-level and container-level `hostProcess` are separate conjuncts of one expression, and
+# either firing produces the same result row, so each level needs its own fixture: dropping one
+# conjunct leaves the suite green if only the other is exercised.
 - policy: disallow-host-process
   isValidatingPolicy: true
   kind: Pod
   resources:
   - default/hostprocess-workload
+  - default/pod-level-hostprocess-workload
   result: fail
