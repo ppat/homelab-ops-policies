@@ -49,6 +49,99 @@ jobs:
       from: ${{ github.event.pull_request.head.sha || 'HEAD' }}~${{ github.event.pull_request.commits || '1' }}
       to: ${{ github.event.pull_request.head.sha || 'HEAD' }}
 
+  # Reports the bare context `commit-taxonomy`, which branch protection requires.
+  #
+  # No `paths:` filter, no `needs:` and no `if:`, and none may be added. A job gated by any of them
+  # reports `skipped` on the runs it skips, and `skipped` SATISFIES a required status check -- the
+  # gate would read as armed and enforce nothing. The self-consistency step asserts these properties
+  # of this very job, so an edit reintroducing a gate goes red here rather than quietly disarming
+  # the gate. The steps that need a pull request find no commits on the schedule and dispatch runs
+  # and check nothing, which is the intended shape: those runs exist for the repo-state steps, whose
+  # inputs go stale with no pull request in sight.
+  #
+  # Part of the verdict is a function of repo state rather than of the pull request, so when it goes
+  # red it goes red on every open pull request at once. The step names are what tell a repo-state
+  # failure from a pull-request one.
+  commit-taxonomy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      # renovate: datasource=npm depName=bun
+      BUN_VERSION: "1.3.14"
+      # renovate: datasource=node-version depName=node
+      NODE_VERSION: "24.19.0"
+    steps:
+    - name: Setup repository and tools
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@9c16506c3c527478b6314c86ca961c0011d9f94a # v2.2.0
+      with:
+        # Full history: the pull-request-state steps read each of the pull request's own commits and
+        # the paths it touched, not a squashed diff.
+        current_fetch_depth: 0
+        current_git_ref: ${{ github.head_ref || github.ref }}
+        current_repository: ${{ github.repository }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        # yamllint disable-line rule:indentation
+        mise_toml: |
+          [tools]
+          bun               = "${{ env.BUN_VERSION }}"
+          node              = "${{ env.NODE_VERSION }}"
+
+    # commitlint comes from this repo's committed package.json and bun.lock -- the same manifest the
+    # commit-messages job resolves -- so the checker and the gate it predicts judge with one engine.
+    - name: Install node packages
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- bun install --frozen-lockfile
+
+    # First, so that everything below is a verdict from a checker that has just demonstrated it can
+    # see defects. A suite that has never caught an injected one is an argument, not a check.
+    - name: Self-test - every known defect must be caught
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- node ci/scripts/commit-taxonomy/self-test.mjs
+
+    - name: Renovate emission closure
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- node ci/scripts/commit-taxonomy/check-commit-taxonomy.mjs closure
+
+    - name: Effective default scope
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- node ci/scripts/commit-taxonomy/check-commit-taxonomy.mjs default-scope
+
+    - name: Config self-consistency
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- node ci/scripts/commit-taxonomy/check-commit-taxonomy.mjs self-consistency
+
+    # The pull-request-state steps. Untrusted text reaches them only through env, never through the
+    # shell.
+    - name: Commit message shape
+      working-directory: ./current
+      shell: bash
+      env:
+        COMMIT_TAXONOMY_PR_COMMITS: ${{ github.event.pull_request.commits || 0 }}
+        COMMIT_TAXONOMY_PR_BODY: ${{ github.event.pull_request.body }}
+      run: mise exec -- node ci/scripts/commit-taxonomy/check-commit-taxonomy.mjs message-shape
+
+    - name: Empty-scope concordance
+      working-directory: ./current
+      shell: bash
+      env:
+        COMMIT_TAXONOMY_PR_COMMITS: ${{ github.event.pull_request.commits || 0 }}
+      run: mise exec -- node ci/scripts/commit-taxonomy/check-commit-taxonomy.mjs empty-scope
+
+    # ADVISORY, and the script states the sunset it is held to. Nothing else in the estate enforces
+    # scope against paths, so this ships without the power to block while it earns a track record.
+    - name: Named-scope concordance (advisory)
+      continue-on-error: true
+      working-directory: ./current
+      shell: bash
+      env:
+        COMMIT_TAXONOMY_PR_COMMITS: ${{ github.event.pull_request.commits || 0 }}
+      run: mise exec -- node ci/scripts/commit-taxonomy/check-commit-taxonomy.mjs named-scope
+
   github-actions:
     needs: [detect-changes]
     if: ${{ github.event_name != 'pull_request' || fromJSON(needs.detect-changes.outputs.results).actions_any_changed == 'true' }}
