@@ -111,7 +111,10 @@ the apiserver actually runs — and explicitly not `kyverno/policies`' own port 
 it, which this repo found to be a lagging interpreter. The kubernetes.io PSS
 documentation page is also stale on several points; the `check_*.go` files are
 authoritative. Each mirror carries a `PSS-SNAPSHOT` line naming what it is synced
-to, so the next resync has a fixed diff point.
+to, so the next resync has a fixed diff point;
+[pod-security-standard/UPSTREAM-SNAPSHOT.md](./pod-security-standard/UPSTREAM-SNAPSHOT.md)
+records upstream's check inventory, control definitions, version-skew mechanics
+and sources as of that snapshot, and ranks what is most likely to have moved.
 
 Three places where following `kyverno/policies` would have shipped something
 wrong:

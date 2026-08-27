@@ -37,6 +37,10 @@ as implemented in `pod-security-admission` — not as re-implemented by
 `kyverno/policies`, which this repo repeatedly found to lag. Each file's
 `PSS-SNAPSHOT` header line names the Kubernetes minor and PSS policy version it
 is synced to, so a resync has a fixed diff point.
+[`pod-security-standard/UPSTREAM-SNAPSHOT.md`](./pod-security-standard/UPSTREAM-SNAPSHOT.md)
+is the dated record behind those lines — what upstream defined at that snapshot,
+with the source for each claim — so a resync starts from what was last known
+rather than from scratch.
 
 A mirror file contains no estate content whatsoever. This estate's own
 exemptions live beside it under `exemptions/` and are attached by kustomize; see
