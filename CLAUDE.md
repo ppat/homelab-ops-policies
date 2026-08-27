@@ -230,7 +230,8 @@ second signal is what surfaces a CEL compile error.
 
 ## Commit conventions
 
-Conventional Commits, enforced by commitlint. `commitlint.config.js` is the
-source of truth for allowed types and scopes — read it rather than assuming a
-sibling repo's scopes apply. The scope enum is a placeholder pending a dedicated
-taxonomy design; nothing should be built on the current list.
+How to pick a type and scope from a diff, the split-by-scope norm, and the cases
+that would otherwise be guessed: [.claude/rules/commits.md](./.claude/rules/commits.md).
+Read it before writing a commit message here. `commitlint.config.js` holds the
+two enums and is the source of truth for their membership; both are closed, and
+this repo's scopes are its own rather than a sibling's.
