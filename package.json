@@ -1,0 +1,7 @@
+{
+  "description": "Pins the commitlint toolchain the CI commit-messages gate and the taxonomy checker both resolve, so the acceptance set for this repo's three local rules does not float on ppat/github-workflows's default branch.",
+  "devDependencies": {
+    "@commitlint/cli": "21.2.2",
+    "@commitlint/config-conventional": "21.2.2"
+  }
+}
