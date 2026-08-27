@@ -24,7 +24,7 @@ on:
     - 'best-practices/**/*.yaml'
     - 'pod-security-standard/**/*.yaml'
     - 'ci/policy-tests/kyverno/**'
-    - 'ci/scripts/build-policies.sh'
+    - 'ci/scripts/**'
   schedule:
   - cron: '0 5 * * 1'
   workflow_dispatch:
@@ -70,6 +70,15 @@ jobs:
       # policies rather than silently passing, but the error is about a missing file and says
       # nothing about why -- hence this comment.
       run: mise exec -- ./ci/scripts/build-policies.sh
+
+    - name: Audit test fixtures (ci/scripts/audit-test-fixtures.sh)
+      working-directory: ./current
+      shell: bash
+      # Ahead of `kyverno test` because the faults it catches make that step's verdict
+      # meaningless rather than red: a fixture silently dropped for a name collision, or a result
+      # row whose selector resolves to nothing and so applies to everything. The script's header
+      # has the mechanism.
+      run: mise exec -- ./ci/scripts/audit-test-fixtures.sh
 
     - name: Run kyverno test
       working-directory: ./current

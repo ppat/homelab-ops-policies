@@ -22,11 +22,11 @@
 #      delete path until those two entries are gone. Pods and Deployments are not
 #      blanket-filtered this way, which is why ./cleanup-bare-pods.yaml needs none of this.
 #
-#      CROSS-REPO DEPENDENCY THIS REPO CANNOT FIX: a consuming estate's Kyverno values must
+#      CONSUMER OBLIGATION THIS REPO CANNOT DISCHARGE: a consuming estate's Kyverno values must
 #      override `resourceFilters` to drop those entries, or this policy has never deleted
-#      anything there. The Chainsaw test applies the same override test-locally
-#      (ci/policy-tests/chainsaw/scripts/allow-replicaset-cleanup.sh) so the live tier can prove
-#      this policy's own logic independently of that unresolved question.
+#      anything there. This repo's own Chainsaw cluster carries that override
+#      (.github/workflows/e2e-tests.yaml), which is what lets the live tier exercise the policy
+#      at all.
 #
 # The `kube-system` exclusion below stays in the policy rather than moving to ./exemptions/:
 # CLAUDE.md draws that line at universality, and every consumer needs it. The exemptions/ layer

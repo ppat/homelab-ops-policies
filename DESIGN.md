@@ -248,17 +248,26 @@ the built policy and `fail` (or, for a mutate policy, `pass`) against the pure
 one. A patch whose `target:` is mistyped is a silent kustomize no-op; that
 paired assertion is the only thing that catches it.
 
-Two limits shaped what could be proven:
+One limit shaped what could be proven: the offline tier **cannot assert that a
+resource went unmatched**. No selector variant expresses it and unasserted extras
+pass silently. This mattered for `require-probes`, which now matches the three
+controller kinds rather than Pods: that it genuinely stopped touching bare Pods
+is not a claim this tier can carry, and its file records the accepted scope
+instead.
 
-- The offline tier **cannot assert that a resource went unmatched**. No selector
-  variant expresses it and unasserted extras pass silently. This mattered for
-  `require-probes`, which now matches the three controller kinds rather than
-  Pods: that it genuinely stopped touching bare Pods is not a claim this tier can
-  carry, and its file records the accepted scope instead.
-- The Chainsaw tier runs a stock Kyverno chart, whose default `resourceFilters`
-  exclude ReplicaSets from every policy engine. The suite overrides that
-  per-test. Aligning the harness with the estate's own values is a fidelity
-  improvement not yet made.
+Two properties of the harness are enforced rather than trusted, because both
+tiers can otherwise report green while measuring the wrong thing:
+
+- **The Chainsaw cluster installs Kyverno with the estate's own
+  `resourceFiltersExclude`.** The chart's defaults hide ReplicaSets from every
+  engine, so a stock install makes `cleanup-empty-replicasets` unobservable —
+  and a test asserting a ReplicaSet survived would pass for the wrong reason.
+- **`ci/scripts/audit-test-fixtures.sh` gates the offline tier on its fixture
+  identities resolving.** `kyverno test` treats a duplicated
+  apiVersion+kind+namespace+name as a resource to drop, and an unresolved
+  `results[].resources` selector as no selector at all. The first shrinks
+  coverage, the second broadens a single row over everything loaded; neither is
+  an error to the CLI.
 
 ## The regression tally
 
@@ -356,7 +365,7 @@ disjunct to `require-drop-all`, never deleting it from the sibling.
 | --- | --- | --- |
 | `lint.yaml` | every PR, weekly | Style, formatting and manifest-schema checks; most jobs gated on changed paths |
 | `policy-smoke-check.yaml` | policy/build-script changes, weekly | Every policy, pure and built, against one unremarkable Pod: parses, passes Kyverno's CRD schema, compiles its CEL. Deliberately says nothing about behaviour |
-| `policy-cli-tests.yaml` | policy/CLI-test/build-script changes, weekly | The offline tier |
+| `policy-cli-tests.yaml` | policy/CLI-test/`ci/scripts` changes, weekly | The fixture audit, then the offline tier |
 | `e2e-tests.yaml` | policy or `ci/` changes, weekly | kind cluster on the estate's pinned Kubernetes minor, Kyverno from the estate's pinned chart, then `chainsaw test` |
 | `release.yaml` | pushes to `main` touching policy content or release state | release-please |
 | `renovate.yaml` | daily | Dependency-update PRs |
