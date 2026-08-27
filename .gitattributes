@@ -1,1 +1,4 @@
-commitlint.config.js        linguist-detectable=false
+commitlint.config.js                    linguist-detectable=false
+best-practices/**/*.yaml                linguist-detectable=true linguist-language=YAML
+ci/**/*.yaml                            linguist-detectable=true linguist-language=YAML
+pod-security-standard/**/*.yaml         linguist-detectable=true linguist-language=YAML
