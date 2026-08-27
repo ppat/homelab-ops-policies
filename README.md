@@ -153,7 +153,7 @@ metadata:
 spec:
   interval: 1h
   ref:
-    tag: v0.0.1 # x-release-please-version
+    tag: v1.0.0 # x-release-please-version
   url: https://github.com/ppat/homelab-ops-policies.git
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
