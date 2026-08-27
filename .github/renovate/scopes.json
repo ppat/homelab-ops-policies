@@ -4,7 +4,7 @@
     {
       "description": [
         "Every version this repository tracks is CI or test-harness machinery -- the released policy YAML pins nothing -- so no update may claim shipped behaviour changed. Hence the forced type, and the prefix restated without the '!' the shared default preset puts on majors.",
-        "The scope half must not be deleted: this repo's commit taxonomy reserves the empty scope as a positive claim -- the change spans several scopes and could not be split -- which is only readable while no machine can emit one. The inherited default scope is empty, so every manager is claimed unconditionally, with no matchUpdateTypes to fall through, and restated locally rather than inherited so an upstream rename cannot move it.",
+        "The scope half must not be deleted: this repo's commit taxonomy reserves the empty scope as a positive claim -- the change spans several scopes and could not be split -- which is only readable while no machine can emit one. The inherited default scope is empty, so every update carrying a package name is claimed here unconditionally, with no matchUpdateTypes to fall through, and restated locally rather than inherited so an upstream rename cannot move it. Updates that carry no package name are out of this rule's reach and are claimed below instead.",
         "commitMessageTopic is load-bearing rather than cosmetic: Renovate lowercases the topic only on the code path taken when commitMessagePrefix is unset, so setting the prefix opts out of it."
       ],
       "commitMessagePrefix": "{{semanticCommitType}}({{semanticCommitScope}}):",
@@ -28,6 +28,17 @@
         "renovate-config"
       ],
       "semanticCommitScope": "renovate"
+    },
+    {
+      "description": [
+        "Renovate's package-name matcher returns false outright when an upgrade carries no package name, so the catch-all above cannot reach a lockfile refresh however broad its glob looks. Uncovered, the scope of that header is decided by the shared preset, and if the upstream rule is renamed or dropped the header falls to the inherited empty scope -- in enum here, and therefore a silent false claim rather than a red check.",
+        "Keyed on the update type so it holds for any manager that grows a lockfile, and not on a file name: a file-name matcher reaches this cell too, but pairs naturally with commitMessageExtra, whose version variables are unbound for a refresh and render as an empty '( -> )'."
+      ],
+      "matchUpdateTypes": [
+        "lockFileMaintenance"
+      ],
+      "semanticCommitScope": "internal-dependencies",
+      "semanticCommitType": "chore"
     },
     {
       "description": "The preset pin is the one dependency that can move commit emission out of the taxonomy with no local edit and no review, so it may not automerge. A control on emission, not a judgement about the upstream preset.",
