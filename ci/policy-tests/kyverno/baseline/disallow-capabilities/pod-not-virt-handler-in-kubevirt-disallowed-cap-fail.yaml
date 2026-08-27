@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
+#
+# NAME-axis control for exempt-virt-handler: right namespace, wrong name, same disallowed
+# capability as pod-virt-handler-disallowed-cap-skip.yaml. Drop the name predicate from that
+# exemption, leaving it scoped to `kubevirt` alone, and this pod starts being skipped -- nothing
+# else in the suite would notice.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: virt-controller-7d4c8bf95-tz9wc
+  namespace: kubevirt
+spec:
+  restartPolicy: Always
+  containers:
+  - name: virt-controller
+    image: quay.io/kubevirt/virt-controller:v1.9.0
+    securityContext:
+      capabilities:
+        add:
+        - SYS_ADMIN

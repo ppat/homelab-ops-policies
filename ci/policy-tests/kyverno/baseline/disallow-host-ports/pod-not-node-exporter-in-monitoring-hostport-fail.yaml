@@ -1,0 +1,23 @@
+---
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
+#
+# NAME-axis control for exempt-node-exporter: right namespace, wrong name, a genuine hostPort
+# violation. Drop the name predicate from that exemption, leaving it scoped to `monitoring`
+# alone, and this pod starts being skipped -- nothing else in the suite would notice.
+#
+# Named after another kube-prometheus-stack-released component sharing most of the exempted
+# prefix (`kube-prometheus-stack-prometheus-` without the trailing `node-exporter`), since that
+# is the shape a careless narrowing of the exemption's `startsWith` argument would actually miss.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-prometheus-stack-prometheus-0
+  namespace: monitoring
+spec:
+  restartPolicy: Always
+  containers:
+  - name: prometheus
+    image: quay.io/prometheus/prometheus:v2.53.0
+    ports:
+    - containerPort: 9090
+      hostPort: 9090

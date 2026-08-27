@@ -1,0 +1,20 @@
+---
+# EXPECTED: `fail` against the built policy, `fail` against the pure mirror.
+#
+# NAME-axis control for exempt-metallb-speaker: right namespace, wrong name, same hostPort
+# violation as pod-metallb-speaker-hostport-skip.yaml. Drop the name predicate from that
+# exemption, leaving it scoped to `metallb-system` alone, and this pod starts being skipped --
+# nothing else in the suite would notice.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: metallb-controller-8f6b7c9d5-vhqtz
+  namespace: metallb-system
+spec:
+  restartPolicy: Always
+  containers:
+  - name: controller
+    image: quay.io/metallb/controller:v0.14.0
+    ports:
+    - containerPort: 7946
+      hostPort: 7946

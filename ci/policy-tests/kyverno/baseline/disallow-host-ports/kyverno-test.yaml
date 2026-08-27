@@ -14,6 +14,8 @@ resources:
 - pod-hostport-fail.yaml
 - pod-metallb-speaker-hostport-skip.yaml
 - pod-node-exporter-hostport-skip.yaml
+- pod-not-metallb-speaker-in-metallb-system-hostport-fail.yaml
+- pod-not-node-exporter-in-monitoring-hostport-fail.yaml
 results:
 - policy: disallow-host-ports
   isValidatingPolicy: true
@@ -21,11 +23,17 @@ results:
   resources:
   - default/ordinary-workload
   result: pass
+# The last two resources are the NAME-axis controls for exempt-metallb-speaker and
+# exempt-node-exporter: same namespace as their respective skip fixture below, a name each
+# exemption's prefix does not match. See pod-not-metallb-speaker-in-metallb-system-hostport-fail.yaml
+# and pod-not-node-exporter-in-monitoring-hostport-fail.yaml.
 - policy: disallow-host-ports
   isValidatingPolicy: true
   kind: Pod
   resources:
   - default/hostport-workload
+  - metallb-system/metallb-controller-8f6b7c9d5-vhqtz
+  - monitoring/kube-prometheus-stack-prometheus-0
   result: fail
 - policy: disallow-host-ports
   isValidatingPolicy: true
@@ -48,6 +56,8 @@ resources:
 - pod-hostport-fail.yaml
 - pod-metallb-speaker-hostport-skip.yaml
 - pod-node-exporter-hostport-skip.yaml
+- pod-not-metallb-speaker-in-metallb-system-hostport-fail.yaml
+- pod-not-node-exporter-in-monitoring-hostport-fail.yaml
 results:
 - policy: disallow-host-ports
   isValidatingPolicy: true
@@ -62,4 +72,6 @@ results:
   - default/hostport-workload
   - metallb-system/metallb-speaker-9k2vq
   - monitoring/kube-prometheus-stack-prometheus-node-exporter-7g4hj
+  - metallb-system/metallb-controller-8f6b7c9d5-vhqtz
+  - monitoring/kube-prometheus-stack-prometheus-0
   result: fail
