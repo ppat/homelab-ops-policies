@@ -1,6 +1,5 @@
 {
   "changelog-sections": [
-    { "type": "build", "section": "🏗️ Build System", "hidden": true },
     { "type": "chore", "section": "🧹 Miscellaneous", "hidden": false },
     { "type": "ci", "section": "🚦 Continuous Integration", "hidden": true },
     { "type": "docs", "section": "🛠 Improvements" },
@@ -9,7 +8,6 @@
     { "type": "perf", "section": "🚀 Enhancements + Bug Fixes" },
     { "type": "refactor", "section": "🚀 Enhancements + Bug Fixes" },
     { "type": "revert", "section": "⚙️ Other" },
-    { "type": "style", "section": "🛠 Improvements" },
     { "type": "test", "section": "🛠 Improvements" }
   ],
   "draft": false,

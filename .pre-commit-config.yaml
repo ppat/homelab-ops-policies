@@ -41,5 +41,3 @@ repos:
     additional_dependencies:
     - '@commitlint/cli@19.8.1'
     - '@commitlint/config-conventional@19.8.1'
-    - '@commitlint/ensure@19.8.1'
-    - 'commitlint-plugin-function-rules@4.0.2'
