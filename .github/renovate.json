@@ -22,7 +22,8 @@
     "mergeConfidence:all-badges",
     "github>ppat/renovate-presets#v1.0.0",
     "github>ppat/renovate-presets:dev-tools#v1.0.0",
-    "github>ppat/renovate-presets:github-actions-provider#v1.0.0"
+    "github>ppat/renovate-presets:github-actions#v1.0.0",
+    "github>ppat/homelab-ops-policies//.github/renovate/scopes"
   ],
   "internalChecksFilter": "strict",
   "labels": [
