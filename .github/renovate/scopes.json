@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "packageRules": [
+    {
+      "description": [
+        "Every version this repository tracks is CI or test-harness machinery -- the released policy YAML pins nothing -- so no update may claim shipped behaviour changed. Hence the forced type, and the prefix restated without the '!' the shared default preset puts on majors.",
+        "The scope half must not be deleted: this repo's commit taxonomy reserves the empty scope as a positive claim -- the change spans several scopes and could not be split -- which is only readable while no machine can emit one. The inherited default scope is empty, so every manager is claimed unconditionally, with no matchUpdateTypes to fall through, and restated locally rather than inherited so an upstream rename cannot move it.",
+        "commitMessageTopic is load-bearing rather than cosmetic: Renovate lowercases the topic only on the code path taken when commitMessagePrefix is unset, so setting the prefix opts out of it."
+      ],
+      "commitMessagePrefix": "{{semanticCommitType}}({{semanticCommitScope}}):",
+      "commitMessageTopic": "{{lowercase depName}}",
+      "matchPackageNames": [
+        "*"
+      ],
+      "semanticCommitScope": "internal-dependencies",
+      "semanticCommitType": "chore"
+    },
+    {
+      "description": "A 'uses:' ref is the one dependency class here whose scope is decidable from the changed lines alone, so it keeps a distinct name rather than folding into the catch-all above.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "semanticCommitScope": "github-actions"
+    },
+    {
+      "description": "The shared-preset pin decides what every other bot header looks like, so its bumps take the same scope as a hand-edit to the file it lives in: one name then covers every way this repo's commit emission can change.",
+      "matchManagers": [
+        "renovate-config"
+      ],
+      "semanticCommitScope": "renovate"
+    },
+    {
+      "description": "The preset pin is the one dependency that can move commit emission out of the taxonomy with no local edit and no review, so it may not automerge. A control on emission, not a judgement about the upstream preset.",
+      "automerge": false,
+      "matchManagers": [
+        "renovate-config"
+      ]
+    }
+  ]
+}
