@@ -1,0 +1,87 @@
+---
+# yamllint disable rule:line-length
+name: pr-title
+
+# WHEN THE TITLE IS THE STRING THAT LANDS
+# `squash_merge_commit_title` is COMMIT_OR_PR_TITLE: a pull request carrying one commit lands that
+# commit's header, and a pull request carrying two or more lands its TITLE. The title is therefore
+# conditionally release-facing -- it becomes the string release-please parses, sizing the version
+# bump and deciding whether a release happens at all, the moment a second commit appears. The
+# commit-messages job reads the branch commits and never this string.
+#
+# It is judged by commitlint.config.js, the config that gate resolves too, so one taxonomy governs
+# both strings rather than a near-copy that drifts out of step with it.
+#
+# WHY `edited` IS IN THE TRIGGER LIST
+# A title can be rewritten after the last push and after every other check has gone green, so a
+# check that fires only on pushes reports on a string nobody has since kept. `edited` also fires on
+# body-only edits -- which is why this is its own workflow: on lint.yaml it would re-run every job
+# there each time a bot touches a pull request body.
+#
+# BLOCKING, AND WHAT KEEPS IT SATISFIABLE
+# Branch protection requires the bare context `pr-title`, so the title has to stay conformant for
+# the authors that write none by hand:
+#   - Renovate composes its title from the commit message, and no preset in this repository's
+#     pinned chain sets `prTitle`, so the two are one string. The commit-taxonomy closure check
+#     hard-fails on any config introducing `prTitle` or `commitMessage`, so they cannot diverge
+#     without turning something red first.
+#   - release-please renders its title from `pull-request-title-pattern`, which that same closure
+#     check renders and lints on every run.
+# Those are the reasons a bot cannot be locked out by this gate. If either stops holding, this
+# check stops being satisfiable before it stops being useful.
+#
+# The job carries no `paths:`, `needs:` or `if:`, and none may be added: a gated job reports
+# `skipped`, and `skipped` SATISFIES a required status check. Making the check advisory again means
+# taking it out of the required contexts -- `continue-on-error` will not do it, because a job
+# carrying it still reports its check run as `failure` and only turns the workflow run green.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      # renovate: datasource=npm depName=bun
+      BUN_VERSION: "1.3.14"
+      # renovate: datasource=node-version depName=node
+      NODE_VERSION: "24.19.0"
+    steps:
+    - name: Setup repository and tools
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@9c16506c3c527478b6314c86ca961c0011d9f94a # v2.2.0
+      with:
+        current_fetch_depth: 1
+        current_git_ref: ${{ github.head_ref }}
+        current_repository: ${{ github.repository }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        # yamllint disable-line rule:indentation
+        mise_toml: |
+          [tools]
+          bun               = "${{ env.BUN_VERSION }}"
+          node              = "${{ env.NODE_VERSION }}"
+
+    - name: Install node packages
+      working-directory: ./current
+      shell: bash
+      run: mise exec -- bun install --frozen-lockfile
+
+    - name: Lint the pull request title
+      working-directory: ./current
+      shell: bash
+      env:
+        PR_TITLE: ${{ github.event.pull_request.title }}
+      # yamllint disable-line rule:indentation
+      run: |
+        if ! printf '%s' "${PR_TITLE}" | mise exec -- ./node_modules/.bin/commitlint --verbose; then
+          echo "::error::Fix the pull request title. The vocabulary and the pairing rules are in .claude/rules/commits.md; editing the title in the GitHub UI re-runs this check with no push."
+          exit 1
+        fi
