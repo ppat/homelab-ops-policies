@@ -14,8 +14,10 @@ The type says what a consumer receives; the scope says which surface the diff to
 closed — `commitlint.config.js` is the source of truth for their membership, and adding a member is a
 design change, not an improvisation.
 
-Squash-merge lands a single-commit PR's **commit header** and a multi-commit PR's **PR title**. Keep a
-PR to one commit; otherwise the title is the release-facing string and nothing here has checked it.
+Squash-merge lands a single-commit PR's **commit header** and a multi-commit PR's **PR title**, so
+both are gated against this same vocabulary — the commit gate reads the branch commits, the `pr-title`
+gate reads the title. Keeping a PR to one commit still makes the released string the one you wrote
+deliberately rather than one composed from two.
 
 ## Choosing a scope
 
