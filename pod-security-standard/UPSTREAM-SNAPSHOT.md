@@ -30,13 +30,20 @@ conditional relaxations that landed unconditionally at policy version v1.35.
 | Version resolution | `.../pod-security-admission/policy/registry.go`, `.../pod-security-admission/api/helpers.go` |
 | Container traversal | `.../pod-security-admission/policy/visitor.go` |
 | User-namespace helper | `.../pod-security-admission/policy/helpers.go` |
+| Levels, labels and mode constants | `.../pod-security-admission/api/constants.go` |
+| Mode dispatch and pod-template extraction | `.../pod-security-admission/admission/admission.go` |
+| Defaults when no admission configuration is supplied | `.../pod-security-admission/admission/api/{v1/defaults.go,load/load.go}` |
 | Admission plumbing | `plugin/pkg/admission/security/podsecurity/admission.go` |
 | Feature gates | `pkg/features/kube_features.go` |
-| Published documentation | `https://raw.githubusercontent.com/kubernetes/website/main/content/en/docs/concepts/security/pod-security-standards.md` |
+| Published documentation | `https://raw.githubusercontent.com/kubernetes/website/main/content/en/docs/concepts/security/{pod-security-standards.md,pod-security-admission.md}` |
 
 Unqualified `check_*.go`, `registry.go`, `visitor.go` and `helpers.go`
-references below are relative to the policy directory in row 1. Line numbers are
-as of `release-1.36` and are the first thing that will drift.
+references below are relative to the policy directory in row 1; `api/` and
+`admission/` paths are relative to its parent,
+`staging/src/k8s.io/pod-security-admission/`. Line numbers are as of
+`release-1.36` and are the first thing that will drift. The two documentation
+pages are unversioned — they track `main`, so they are cited by line number and
+length as read at this snapshot.
 
 ## How the standards are defined
 
@@ -93,6 +100,92 @@ Two consequences that the profile definitions do not show:
   `maxVersion` when the apiserver runs an emulated version below its binary
   version. A 1.36 binary emulating 1.33 resolves `latest` to v1.33, and none of
   the 1.35 behaviours apply.
+
+## Privileged is the absence of evaluation, not a third check set
+
+`api/constants.go:19-31` registers three levels — `privileged`, `baseline`,
+`restricted` — but only two of them can own a check. `validateChecks` rejects
+any check whose level is neither Baseline nor Restricted
+(`registry.go:90-99`), and `EvaluatePod` returns `nil` for a Privileged
+level-version before it clamps the version or selects a check set
+(`registry.go:67-70`). The published page says the same thing in prose — "The
+Privileged policy is defined by an absence of restrictions" — and its FAQ
+records that no fourth profile between Privileged and Baseline is offered on
+purpose, above-Baseline privileges being judged too application-specific to
+standardise.
+
+Being a short-circuit rather than an empty check set has consequences:
+
+- **The version dimension is inert.** No `-version` label means anything at this
+  level, and `api/helpers.go:149-152` treats any two Privileged level-versions
+  as equivalent whatever versions they name.
+- **It is what an unconfigured apiserver applies.** With no admission
+  configuration supplied, `admission/api/load/load.go:44-64` defaults the
+  configuration through `admission/api/v1/defaults.go:28-47`, which sets all
+  three modes to `privileged` at `latest`. An unlabelled namespace is
+  unevaluated, not Baseline.
+- **It is also the cheap path.** `ValidatePod` skips the whole evaluation only
+  when all three modes are Privileged (`admission.go:353`), while
+  `ValidatePodController` skips it when audit and warn alone are
+  (`admission.go:421-423`) — enforce never reaches a workload resource, per the
+  next section.
+
+## The three modes and their labels
+
+Six namespace labels, `api/constants.go:37-50`: the prefix
+`pod-security.kubernetes.io/` with `enforce`, `audit` and `warn`, each having an
+independent `-version` companion. Every mode resolves its own level and version
+through the clamp described in
+[how the standards are defined](#how-the-standards-are-defined).
+
+| Mode | On violation | Surfaced as |
+| --- | --- | --- |
+| `enforce` | request rejected (`admission.go:478-485`) | the API error, plus a `pod-security.kubernetes.io/enforce-policy` audit annotation naming the level and version evaluated (`:476`) |
+| `audit` | request admitted | a `pod-security.kubernetes.io/audit-violations` audit annotation (`:500-504`) |
+| `warn` | request admitted | a warning on the API response (`:517-521`), suppressed when the request is already being rejected (`:509`) |
+
+Five mechanics the label names do not imply:
+
+- **`enforce` never applies to a workload resource.** `ValidatePodController`
+  calls `EvaluatePod` with `enforce=false` (`admission.go:449`) where
+  `ValidatePod` passes `true` (`:388`), so a Deployment with a violating pod
+  template is admitted and only its Pods are rejected. The resources whose pod
+  template is extracted at all are the nine in `defaultPodSpecResources`
+  (`admission.go:94-104`): `pods`, `podtemplates`, `replicationcontrollers`,
+  `replicasets`, `deployments`, `statefulsets`, `daemonsets`, `jobs`,
+  `cronjobs`.
+- **`warn` is derived from `enforce` when it is unset.** If the warn label is
+  absent and the enforce label names a stricter level, warn takes enforce's
+  level — and its version too, unless a warn version label is present
+  (`api/helpers.go:229-233`). A namespace labelled only `enforce: restricted`
+  therefore does warn on Deployments, because the pod-controller short-circuit
+  needs *both* audit and warn Privileged.
+- **A malformed label resolves in opposite directions per mode.** `ParseLevel`
+  returns `restricted` for an unrecognised value (`api/helpers.go:99-105`) and
+  `ParseVersion` returns `latest` (`:123-135`); `PolicyToEvaluate` then puts
+  audit and warn back to `privileged`, its own comments reading "Fail open"
+  (`:206-208`, `:218-220`), and leaves enforce at `restricted:latest`. That
+  function's doc comment (`:177-180`) describes only the fail-closed half.
+- **Label validation is strict on create, incremental on update.**
+  `ValidateNamespace` rejects invalid labels when a namespace is created
+  (`admission.go:250-252`) but on update only when the error set changed
+  (`:277-279`), so a namespace already carrying an invalid label stays editable.
+- **Raising `enforce` dry-runs the namespace's existing pods.** Their violations
+  come back as warnings and never block the label change
+  (`admission.go:304-306`); the sweep is time-bounded and degrades to a single
+  warning if the pod list fails (`:539-556`). Nothing equivalent happens for an
+  audit or warn label change, for a relaxation at the same version, or for a
+  move to Privileged (`:286-295`).
+
+Exemptions bypass all three modes together — by namespace and by username before
+the namespace policy is read at all (`admission.go:334-343`, `:399-407`), and by
+runtime class inside the evaluation (`:458-461`).
+
+The kubernetes.io Pod Security Admission page (148 lines at this snapshot) was
+accurate on all of the above, including that enforce is not applied to workload
+resources (its lines 87-88) and that a non-fatal error can leave the latest
+Restricted profile enforcing (line 133). It does not mention the
+warn-from-enforce derivation.
 
 ## Check inventory at 1.36
 
