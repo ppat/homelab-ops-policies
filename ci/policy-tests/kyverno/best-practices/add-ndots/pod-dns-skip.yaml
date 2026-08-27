@@ -1,7 +1,7 @@
 ---
 # EXPECTED: `skip`.
 #
-# The `dns` exemption (../../../../best-practices/exemptions/add-ndots.yaml) firing. One fixture
+# The `dns` exemption (../../../../../best-practices/exemptions/add-ndots.yaml) firing. One fixture
 # per exemption entry, and per namespace within an entry, so any single one can be dropped and
 # noticed. Non-vacuous: this Pod declares no `dnsConfig` at all, exactly like
 # pod-no-dnsconfig-mutated.yaml, so without the exemption it would be mutated -- which the `-pure`

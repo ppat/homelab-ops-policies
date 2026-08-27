@@ -2,7 +2,7 @@
 # EXPECTED: admitted, and NOT mutated. Asserted by pod-virt-launcher-patched.yaml.
 #
 # THE EVICTION-LOOP REGRESSION TEST, EXECUTED AGAINST A REAL API SERVER. The incident it encodes
-# is described in full in ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml:
+# is described in full in ../../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml:
 # the policy silently added a 256Mi sizeLimit to virt-launcher's `ephemeral-disks` emptyDir -- the
 # containerDisk copy-on-write overlay backing every write the guest makes to its root filesystem --
 # the VM's writes hit the cap, the kubelet evicted the pod, KubeVirt recreated it, and the loop
@@ -14,7 +14,7 @@
 # The volume set is virt-launcher's real one, trimmed to the two that matter for the assertion.
 # `name` and `generateName` are BOTH set, which is the shape a live controller-created Pod actually
 # arrives in -- measured, see
-# ../../../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml. The
+# ../../../../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml. The
 # `generateName`-only shape can only exist offline and lives in
 # ../../../kyverno/best-practices/add-emptydir-sizelimit/.
 #

@@ -12,7 +12,7 @@
 # that diffs against the wrong half will conclude the userns condition below is wrong.
 #
 # This policy has NO estate exemptions: no exemptions/disallow-proc-mount.yaml, no `patches:`
-# entry in ../kustomization.yaml. Its `matchConditions` list is nevertheless non-empty, and the
+# entry in ./kustomization.yaml. Its `matchConditions` list is nevertheless non-empty, and the
 # entry in it is NOT an exemption -- see the block above `matchConditions:` below. The append
 # seam is unaffected either way: `op: add` onto `/spec/matchConditions/-` appends to a populated
 # list exactly as to an empty one, and every entry is ANDed.

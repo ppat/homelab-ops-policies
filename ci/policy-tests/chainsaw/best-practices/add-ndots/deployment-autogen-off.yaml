@@ -4,7 +4,7 @@
 # pod-from-autogen-probe-patched.yaml.
 #
 # TWO SEPARATE MEASUREMENTS MEET HERE, and they answer different questions. Both are recorded in
-# full in ../../../../best-practices/add-ndots.yaml; the short forms:
+# full in ../../../../../best-practices/add-ndots.yaml; the short forms:
 #
 #   * AT ADMISSION the autogen setting is currently inert for every `MutatingPolicy`. Measured on
 #     the pinned stack (kind v1.36.1, Kyverno chart 3.8.2 / v1.18.2): an mpol registers a webhook

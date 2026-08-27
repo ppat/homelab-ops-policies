@@ -7,7 +7,7 @@
 #   * THERE IS NO `[Deny]` PATCH STEP. `validationActions` is a field on `ValidatingPolicy` and
 #     does not exist on this kind. A mutate policy has exactly one mode and it is always on --
 #     the reason these policies get the most fixture coverage in the repo, stated at length in
-#     ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml.
+#     ../../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml.
 #   * THERE IS NO READINESS-GATE SCRIPT. ../../scripts/wait-for-webhook-deny.sh polls until
 #     admission REJECTS a known-bad object; nothing is ever rejected here, so there is nothing to
 #     poll. Chainsaw `assert` polls until timeout on its own, so the mutation assertions ARE the
@@ -41,7 +41,7 @@ spec:
     try:
     # Built output, never the file in the shipped tree: what a consumer applies is
     # `kustomize build best-practices`, i.e. the pure policy WITH
-    # ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml applied. Applying the pure
+    # ../../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml applied. Applying the pure
     # file would leave the exemption layer -- the subject of the eviction-loop step below --
     # untested. See ci/scripts/build-policies.sh.
     - apply:

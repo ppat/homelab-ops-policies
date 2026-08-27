@@ -2,7 +2,7 @@
 # EXPECTED: `skip`.
 #
 # THE EVICTION-LOOP REGRESSION, AT THE CLI TIER. This is the shape that caused the incident
-# ../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml describes: a virt-launcher Pod
+# ../../../../../best-practices/exemptions/add-emptydir-sizelimit.yaml describes: a virt-launcher Pod
 # in a VM namespace whose `ephemeral-disks` emptyDir is the containerDisk copy-on-write overlay
 # backing every write the guest makes to its root filesystem. A 256Mi cap on it evicts the VM, the
 # VM restarts, and it evicts again -- with nothing reported anywhere, because a mutate rule does
@@ -10,7 +10,7 @@
 #
 # `name` AND `generateName` both present, which is the shape a live controller-created Pod
 # actually arrives in at admission (measured, see
-# ../../../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml). The
+# ../../../../../pod-security-standard/restricted/exemptions/restrict-volume-types.yaml). The
 # name-only and generateName-only shapes are covered by
 # pod-virt-launcher-sandbox-talos-generatename-skip.yaml.
 #
