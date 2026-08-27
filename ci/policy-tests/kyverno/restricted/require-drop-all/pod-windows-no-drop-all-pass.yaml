@@ -1,0 +1,26 @@
+---
+# EXPECTED: `pass`.
+#
+# THE WINDOWS DISJUNCT FIRING, non-vacuous by construction: this pod omits `drop: [ALL]`, which
+# ./pod-no-drop-all-fail.yaml shows fails the check on its own; the `pass` here is attributable to
+# the disjunct and to nothing else. Delete the disjunct from
+# ../../../../../pod-security-standard/restricted/require-drop-all.yaml and this row goes red.
+#
+# `pass`, NOT `skip`: the Windows exemption is a leading disjunct inside the validation, not a
+# `matchCondition` -- see
+# ../../../../../pod-security-standard/restricted/disallow-capabilities-strict.yaml's validation
+# comment for why PSS spells it that way and why the two report differently.
+#
+# INERT ON THIS ESTATE: there are no Windows nodes and nothing sets `spec.os.name`. The fixture
+# exists so the disjunct is falsifiable rather than decorative.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: windows-workload-3a7d2e1f5-hq9xz
+  namespace: default
+spec:
+  os:
+    name: windows
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
