@@ -341,8 +341,8 @@ instance — should re-run both against the numbers above.
 
 ## Accepted deltas
 
-Two known gaps are deliberate, documented in the relevant policy files, and
-pinned by fixtures that go red if anyone closes them silently.
+One known gap is deliberate, documented in the relevant policy file, and pinned
+by fixtures that go red if anyone closes it silently.
 
 **`disallow-host-probes-and-lifecycle` ships with no exemption and will produce
 Audit rows.** Four `hostNetwork: true` workloads pin a probe to loopback —
@@ -353,14 +353,6 @@ mirror must not invent a loopback carve-out. Under Audit the faithfulness costs
 accurate rows saying those pods deviate from PSS Baseline, which they do.
 Quietening the stream would take an exemption patch carrying its own rationale;
 that is a decision, not a default.
-
-**The PSS Windows disjunct sits on only one half of the capabilities split.**
-PSS exempts `spec.os.name == "windows"` pods from the whole
-`capabilities_restricted` check; `disallow-capabilities-strict` carries that
-disjunct and `require-drop-all` does not. The delta is inert on this estate — no
-Windows nodes, nothing sets `spec.os.name` — and costs at most one Audit row on
-a hypothetical Windows pod omitting `drop: [ALL]`. Closing it means adding the
-disjunct to `require-drop-all`, never deleting it from the sibling.
 
 ## CI and validation
 

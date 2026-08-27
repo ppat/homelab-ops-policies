@@ -8,6 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   how it is released
 - [DESIGN.md](./DESIGN.md) — why the repo is shaped this way: the group split,
   the two layers, the test tiers, the regression tally
+- [pod-security-standard/UPSTREAM-SNAPSHOT.md](./pod-security-standard/UPSTREAM-SNAPSHOT.md)
+  — upstream `pod-security-admission` as of the snapshot the PSS mirrors are
+  aligned to, with the sources to re-verify it against
 
 Three files carry the house style and are cited by every other file rather than
 having their contents copied. Read the relevant one before writing a new policy:
