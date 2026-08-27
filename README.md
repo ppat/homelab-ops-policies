@@ -184,3 +184,7 @@ types and scopes. Merging to `main` accumulates a release PR; merging that PR
 tags a version for consumers to pin. The tag in the example above is rewritten
 by release-please via its `# x-release-please-version` marker, so it always
 names the latest release.
+
+<!-- markdownlint-disable-file -->
+<!-- throwaway commit-taxonomy check-run measurement; PR closed without merging, never landed on main -->
+<!-- markdownlint-enable-file -->
