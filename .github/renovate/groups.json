@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "packageRules": [
+    {
+      "description": [
+        "The Kyverno chart and the Kyverno CLI are one engine, not two dependencies: a chart version and the appVersion it carries are the same Kyverno release, and this repo's test tiers split that release across surfaces -- the chart installs the engine the Chainsaw tier admits against, the CLI binary is the engine the offline tier evaluates with. Grouped, they cannot land separately and leave the two tiers judging the same policies with different engines.",
+        "Automerge is off because the engine version is a claim about production, not about this repository. These pins must track the Kyverno the estate actually runs -- CI exercising a different engine than production tests the wrong thing -- and no bot can observe when the estate has moved. That property is not expressible as a status check, so no green run can attest to it and no bot may conclude the pair is ready.",
+        "The review it forces is not a formality: a Kyverno bump changes what the offline tier can assert, not merely a number. Result emission has changed between minors -- a resource excluded by a DeletingPolicy's matchConstraints.namespaceSelector producing no result row at all rather than a non-match -- and that tier treats an unasserted resource as an extra rather than a failure. A green run after such a bump can therefore mean the suite got weaker, not that the engine is sound.",
+        "The kind node image is deliberately outside this rule. It tracks the Kubernetes minor the estate's clusters run -- a different axis that moves on its own schedule."
+      ],
+      "automerge": false,
+      "groupName": "kyverno",
+      "matchDatasources": [
+        "github-releases",
+        "helm"
+      ],
+      "matchPackageNames": [
+        "kyverno",
+        "kyverno/kyverno"
+      ]
+    }
+  ]
+}
