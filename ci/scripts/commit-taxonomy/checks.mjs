@@ -47,10 +47,6 @@ const SUBJECT_ONLY_KEYS = [
   'commitMessageLowerCase', 'commitBodyTable', 'commitHourlyLimit', 'commitConcurrentLimit',
 ]
 
-// Matchers this repo's own rules may use. The coverage reasoning below depends on knowing what each
-// one narrows, so anything else is a hard failure rather than an assumption.
-const MODELLED_LOCAL_MATCHERS = ['matchManagers', 'matchPackageNames', 'matchUpdateTypes']
-
 // Managers with extraction occupancy in this tree. A matchManagers value outside this set is either
 // a typo -- which renovate-config-validator accepts silently, leaving the rule a no-op -- or new
 // occupancy the coverage model has not been taught. Both need a human. `bun` rather than `npm` is
@@ -64,6 +60,14 @@ const PACKAGE_SCOPED_MATCHERS = [
   'matchDepTypes', 'matchDatasources', 'matchSourceUrls', 'matchCategories',
   'matchCurrentVersion', 'matchCurrentValue', 'matchNewValue', 'matchCurrentAge',
 ]
+
+// Matchers this repo's own rules may use. Membership is exactly what `reach` below can classify --
+// the two it branches on by name, plus every matcher that cannot select an upgrade carrying no
+// package name -- rather than a hand-kept list, which would drift from the reasoning it stands for.
+// The refusal is load-bearing rather than pedantic: an unclassified matcher lands its rule in the
+// `some` bucket, where it no longer overrides a type or a prefix, so the fold below would skip a
+// setter and report a clean emittable set over a rule it never applied.
+const MODELLED_LOCAL_MATCHERS = ['matchManagers', 'matchUpdateTypes', ...PACKAGE_SCOPED_MATCHERS]
 
 // Renovate's package-name matcher returns false outright when an upgrade carries no package name,
 // so a ["*"] glob -- which works at all only because the literal `*` is special-cased ahead of
@@ -209,16 +213,19 @@ const reach = (rule, cls) => {
   return cls.hasPackage ? 'all' : 'none'
 }
 
-// Every extends entry resolved to something readable, in resolution order, with this repo's
-// self-reference read from the working tree. Renovate itself fetches that entry from the default
-// branch -- which is why a Renovate dry-run silently validates main rather than an unpushed change,
-// and why this file reads the tree instead.
+// Every extends entry resolved to something readable, with this repo's self-references read from
+// the working tree. Renovate itself fetches those from the default branch -- which is why a
+// Renovate dry-run silently validates main rather than an unpushed change, and why this file reads
+// the tree instead.
+//
+// This repo keeps its packageRules in files under .github/renovate/, never in the root config, and
+// each is its own extends entry. There is no fixed number of them and no fixed order, so they are
+// discovered from the extends list rather than named here.
 const loadSources = async (env) => {
   const root = env.json('.github/renovate.json')
   const sources = [{ name: '.github/renovate.json', config: root, local: true }]
   const uncovered = []
-  const entries = root.extends ?? []
-  for (const [i, ref] of entries.entries()) {
+  for (const ref of root.extends ?? []) {
     const shared = ref.match(/^github>ppat\/renovate-presets(?::([\w-]+))?#(.+)$/)
     const own = ref.match(/^github>ppat\/homelab-ops-policies\/\/(.+)$/)
     if (shared) {
@@ -228,12 +235,21 @@ const loadSources = async (env) => {
         : await env.fetchText(`https://raw.githubusercontent.com/ppat/renovate-presets/${tag}/${name}.json`)
       sources.push({ name: ref, config: JSON.parse(body), local: false })
     } else if (own) {
-      sources.push({ name: ref, config: env.json(`${own[1]}.json`), local: true, isLastExtends: i === entries.length - 1 })
+      sources.push({ name: ref, config: env.json(`${own[1]}.json`), local: true, viaExtends: true })
     } else {
       uncovered.push(ref)
     }
   }
   return { sources, uncovered }
+}
+
+// Preset references nested inside a config rather than at its top level. Renovate resolves those
+// too, so one would compose packageRules that nothing here has read; the composition below reads
+// each source's top-level extends only, and refuses the rest.
+const nestedExtends = (node, path) => {
+  if (Array.isArray(node)) return node.flatMap((v, i) => nestedExtends(v, `${path}[${i}]`))
+  if (!node || typeof node !== 'object') return []
+  return Object.entries(node).flatMap(([k, v]) => (k === 'extends' ? [`${path}.${k}`] : nestedExtends(v, `${path}.${k}`)))
 }
 
 const walkSites = (sources) => {
@@ -272,14 +288,16 @@ const renderPrefix = (template, type, scope) => template
 // Renovate's own default when no rule sets commitMessagePrefix.
 const IMPLICIT_PREFIX = '{{semanticCommitType}}{{#if semanticCommitScope}}({{semanticCommitScope}}){{/if}}:'
 
-// Increasing precedence for top-level keys: presets in the order they are extended, then this
-// repo's own config, whose keys override every preset it pulls in. sources[0] is always the repo's
-// own file, so the fold below reads it last.
-const topLevelOrder = (sources) => [...sources.slice(1), sources[0]]
+// Renovate's resolution order, and the same one for every field: it merges the extends entries left
+// to right and then merges the extending config on top, so the root config resolves last. sources[0]
+// is always that root config, hence the rotation. Scalars take the last value written; packageRules
+// are a mergeable array, so they accumulate in exactly this order and later rules win per field.
+const resolutionOrder = (sources) => [...sources.slice(1), sources[0]]
 
 // Fold the header-carrying fields down to what a class of upgrade emits. Top-level values are the
-// base; packageRules then apply in array order, later winning per field, with this repo's own rules
-// last because the self-referenced preset is the last extends entry (asserted separately).
+// base; the accumulated packageRules then apply in resolution order, later winning per field, with
+// this repo's own rules last because its own files sit at the end of the extends chain (asserted
+// separately, since nothing but position makes that true).
 //
 // `narrow` holds the scopes a rule that reaches only part of the class can still produce, keyed by
 // matcher so a later rule with the same matcher replaces an earlier one. A rule reaching the whole
@@ -287,11 +305,11 @@ const topLevelOrder = (sources) => [...sources.slice(1), sources[0]]
 // which this repo's unconditional claim neutralises every preset rule above it.
 const effective = (sources, cls) => {
   const out = { type: null, scope: null, prefix: null, scopeClaim: null, narrow: new Map() }
-  for (const { name, config, local } of topLevelOrder(sources)) {
+  for (const { name, config, local } of resolutionOrder(sources)) {
     if (config.semanticCommitType !== undefined) out.type = config.semanticCommitType
     if (config.semanticCommitScope !== undefined) { out.scope = config.semanticCommitScope; out.scopeClaim = { where: `${name} (top level)`, local } }
   }
-  for (const { name, config, local } of sources) {
+  for (const { name, config, local } of resolutionOrder(sources)) {
     for (const [i, rule] of (config.packageRules ?? []).entries()) {
       const r = reach(rule, cls)
       if (r === 'none') continue
@@ -339,21 +357,38 @@ const closure = async (env) => {
     }
   }
 
-  // The literal walk above only proves the vocabulary is clean. This is what proves the tree's own
-  // rules are the ones that decide, so an upstream rename cannot reach a header here: deleting them,
-  // moving the self-reference off the end of the extends chain, or widening a matcher past the
-  // model all re-fail at this assertion.
-  const local = sources.find((s) => s.local && s.isLastExtends !== undefined)
-  if (!local) {
+  // The literal walk above only proves the vocabulary is clean. What follows proves the tree's own
+  // rules are the ones that decide, so an upstream rename cannot reach a header here.
+  //
+  // Stated over the whole resolution order rather than over one file, and that is the difference
+  // that matters: this repo's packageRules are spread across several files under .github/renovate/,
+  // each its own extends entry, and a per-file reading is satisfied by whichever file it picks while
+  // a shared preset sits after a different one and wins. The property is collective -- no preset may
+  // resolve after ANY local source -- and every local source's rules must be classifiable by the
+  // coverage model, not just the first one found.
+  const order = resolutionOrder(sources)
+  for (const { name, config } of sources) {
+    for (const [key, value] of Object.entries(config)) {
+      if (key === 'extends') continue
+      for (const at of nestedExtends(value, `${name}.${key}`)) fail.push(`a preset is extended at ${at}; only a source's top-level extends is composed here, so the rules it pulls in would go unread`)
+    }
+  }
+  if (!order.some((s) => s.viaExtends)) {
     fail.push('.github/renovate.json extends no preset of this repo\'s own, so this repo asserts nothing about what its bots emit')
     return { fail, note }
   }
-  if (!local.isLastExtends) fail.push(`${local.name} is not the last extends entry, so a later preset's packageRules resolve after this repo's own and win`)
-  for (const [i, rule] of (local.config.packageRules ?? []).entries()) {
-    const unmodelled = matchers(rule).filter((k) => !MODELLED_LOCAL_MATCHERS.includes(k))
-    if (unmodelled.length) fail.push(`local packageRules[${i}] uses ${unmodelled.join(', ')}; the coverage model does not model those matchers`)
-    for (const manager of rule.matchManagers ?? []) {
-      if (!KNOWN_MANAGERS.includes(manager)) fail.push(`local packageRules[${i}] matches manager '${manager}', which has no extraction occupancy here -- either a typo, which renovate-config-validator accepts silently, or occupancy this check has not been taught`)
+  for (const [i, source] of order.entries()) {
+    if (source.local) continue
+    const earlier = order.slice(0, i).filter((s) => s.local).map((s) => s.name)
+    if (earlier.length) fail.push(`${source.name} resolves after this repo's own ${earlier.join(', ')}, so its packageRules accumulate later and win`)
+  }
+  for (const source of order.filter((s) => s.local)) {
+    for (const [i, rule] of (source.config.packageRules ?? []).entries()) {
+      const unmodelled = matchers(rule).filter((k) => !MODELLED_LOCAL_MATCHERS.includes(k))
+      if (unmodelled.length) fail.push(`${source.name} packageRules[${i}] uses ${unmodelled.join(', ')}; the coverage model does not model those matchers`)
+      for (const manager of rule.matchManagers ?? []) {
+        if (!KNOWN_MANAGERS.includes(manager)) fail.push(`${source.name} packageRules[${i}] matches manager '${manager}', which has no extraction occupancy here -- either a typo, which renovate-config-validator accepts silently, or occupancy this check has not been taught`)
+      }
     }
   }
 
@@ -379,7 +414,7 @@ const closure = async (env) => {
   // Without semanticCommits enabled Renovate emits no type(scope) prefix at all, so every bot
   // header fails the gate at once. Resolved rather than read from one file: this repo sets none, so
   // the value comes from the preset chain and a bump can move it.
-  const semanticCommits = topLevelOrder(sources).reduce((acc, s) => (s.config.semanticCommits ?? acc), undefined)
+  const semanticCommits = resolutionOrder(sources).reduce((acc, s) => (s.config.semanticCommits ?? acc), undefined)
   if (semanticCommits !== 'enabled') fail.push(`semanticCommits resolves to '${semanticCommits ?? 'unset'}', not 'enabled': Renovate then emits no type(scope) prefix and every bot commit fails the gate`)
 
   // Scope-carrying sites outside Renovate: release-please composes its own pull request titles, and
