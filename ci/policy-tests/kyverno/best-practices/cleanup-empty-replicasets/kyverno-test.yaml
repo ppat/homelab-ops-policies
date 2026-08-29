@@ -8,6 +8,13 @@
 # Chainsaw test (ci/policy-tests/chainsaw/best-practices/cleanup-empty-replicasets/) proves the
 # complementary claim this tier cannot reach -- a genuinely fresh ReplicaSet survives a real
 # cleanup cycle. Neither tier repeats the other.
+#
+# THE `kube-system` EXCLUSION IS DELIBERATELY UNTESTED HERE. It is expressed as a
+# `matchConstraints.namespaceSelector`, and whether the CLI reports such an exclusion at all is
+# version-dependent: newer releases emit no result row for a resource the selector filtered out,
+# and this file format has no vocabulary for asserting an absent row. A fixture for it would
+# therefore be an assertion that expires on a CLI bump. The claim lives in the Chainsaw test
+# instead, where it is settled against a real engine.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -18,17 +25,16 @@ resources:
 - rs-empty-and-old.yaml
 - rs-empty-but-fresh.yaml
 - rs-nonempty-and-old.yaml
-- rs-empty-and-old-in-kube-system.yaml
 results:
-# The only fixture where everything holds. Without it the three `fail` rows below would look
-# identical against a policy that had rotted into matching nothing.
+# The only fixture where everything holds. Without it the `fail` rows below would look identical
+# against a policy that had rotted into matching nothing.
 - policy: cleanup-empty-replicasets
   isDeletingPolicy: true
   kind: ReplicaSet
   resources:
   - default/empty-old-replicaset
   result: pass
-# One row per conjunct, each falsifying exactly one: age, emptiness, namespace.
+# One row per condition, each falsifying exactly one.
 - policy: cleanup-empty-replicasets
   isDeletingPolicy: true
   kind: ReplicaSet
@@ -40,10 +46,4 @@ results:
   kind: ReplicaSet
   resources:
   - default/nonempty-old-replicaset
-  result: fail
-- policy: cleanup-empty-replicasets
-  isDeletingPolicy: true
-  kind: ReplicaSet
-  resources:
-  - kube-system/empty-old-replicaset-kube-system
   result: fail

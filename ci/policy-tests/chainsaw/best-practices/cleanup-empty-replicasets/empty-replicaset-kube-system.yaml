@@ -1,0 +1,21 @@
+---
+# The `kube-system` twin of ./fresh-empty-replicaset.yaml, identical but for the namespace, so
+# that namespace is the only variable left once the age guard is patched out.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: empty-replicaset-kube-system
+  namespace: kube-system
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: empty-replicaset-kube-system
+  template:
+    metadata:
+      labels:
+        app: empty-replicaset-kube-system
+    spec:
+      containers:
+      - name: c
+        image: registry.k8s.io/pause:3.10
