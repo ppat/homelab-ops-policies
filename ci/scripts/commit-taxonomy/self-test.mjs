@@ -93,6 +93,25 @@ const offlinePresets = (mutate) => {
   })()
 }
 
+// One more in-repo extends entry than the tree currently has, served from the readers rather than
+// written to disk. The composed reading has to hold for any number of files under .github/renovate/,
+// and asserting it only against however many exist today would stop being an assertion the first
+// time that number moved.
+const EXTRA_OWN_PATH = '.github/renovate/self-test-extra'
+const EXTRA_OWN_REF = `github>ppat/homelab-ops-policies//${EXTRA_OWN_PATH}`
+const withExtraOwnFile = (rules, place = (list) => [...list, EXTRA_OWN_REF]) => {
+  const b = base()
+  return {
+    json: (rel) => {
+      if (rel === `${EXTRA_OWN_PATH}.json`) return { packageRules: rules }
+      if (rel !== '.github/renovate.json') return b.json(rel)
+      const c = structuredClone(b.json(rel))
+      c.extends = place(c.extends)
+      return c
+    },
+  }
+}
+
 // Renames every scope an extended preset claims, which is what an upstream taxonomy change looks
 // like from here.
 const renameUpstreamScopes = (_name, preset) => {
@@ -162,9 +181,14 @@ const CASES = [
     overrides: patchJson('.github/renovate/scopes.json', (c) => { c.packageRules = []; return c }),
   },
   {
-    id: 'I10b', check: 'closure', expect: /not the last extends entry/,
+    id: 'I10b', check: 'closure', expect: /resolves after this repo's own/,
     defect: 'the local rules moved ahead of the preset chain, where a preset resolves after them',
     overrides: patchJson('.github/renovate.json', (c) => { c.extends = [c.extends.at(-1), ...c.extends.slice(0, -1)]; return c }),
+  },
+  {
+    id: 'I10c', check: 'closure', expect: /only a source's top-level extends is composed here/,
+    defect: 'a preset extended from inside a packageRule, which Renovate resolves and this composition never reads',
+    overrides: patchJson('.github/renovate.json', (c) => { c.packageRules = [{ matchManagers: ['bun'], extends: ['config:recommended'] }]; return c }),
   },
   {
     id: 'I11', check: 'named-scope', expect: /scope 'agents' does not cover/,
@@ -314,6 +338,31 @@ for (const c of CASES) {
   const refuse = await run('closure', repoEnv(root, { prCommits: 0, prBody: '', offlinePresets: unmodelled }))
   if (refuse.fail.some((f) => /cannot be checked/.test(f))) record('I19-refuse', 'caught', 'a preset bump introducing an unmodelled commitMessagePrefix is refused rather than assumed harmless')
   else record('I19-refuse', 'NOT CAUGHT', 'an unmodelled commitMessagePrefix passed silently')
+}
+
+// I23 -- the composed reading of several in-repo extends entries, guarded in both directions. An
+// added file must change no verdict on its own, and each falsifier is a defect that a per-file
+// reading cannot see: one puts a shared preset between two in-repo files, the other hides an
+// unclassifiable matcher in the second of them.
+{
+  const benign = [{ matchManagers: ['bun'], semanticCommitScope: 'internal-dependencies' }]
+  const added = withOverrides(withExtraOwnFile(benign))
+  const guard = [...(await run('closure', added)).fail, ...(await run('default-scope', added)).fail]
+  if (guard.length) record('I23-guard', 'NOT CAUGHT', `an added in-repo extends entry is not composed: ${guard.join(' / ')}`)
+  else record('I23-guard', 'held', 'in-repo extends entries compose whatever their number and order')
+
+  const interleaved = withOverrides(withExtraOwnFile(benign, (list) => {
+    const own = list.filter((r) => r.startsWith('github>ppat/homelab-ops-policies//'))
+    const foreign = list.filter((r) => !own.includes(r))
+    return [...foreign.slice(0, -1), ...own, foreign.at(-1), EXTRA_OWN_REF]
+  }))
+  const order = await run('closure', interleaved)
+  if (order.fail.some((f) => /resolves after this repo's own/.test(f))) record('I23-order', 'caught', 'a shared preset sitting between two in-repo files, where its packageRules accumulate last and win')
+  else record('I23-order', 'NOT CAUGHT', `a preset resolving after an in-repo file passed: ${order.fail.join(' / ') || 'nothing reported'}`)
+
+  const opaque = await run('closure', withOverrides(withExtraOwnFile([{ matchFileNames: ['**/*.json'], semanticCommitScope: 'internal-dependencies' }])))
+  if (opaque.fail.some((f) => /uses matchFileNames/.test(f))) record('I23-matcher', 'caught', 'a matcher the coverage model cannot classify, in an in-repo file that is not the first one')
+  else record('I23-matcher', 'NOT CAUGHT', `an unclassifiable matcher in a later in-repo file passed: ${opaque.fail.join(' / ') || 'nothing reported'}`)
 }
 
 rmSync(SANDBOX, { recursive: true, force: true })
