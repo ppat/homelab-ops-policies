@@ -3,11 +3,18 @@
 # ../../restricted/restrict-volume-types/chainsaw-test.yaml; read its header first, in particular
 # the bar for adding a test here at all.
 #
-# THE ONE CLAIM THIS TIER CAN MAKE AND THE CLI TIER CANNOT: a genuinely fresh, empty ReplicaSet
-# survives a real cleanup cycle. `creationTimestamp` is server-set, so only a live fixture can
-# produce an object the 24h age guard has to leave alone. The converse -- that an old enough one
-# IS collected -- is unreachable here for the same reason and stays CLI-tier only
-# (../../../kyverno/best-practices/cleanup-empty-replicasets/). Neither tier repeats the other.
+# THE CLAIMS THIS TIER OWNS AND THE CLI TIER CANNOT MAKE, one per step below:
+#
+#   1. A genuinely fresh, empty ReplicaSet survives a real cleanup cycle. `creationTimestamp` is
+#      server-set, so only a live fixture can produce an object the 24h age guard has to leave
+#      alone. The converse -- that an old enough one IS collected -- is unreachable here for the
+#      same reason and stays CLI-tier only
+#      (../../../kyverno/best-practices/cleanup-empty-replicasets/).
+#   2. An empty ReplicaSet in `kube-system` is left alone while its twin in an ordinary namespace
+#      is collected. The last step carries why that claim is unavailable offline and what has to
+#      be neutralised on the cluster before it means anything.
+#
+# Neither tier repeats the other.
 #
 # WHY THIS TEST ALSO INSTALLS `cleanup-bare-pods`: "the fresh ReplicaSet still exists" is vacuous
 # on its own -- it holds identically whether the cleanup controller ran a dozen cycles or never
@@ -18,10 +25,11 @@
 #
 # THE SUITE'S CLUSTER MUST NOT RUN THE CHART'S DEFAULT `resourceFilters`, or this test is vacuous
 # the other way too: those defaults hide ReplicaSets from the engine entirely, so the policy would
-# never see the fixture and "it survived" would again be true for the wrong reason. The override
+# never see the fixture and "it survived" would again be true for the wrong reason. That override
 # lives in .github/workflows/e2e-tests.yaml's Kyverno install, matching the estate's own values,
-# rather than in this test -- the ConfigMap holding it is chart-installed, so a test that patched
-# it would be mutating cluster-wide state Chainsaw's cleanup does not track.
+# because it is a premise of every test on this cluster rather than of any one of them. The last
+# step lifts one further filter entry, which is the opposite case: a premise of a single claim,
+# so it is lifted in the step that needs it and restored in that step's `finally`.
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
@@ -102,3 +110,72 @@ spec:
     # collect the ReplicaSet and declined.
     - assert:
         file: fresh-empty-replicaset.yaml
+
+  - name: kube-system-survives-the-policys-own-exclusion-not-the-engines
+    # THE SECOND CLAIM THIS TIER OWNS. It is here rather than beside the rest of the policy's
+    # semantics in the CLI tier because whether `kyverno test` reports a
+    # `matchConstraints.namespaceSelector` exclusion at all is CLI-version-dependent: newer CLIs
+    # emit no result row for a resource the selector filtered out, and the file format has no
+    # vocabulary for asserting that a row is absent.
+    #
+    # TWO THINGS MUST BE NEUTRALISED FIRST or "it survived" holds for the wrong reason:
+    #
+    #   1. THE ENGINE'S OWN `kube-system` FILTER. `[*/*,kube-system,*]` is in the chart's default
+    #      `resourceFilters` and the estate keeps it, so every kube-system object is hidden from
+    #      Kyverno upstream of any policy. Measured: with the selector deleted from the policy
+    #      outright, the fixture below still survives while that entry is present -- the test
+    #      would assert nothing. It is lifted here rather than at install time
+    #      (.github/workflows/e2e-tests.yaml) because it is a premise of this one claim, not of
+    #      the tier: lifting it cluster-wide would subject every other policy in the suite to a
+    #      namespace no consumer exposes them to.
+    #   2. EVERY OTHER CLEANUP POLICY. `cleanup-bare-pods` carries no namespace guard of its own
+    #      -- it relies on that same filter -- so it is removed before the window opens, leaving
+    #      the policy under test as the only one live inside it.
+    #
+    # The age guard is patched out so that a server-timestamped fixture can be a deletion
+    # candidate at all; `matchConstraints`, the thing under test, is untouched. The
+    # ordinary-namespace ReplicaSet disappearing is what proves a cycle ran under the relaxed
+    # guard, and therefore that the kube-system one was considered and declined.
+    try:
+    - delete:
+        ref:
+          apiVersion: policies.kyverno.io/v1
+          kind: DeletingPolicy
+          name: cleanup-bare-pods
+    - script:
+        content: |
+          set -eu
+          filters=$(kubectl -n kyverno get configmap kyverno -o jsonpath='{.data.resourceFilters}')
+          kept=$(printf '%s' "$filters" | tr ' ' '\n' | grep -Fxv '[*/*,kube-system,*]' | tr '\n' ' ')
+          kubectl -n kyverno patch configmap kyverno --type merge -p "{\"data\":{\"resourceFilters\":\"$kept\"}}"
+        check:
+          ($error == null): true
+    - apply:
+        file: empty-replicaset-kube-system.yaml
+    - patch:
+        resource:
+          apiVersion: policies.kyverno.io/v1
+          kind: DeletingPolicy
+          metadata:
+            name: cleanup-empty-replicasets
+          spec:
+            conditions:
+            - name: is-empty
+              expression: object.spec.?replicas.orValue(1) == 0
+    - error:
+        file: fresh-empty-replicaset.yaml
+        timeout: 2m30s
+    - assert:
+        file: empty-replicaset-kube-system.yaml
+    finally:
+    # Runs whether the step passed or failed, so nothing downstream sees an engine configuration
+    # no consumer runs. Idempotent, because the step may have failed before removing the entry.
+    - script:
+        content: |
+          set -eu
+          filters=$(kubectl -n kyverno get configmap kyverno -o jsonpath='{.data.resourceFilters}')
+          case " $filters " in *' [*/*,kube-system,*] '*) exit 0 ;; esac
+          restored="[*/*,kube-system,*] $filters"
+          kubectl -n kyverno patch configmap kyverno --type merge -p "{\"data\":{\"resourceFilters\":\"$restored\"}}"
+        check:
+          ($error == null): true

@@ -55,12 +55,12 @@ spec:
   schedule: "0 * * * *"
   matchConstraints:
     # Defence in depth, not the only guard: `resourceFilters` (header point 2) already excludes
-    # `kube-system` cluster-wide via `[*/*,kube-system,*]`.
-    #
-    # `kubernetes.io/metadata.name` is also the only namespaceSelector key the offline
-    # `kyverno test` tier can decide -- it derives that label from the resource's own
-    # `metadata.namespace` with no Namespace object present, and reports any other key as simply
-    # absent. A selector keyed on a real Namespace label would go silently untested there.
+    # `kube-system` cluster-wide via `[*/*,kube-system,*]`. That redundancy is also why asserting
+    # this selector takes work -- the test that does it has to lift that filter entry first, or it
+    # passes with the selector deleted. It is the repo's only `namespaceSelector`, and the whole
+    # of its coverage is the last step of
+    # ci/policy-tests/chainsaw/best-practices/cleanup-empty-replicasets/chainsaw-test.yaml; the
+    # offline tier cannot express the claim at all.
     namespaceSelector:
       matchExpressions:
       - key: kubernetes.io/metadata.name
