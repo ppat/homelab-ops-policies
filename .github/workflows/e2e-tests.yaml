@@ -43,7 +43,7 @@ jobs:
       # version actually deployed by infra-security-core in homelab-ops-kubernetes-apps -- all
       # three should move together.
       # renovate: datasource=helm depName=kyverno repository=https://kyverno.github.io/kyverno/
-      KYVERNO_CHART_VERSION: "3.8.2"
+      KYVERNO_CHART_VERSION: "3.9.0"
     steps:
     - name: Setup repository and tools
       uses: ppat/homelab-ops-actions/actions/setup-repository-tools@9c16506c3c527478b6314c86ca961c0011d9f94a # v2.2.0
