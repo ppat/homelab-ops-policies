@@ -54,7 +54,7 @@ jobs:
         mise_toml: |
           [tools]
           # renovate: datasource=github-releases depName=kubernetes-sigs/kind
-          kind = "0.32.0"
+          kind = "0.33.0"
           # renovate: datasource=github-releases depName=kubernetes/kubernetes
           kubectl = "1.36.4"
           # renovate: datasource=github-releases depName=helm/helm
