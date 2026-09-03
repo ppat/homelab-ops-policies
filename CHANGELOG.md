@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.1](https://github.com/ppat/homelab-ops-policies/compare/v1.0.0...v1.0.1) (2026-08-30)
+
+
+### 🧹 Miscellaneous
+
+* **internal-dependencies:** update bun (1.3.14 -&gt; 1.4.0) ([#37](https://github.com/ppat/homelab-ops-policies/issues/37)) ([20c4cd1](https://github.com/ppat/homelab-ops-policies/commit/20c4cd1e18f91d945778140e835bdf82bbed4157))
+* **internal-dependencies:** update kyverno ([#48](https://github.com/ppat/homelab-ops-policies/issues/48)) ([010e07f](https://github.com/ppat/homelab-ops-policies/commit/010e07f76e3f7f96a0140213b33d0a12bdd08552))
+* **renovate:** group the kyverno chart and cli pins and keep them out of automerge ([#43](https://github.com/ppat/homelab-ops-policies/issues/43)) ([c281b61](https://github.com/ppat/homelab-ops-policies/commit/c281b61e1f3c3fa48cec6d60e4a15493db5fcf94))
+
+
+### 🛠 Improvements
+
+* **policies-best-practices:** move the cleanup-empty-replicasets kube-system exclusion from the offline tier to the cluster tier ([#44](https://github.com/ppat/homelab-ops-policies/issues/44)) ([8d07466](https://github.com/ppat/homelab-ops-policies/commit/8d07466b86756a7da74cc30d32c6ae0b816706bc))
+
 ## [1.0.0](https://github.com/ppat/homelab-ops-policies/compare/v0.0.1...v1.0.0) (2026-08-27)
 
 
