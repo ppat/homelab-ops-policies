@@ -69,7 +69,7 @@ jobs:
       # renovate: datasource=npm depName=bun
       BUN_VERSION: "1.4.0"
       # renovate: datasource=node-version depName=node
-      NODE_VERSION: "24.19.0"
+      NODE_VERSION: "24.20.0"
     steps:
     - name: Setup repository and tools
       uses: ppat/homelab-ops-actions/actions/setup-repository-tools@9c16506c3c527478b6314c86ca961c0011d9f94a # v2.2.0
