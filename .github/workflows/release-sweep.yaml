@@ -44,7 +44,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Sweep release pull requests
-      uses: ppat/homelab-ops-actions/actions/release-sweep@f66c9acb40309305e0e1fd3179406b85647aa54c # v2.3.2
+      uses: ppat/homelab-ops-actions/actions/release-sweep@2045fb6e6cb00ab099280625b6989cf62ccc1b77 # v2.7.0
       with:
         # Pull requests touching this file run only the built-in read token; the monthly
         # schedule supplies the App token needed for an authorized, live merge.
