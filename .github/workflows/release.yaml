@@ -10,11 +10,6 @@ on:
   push:
     branches:
     - main
-    paths:
-    - 'best-practices/**'
-    - 'pod-security-standard/**'
-    - '.release-please-manifest.json'
-    - 'release-please-config.json'
   workflow_dispatch:
 
 concurrency:
