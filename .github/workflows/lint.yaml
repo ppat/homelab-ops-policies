@@ -72,7 +72,7 @@ jobs:
       NODE_VERSION: "24.21.0"
     steps:
     - name: Setup repository and tools
-      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@2045fb6e6cb00ab099280625b6989cf62ccc1b77 # v2.7.0
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@d21b387fa6a35e48f78985a1e636ec728866981e # v2.8.0
       with:
         # Full history: the pull-request-state steps read each of the pull request's own commits and
         # the paths it touched, not a squashed diff.
