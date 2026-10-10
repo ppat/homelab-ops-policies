@@ -57,7 +57,7 @@ jobs:
           [tools]
           kyverno = "${{ env.KYVERNO_CLI_VERSION }}"
           # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.*)$
-          kustomize = "5.8.2"
+          kustomize = "5.8.3"
           # renovate: datasource=github-releases depName=mikefarah/yq
           yq = "4.54.1"
 
