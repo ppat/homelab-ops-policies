@@ -58,7 +58,7 @@ jobs:
           # renovate: datasource=github-releases depName=kubernetes/kubernetes
           kubectl = "1.36.4"
           # renovate: datasource=github-releases depName=helm/helm
-          helm = "4.3.0"
+          helm = "4.3.1"
           # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/v(?<version>.*)$
           kustomize = "5.8.3"
           # renovate: datasource=github-releases depName=mikefarah/yq
