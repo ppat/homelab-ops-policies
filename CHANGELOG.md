@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.2](https://github.com/ppat/homelab-ops-policies/compare/v1.0.1...v1.0.2) (2026-11-11)
+
+
+### 🧹 Miscellaneous
+
+* **github-actions:** update ppat/github-workflows (v8.5.0 -&gt; v9.0.0) ([#92](https://github.com/ppat/homelab-ops-policies/issues/92)) ([e95b881](https://github.com/ppat/homelab-ops-policies/commit/e95b8814bac2b0d35cd93dadcdb669c6e6df8eff))
+* **github-actions:** update ppat/homelab-ops-actions (v2.11.0 -&gt; v2.12.0) ([#91](https://github.com/ppat/homelab-ops-policies/issues/91)) ([21d9928](https://github.com/ppat/homelab-ops-policies/commit/21d9928f4a9f2beeff754d3f1c9b8b324c6d8335))
+* **github-actions:** update ppat/homelab-ops-actions (v2.12.0 -&gt; v3.0.0) ([#94](https://github.com/ppat/homelab-ops-policies/issues/94)) ([2b808eb](https://github.com/ppat/homelab-ops-policies/commit/2b808eb868141f7271af369cc43a55cfaae2f32e))
+* **internal-dependencies:** update mikefarah/yq (v4.54.1 -&gt; v4.54.2) ([#93](https://github.com/ppat/homelab-ops-policies/issues/93)) ([95eb581](https://github.com/ppat/homelab-ops-policies/commit/95eb581c710b130546cf00b5e2a0ca2a7294975d))
+
+
+### 🚀 Enhancements + Bug Fixes
+
+* **policies-pod-security-standard:** exempt smartctl-exporter from disallow-privileged-containers and disallow-host-path ([#96](https://github.com/ppat/homelab-ops-policies/issues/96)) ([756278a](https://github.com/ppat/homelab-ops-policies/commit/756278aa6886642a5618dbdda9f43a525a0b5883))
+
 ## [1.0.1](https://github.com/ppat/homelab-ops-policies/compare/v1.0.0...v1.0.1) (2026-09-27)
 
 
