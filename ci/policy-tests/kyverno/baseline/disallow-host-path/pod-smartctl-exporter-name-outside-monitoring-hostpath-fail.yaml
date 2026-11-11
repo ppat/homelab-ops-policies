@@ -1,0 +1,21 @@
+---
+# EXPECTED: `fail` against both the built policy and the pure mirror.
+#
+# The NAMESPACE conjunct of `exempt-smartctl-exporter`, falsified. Right name, wrong namespace --
+# what a name-only exemption would wrongly skip.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prometheus-smartctl-exporter-impostor
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: dev
+      mountPath: /hostdev
+  volumes:
+  - name: dev
+    hostPath:
+      path: /dev

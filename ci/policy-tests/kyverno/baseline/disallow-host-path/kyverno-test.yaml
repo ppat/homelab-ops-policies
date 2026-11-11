@@ -35,6 +35,8 @@ resources:
 - pod-node-problem-detector-hostpath-skip.yaml
 - pod-node-problem-detector-generatename-hostpath-skip.yaml
 - pod-node-exporter-hostpath-skip.yaml
+- pod-smartctl-exporter-hostpath-skip.yaml
+- pod-smartctl-exporter-name-outside-monitoring-hostpath-fail.yaml
 - pod-alloy-hostpath-skip.yaml
 - pod-intel-gpu-plugin-hostpath-skip.yaml
 - pod-virt-handler-hostpath-skip.yaml
@@ -62,6 +64,7 @@ results:
   - monitoring/grafana-786bb9ffd6-dqkl2
   - logging/loki-0
   - default/alloy-impostor
+  - default/prometheus-smartctl-exporter-impostor
   - kubevirt/virt-api-6794fd7fd6-9429f
   - default/intel-gpu-plugin-gpu-device-impostor
   result: fail
@@ -79,6 +82,7 @@ results:
   - monitoring/node-problem-detector-fxjb6
   - monitoring/
   - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - monitoring/prometheus-smartctl-exporter-0-7xk2p
   - logging/alloy-bxg4j
   - intel-device-plugins/intel-gpu-plugin-gpu-device-bj2z4
   - kubevirt/virt-handler-54dpv
@@ -102,6 +106,8 @@ resources:
 - pod-node-problem-detector-hostpath-skip.yaml
 - pod-node-problem-detector-generatename-hostpath-skip.yaml
 - pod-node-exporter-hostpath-skip.yaml
+- pod-smartctl-exporter-hostpath-skip.yaml
+- pod-smartctl-exporter-name-outside-monitoring-hostpath-fail.yaml
 - pod-alloy-hostpath-skip.yaml
 - pod-intel-gpu-plugin-hostpath-skip.yaml
 - pod-virt-handler-hostpath-skip.yaml
@@ -131,6 +137,7 @@ results:
   - monitoring/grafana-786bb9ffd6-dqkl2
   - logging/loki-0
   - default/alloy-impostor
+  - default/prometheus-smartctl-exporter-impostor
   - kubevirt/virt-api-6794fd7fd6-9429f
   - default/intel-gpu-plugin-gpu-device-impostor
   - kube-system/kube-proxy-9k2vq
@@ -140,6 +147,7 @@ results:
   - monitoring/node-problem-detector-fxjb6
   - monitoring/
   - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
+  - monitoring/prometheus-smartctl-exporter-0-7xk2p
   - logging/alloy-bxg4j
   - intel-device-plugins/intel-gpu-plugin-gpu-device-bj2z4
   - kubevirt/virt-handler-54dpv

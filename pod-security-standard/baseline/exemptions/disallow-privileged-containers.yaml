@@ -36,6 +36,23 @@
       (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
       .startsWith('node-problem-detector'))
 
+# smartctl-exporter runs smartctl against every disk on the node to export SMART health. smartctl
+# opens raw block and NVMe character devices and sends ATA and NVMe admin commands to them, which
+# the container's device cgroup refuses to anything but a privileged container: root with
+# SYS_ADMIN and SYS_RAWIO and a /dev hostPath still gets "Operation not permitted" opening the
+# device. The upstream chart also hardcodes `privileged: true`. Name- AND namespace-scoped, so
+# nothing else in `monitoring` inherits it. Wrong if smartctl-exporter gains a device-plugin
+# path to the disks, or if `monitoring` becomes a namespace where arbitrary workloads can be
+# created.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-smartctl-exporter
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('prometheus-smartctl-exporter'))
+
 # Grants virt-handler root plus every Linux capability on whichever node it lands on -- it is the
 # node agent that opens /dev/kvm and other host devices, drives libvirt/qemu process lifecycle,
 # and edits cgroups directly, none of which an unprivileged container can do. Bounded by:
