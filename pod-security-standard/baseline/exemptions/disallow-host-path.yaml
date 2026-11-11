@@ -57,6 +57,19 @@
       (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
       .startsWith('kube-prometheus-stack-prometheus-node-exporter'))
 
+# smartctl-exporter's chart mounts the node's /dev so the exporter can find disks attached after
+# the container started. It runs privileged as well (see ./disallow-privileged-containers.yaml
+# for why), which already grants the devices, so this exemption adds no access the other one does
+# not. Name- AND namespace-scoped, matching that entry.
+- op: add
+  path: /spec/matchConditions/-
+  value:
+    name: exempt-smartctl-exporter
+    expression: >-
+      !(object.metadata.?namespace.orValue('') == 'monitoring' &&
+      (object.metadata.?name.orValue('') + object.metadata.?generateName.orValue(''))
+      .startsWith('prometheus-smartctl-exporter'))
+
 # Grafana Alloy is the node-level log collector. Necessary because node log files
 # (/var/log/pods, /var/log/journal, /run/log/journal), /etc/machine-id, and Alloy's
 # own read-offset state (/var/lib/alloy) are only reachable via the node

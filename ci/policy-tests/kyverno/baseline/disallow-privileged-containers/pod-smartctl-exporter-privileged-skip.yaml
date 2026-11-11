@@ -1,0 +1,17 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires `exempt-smartctl-exporter`, a name-AND-namespace-scoped glob. Its namespace conjunct is
+# falsified by pod-smartctl-exporter-name-outside-monitoring-privileged-fail.yaml and its name
+# conjunct by pod-not-npd-in-monitoring-privileged-fail.yaml, which no monitoring glob matches.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prometheus-smartctl-exporter-0-7xk2p
+  namespace: monitoring
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    securityContext:
+      privileged: true

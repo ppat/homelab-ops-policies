@@ -1,0 +1,22 @@
+---
+# EXPECTED: `skip` against the built policy, `fail` against the pure mirror.
+#
+# Fires `exempt-smartctl-exporter`, a name-AND-namespace-scoped glob. Its namespace conjunct is
+# falsified by pod-smartctl-exporter-name-outside-monitoring-hostpath-fail.yaml and its name
+# conjunct by pod-not-glob-in-monitoring-hostpath-fail.yaml.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prometheus-smartctl-exporter-0-7xk2p
+  namespace: monitoring
+spec:
+  containers:
+  - name: app
+    image: registry.k8s.io/pause:3.10
+    volumeMounts:
+    - name: dev
+      mountPath: /hostdev
+  volumes:
+  - name: dev
+    hostPath:
+      path: /dev

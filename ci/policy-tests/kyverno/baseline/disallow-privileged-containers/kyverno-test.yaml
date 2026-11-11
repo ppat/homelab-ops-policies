@@ -37,6 +37,8 @@ resources:
 - pod-system-upgrade-privileged-skip.yaml
 - pod-tailscale-privileged-skip.yaml
 - pod-node-problem-detector-privileged-skip.yaml
+- pod-smartctl-exporter-privileged-skip.yaml
+- pod-smartctl-exporter-name-outside-monitoring-privileged-fail.yaml
 - pod-virt-handler-privileged-skip.yaml
 - pod-virt-handler-generatename-privileged-skip.yaml
 - pod-not-npd-in-monitoring-privileged-fail.yaml
@@ -60,6 +62,7 @@ results:
   - default/debugged-workload-77955b8c45-52ls7
   - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
   - default/node-problem-detector-impostor
+  - default/prometheus-smartctl-exporter-impostor
   - kubevirt/virt-api-6794fd7fd6-9429f
   result: fail
 # Every exemption firing, one row per member of the namespace list. `skip`, not `pass`:
@@ -75,6 +78,7 @@ results:
   - system-upgrade/apply-k3s-server-on-node-abc12
   - tailscale/ts-homelab-bmjbv-0
   - monitoring/node-problem-detector-fxjb6
+  - monitoring/prometheus-smartctl-exporter-0-7xk2p
   - kubevirt/virt-handler-54dpv
   - kubevirt/
   result: skip
@@ -97,6 +101,8 @@ resources:
 - pod-system-upgrade-privileged-skip.yaml
 - pod-tailscale-privileged-skip.yaml
 - pod-node-problem-detector-privileged-skip.yaml
+- pod-smartctl-exporter-privileged-skip.yaml
+- pod-smartctl-exporter-name-outside-monitoring-privileged-fail.yaml
 - pod-virt-handler-privileged-skip.yaml
 - pod-virt-handler-generatename-privileged-skip.yaml
 - pod-not-npd-in-monitoring-privileged-fail.yaml
@@ -119,6 +125,7 @@ results:
   - default/debugged-workload-77955b8c45-52ls7
   - monitoring/kube-prometheus-stack-prometheus-node-exporter-p95kc
   - default/node-problem-detector-impostor
+  - default/prometheus-smartctl-exporter-impostor
   - kubevirt/virt-api-6794fd7fd6-9429f
   - kube-system/kube-proxy-9k2vq
   - longhorn-system/longhorn-manager-rg2fl
@@ -126,6 +133,7 @@ results:
   - system-upgrade/apply-k3s-server-on-node-abc12
   - tailscale/ts-homelab-bmjbv-0
   - monitoring/node-problem-detector-fxjb6
+  - monitoring/prometheus-smartctl-exporter-0-7xk2p
   - kubevirt/virt-handler-54dpv
   - kubevirt/
   result: fail
