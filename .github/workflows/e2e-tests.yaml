@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   chainsaw:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     env:
       # Third leg of the lockstep this repo already keeps between the Kyverno CLI version

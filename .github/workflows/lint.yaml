@@ -63,7 +63,7 @@ jobs:
   # red it goes red on every open pull request at once. The step names are what tell a repo-state
   # failure from a pull-request one.
   commit-taxonomy:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:
       # renovate: datasource=npm depName=bun
@@ -153,7 +153,7 @@ jobs:
   kubernetes-manifests:
     needs: [detect-changes]
     if: ${{ github.event_name != 'pull_request' || fromJSON(needs.detect-changes.outputs.results).kubernetes_any_changed == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
     - name: Checkout
