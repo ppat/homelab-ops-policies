@@ -72,7 +72,7 @@ jobs:
     #     legitimately Fails the smoke resource also exits non-zero) but exact for this class.
     #     Note it also catches a CEL RUNTIME error, e.g. `object.spec.type` on a Service that
     #     omits the field: "Error: failed to load context: no such key: type".
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:
       # Kept in lockstep with policy-cli-tests.yaml's pin and with e2e-tests.yaml's
